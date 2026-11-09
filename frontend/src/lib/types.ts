@@ -293,3 +293,111 @@ export type ForumSectionDetails = Pick<ForumSection, "name" | "accent" | "icon_u
 
 /** Sent to `POST /forum/categories`. */
 export type ForumCategoryDetails = Pick<ForumCategory, "name" | "section_id" | "description" | "locked" | "position">;
+
+// Support (docs/SUPPORT.MD)
+
+export type TicketCategory = "OTHER" | "USER_REPORT" | "SUGGESTION" | "BUG_REPORT" | "USER_ISSUE";
+
+export type SupportStatus = "OPEN" | "AWAITING_USER" | "AWAITING_ADMIN" | "RESOLVED" | "CLOSED";
+
+export type FaqCategory = "GENERAL" | "SUPPORT" | "STORE" | "FORUM" | "USER" | "COMMUNITY";
+
+/** The user fields the support pages display next to tickets, messages and FAQs. */
+export type UserRef = Pick<User, "id" | "username" | "avatar_url">;
+
+export type SupportTicket = {
+  id: number;
+  title: string;
+  /** Short description, max 256 characters. */
+  subject: string;
+  user_id: number;
+  /** Other users the ticket involves. */
+  associated_user_ids: number[];
+  initial_message_id: number;
+  created_at: string;
+  last_updated: string;
+  category: TicketCategory;
+  status: SupportStatus;
+  resolved_at: string | null;
+  closed_at: string | null;
+  /** Who resolved or closed it; `null` when closed automatically. */
+  closed_by: number | null;
+  /** Support team members who have responded to or changed the ticket. */
+  responders: number[];
+};
+
+/** A ticket as listed by `GET /support/tickets` and `GET /support/admin/tickets`. */
+export type TicketSummary = SupportTicket & {
+  author: UserRef;
+  /** Messages the requester can see. */
+  message_count: number;
+};
+
+export type SupportMessage = {
+  id: number;
+  author_id: number;
+  created_at: string;
+  last_updated: string;
+  content: string;
+  /** What the message said before its one allowed edit. */
+  previous_content: string | null;
+  ticket_id: number;
+  /** Only the support team sees internal messages. */
+  is_internal: boolean;
+};
+
+export type SupportMessageWithAuthor = SupportMessage & { author: UserRef };
+
+/** A ticket page, from `GET /support/tickets/{id}`. Messages oldest first. */
+export type TicketPage = {
+  ticket: SupportTicket;
+  author: UserRef;
+  associated_users: UserRef[];
+  responders: UserRef[];
+  closed_by_user: UserRef | null;
+  messages: SupportMessageWithAuthor[];
+  /** Whether the requester is on the Support Team. */
+  support: boolean;
+};
+
+/** Sent to `POST /support/tickets`. */
+export type TicketDetails = Pick<SupportTicket, "title" | "subject" | "category" | "associated_user_ids"> & {
+  /** The initial message, Markdown. */
+  content: string;
+};
+
+/** Filters for ticket lists. Blank values are ignored. */
+export type TicketFilters = {
+  status?: SupportStatus | "";
+  category?: TicketCategory | "";
+  /** Updated within this window. */
+  activity?: TicketActivity | "";
+  sort?: TicketSort | "";
+};
+
+export type TicketActivity = "day" | "week" | "month";
+
+export type TicketSort = "latest" | "oldest" | "created";
+
+export type Faq = {
+  id: number;
+  title: string;
+  /** Max 256 characters. */
+  subject: string;
+  category: FaqCategory;
+  /** Markdown. */
+  description: string;
+  created_at: string;
+  last_updated: string;
+  created_by: number;
+  editors: number[];
+};
+
+/** An FAQ with its creator and editors, from `GET /support/faqs`. */
+export type FaqWithPeople = Faq & {
+  creator: UserRef;
+  editor_users: UserRef[];
+};
+
+/** Sent to `POST /support/faqs` and `PUT /support/faqs/{id}`. */
+export type FaqDetails = Pick<Faq, "title" | "subject" | "category" | "description">;

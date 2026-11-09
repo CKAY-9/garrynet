@@ -151,3 +151,30 @@ List FAQs by category, include:
 ## /support/faq/{ID}
 
 Show everything for the FAQ.
+## Routes
+
+Login is required for tickets but not Site Access: banned users can still use support. "Support Team" means the `Support Team` permission.
+
+Tickets:
+- GET `/support/tickets`: my tickets. Query: `status`, `category`, `state` (`active` | `done`), `activity` (`day` | `week` | `month`, updated within), `sort` (`latest` default | `oldest` | `created`). Each ticket includes its `author` and visible `message_count`.
+- POST `/support/tickets`: open a ticket with its initial message. Takes `title`, `subject`, `category`, `associated_user_ids` (max 10, must exist) and `content` (Markdown). 400 once the user has 5 active tickets.
+- GET `/support/admin/tickets`: every ticket, same query as above. Requires Support Team.
+- GET `/support/tickets/{id}`: the ticket, its `author`, `associated_users`, `responders`, `closed_by_user` and `messages` (internal ones only for Support Team). Owner or Support Team; 404 otherwise.
+- POST `/support/tickets/{id}/messages`: add a message (`content`, `is_internal`). Owners move the ticket to `AWAITING_ADMIN` (423 once resolved/closed); Support Team replies move it to `AWAITING_USER` and re-open it, internal notes change nothing else. Responders update automatically.
+- PATCH `/support/tickets/{id}/status`: set `status`. `RESOLVED`/`CLOSED` stamp `resolved_at`/`closed_at` and `closed_by`; any other status re-opens the ticket. Requires Support Team.
+- PATCH `/support/messages/{id}`: edit a message's `content`, once (author only; owners not once the ticket is resolved/closed).
+
+Tickets in `AWAITING_USER` with no activity for 7 days are closed by the backend hourly (`closed_by` stays null).
+
+FAQs:
+- GET `/support/faqs`: all FAQs, most recently updated first; `category` and `limit` (1 to 100) narrow them. Includes `creator` and `editor_users`. Public.
+- GET `/support/faqs/{id}`: one FAQ. Public.
+- POST `/support/faqs`, PUT `/support/faqs/{id}`, DELETE `/support/faqs/{id}`: manage FAQs (`title`, `subject`, `category`, `description`). Editing records the editor. Requires Support Team.
+
+## Frontend
+
+- `/support`: my on-going and resolved/closed tickets with filters, three FAQs, and a "New ticket" link. Logged-out users see the FAQs and a login prompt. Tabs switch between my tickets, all tickets (Support Team only) and FAQs.
+- `/support/new`: the ticket form, with a user search for associated users.
+- `/support/admin`: every ticket with the same filters (Support Team).
+- `/support/ticket/{id}`: messages, reply box, details and participants. Support Team sees internal notes, can add them, and has resolve/close/re-open buttons.
+- `/support/faq`, `/support/faq/{id}`, `/support/faq/new`: FAQs by category; Support Team creates, edits and deletes them.
