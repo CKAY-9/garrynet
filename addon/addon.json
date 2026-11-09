@@ -1,0 +1,6 @@
+{
+	"title": "GarryNet",
+	"type": "tool",
+	"tags": [],
+	"ignore": ["*.md", ".git*"]
+}
