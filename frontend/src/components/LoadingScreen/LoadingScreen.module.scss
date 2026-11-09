@@ -3,7 +3,7 @@
 // fullscreen in-game page and the small website previews look the same.
 
 @mixin scaled {
-  font-size: min(2.1cqh, 3.4cqw);
+  font-size: min(calc(var(--cqh) * 2.1), calc(var(--cqw) * 3.4));
 }
 
 @function tint($color, $amount, $with) {
@@ -27,7 +27,10 @@
 
 .fullscreen {
   position: fixed;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   margin: 0;
   background: #000;
 }
@@ -37,8 +40,13 @@
 
 .screen {
   --accent: #3b82f6;
+  --cqh: 1vh;
+  --cqw: 1vw;
   position: absolute;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   overflow: hidden;
   container-type: size;
   isolation: isolate;
@@ -51,7 +59,10 @@
 .stage {
   @include scaled;
   position: absolute;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
 }
 
 .backdrop {
@@ -288,14 +299,14 @@ $aero-muted: #2d5d8a;
   .glow,
   .rays {
     display: block;
-    top: 6cqh;
-    left: 82cqw;
+    top: calc(var(--cqh) * 6);
+    left: calc(var(--cqw) * 82);
     border-radius: 50%;
   }
 
   .glow {
-    width: 95cqh;
-    height: 95cqh;
+    width: calc(var(--cqh) * 95);
+    height: calc(var(--cqh) * 95);
     background: radial-gradient(
       circle,
       rgb(255 255 255 / 0.95) 0 5%,
@@ -308,8 +319,8 @@ $aero-muted: #2d5d8a;
   }
 
   .rays {
-    width: 210cqh;
-    height: 210cqh;
+    width: calc(var(--cqh) * 210);
+    height: calc(var(--cqh) * 210);
     background: repeating-conic-gradient(rgb(255 255 255 / 0.14) 0deg 5deg, transparent 5deg 15deg);
     mask-image: radial-gradient(circle, #000 0 12%, transparent 58%);
     transform: translate(-50%, -50%);
@@ -319,31 +330,34 @@ $aero-muted: #2d5d8a;
   // Aurora-like light swooshes across the sky.
   .ribbons {
     display: block;
-    inset: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
 
     &::before,
     &::after {
       content: "";
       position: absolute;
-      left: -25cqw;
-      width: 150cqw;
-      height: 75cqh;
-      border-top: 0.7cqh solid rgb(255 255 255 / 0.55);
+      left: calc(var(--cqw) * -25);
+      width: calc(var(--cqw) * 150);
+      height: calc(var(--cqh) * 75);
+      border-top: calc(var(--cqh) * 0.7) solid rgb(255 255 255 / 0.55);
       border-radius: 50%;
-      box-shadow: inset 0 2.5cqh 4cqh -2cqh rgb(255 255 255 / 0.35);
-      filter: blur(0.12cqh);
+      box-shadow: inset 0 calc(var(--cqh) * 2.5) calc(var(--cqh) * 4) calc(var(--cqh) * -2) rgb(255 255 255 / 0.35);
+      filter: blur(calc(var(--cqh) * 0.12));
       animation: aero-drift 18s ease-in-out infinite alternate;
     }
 
     &::before {
-      top: 36cqh;
-      rotate: -7deg;
+      top: calc(var(--cqh) * 36);
+      transform: rotate(-7deg);
     }
 
     &::after {
-      top: 45cqh;
+      top: calc(var(--cqh) * 45);
       border-top-color: rgb(200 255 235 / 0.5);
-      rotate: -3deg;
+      transform: rotate(-3deg);
       animation-duration: 24s;
       animation-direction: alternate-reverse;
     }
@@ -355,7 +369,7 @@ $aero-muted: #2d5d8a;
     right: 0;
     bottom: 0;
     left: 0;
-    height: 40cqh;
+    height: calc(var(--cqh) * 40);
 
     &::before,
     &::after {
@@ -366,29 +380,32 @@ $aero-muted: #2d5d8a;
 
     &::before {
       z-index: 1;
-      right: 38cqw;
-      bottom: -24cqh;
-      left: -12cqw;
-      height: 52cqh;
+      right: calc(var(--cqw) * 38);
+      bottom: calc(var(--cqh) * -24);
+      left: calc(var(--cqw) * -12);
+      height: calc(var(--cqh) * 52);
       background: radial-gradient(ellipse at 50% 18%, #c2f78a 0%, #74cf4d 32%, #2f8f34 78%);
       box-shadow:
-        inset 0 1.2cqh 2cqh rgb(255 255 255 / 0.6),
-        0 -0.5cqh 3cqh rgb(255 255 255 / 0.35);
+        inset 0 calc(var(--cqh) * 1.2) calc(var(--cqh) * 2) rgb(255 255 255 / 0.6),
+        0 calc(var(--cqh) * -0.5) calc(var(--cqh) * 3) rgb(255 255 255 / 0.35);
     }
 
     &::after {
-      right: -18cqw;
-      bottom: -28cqh;
-      left: 28cqw;
-      height: 56cqh;
+      right: calc(var(--cqw) * -18);
+      bottom: calc(var(--cqh) * -28);
+      left: calc(var(--cqw) * 28);
+      height: calc(var(--cqh) * 56);
       background: radial-gradient(ellipse at 42% 14%, #b2ee77 0%, #58b843 38%, #1f7a2c 82%);
-      box-shadow: inset 0 1cqh 2cqh rgb(255 255 255 / 0.5);
+      box-shadow: inset 0 calc(var(--cqh) * 1) calc(var(--cqh) * 2) rgb(255 255 255 / 0.5);
     }
   }
 
   .bubbles {
     display: block;
-    inset: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
 
     span {
       position: absolute;
@@ -452,7 +469,10 @@ $aero-muted: #2d5d8a;
     &::before {
       content: "";
       position: absolute;
-      inset: 1px 1px 50% 1px;
+      top: 1px;
+      right: 1px;
+      bottom: 50%;
+      left: 1px;
       border-radius: 1.1em 1.1em 50% 50% / 1.1em 1.1em 1.6em 1.6em;
       background: linear-gradient(180deg, rgb(255 255 255 / 0.55), rgb(255 255 255 / 0));
       pointer-events: none;
@@ -531,7 +551,10 @@ $aero-muted: #2d5d8a;
     &::before {
       content: "";
       position: absolute;
-      inset: 0 0 50% 0;
+      top: 0;
+      right: 0;
+      bottom: 50%;
+      left: 0;
       border-radius: 999px 999px 0 0;
       background: linear-gradient(180deg, rgb(255 255 255 / 0.6), rgb(255 255 255 / 0.15));
     }
@@ -539,7 +562,10 @@ $aero-muted: #2d5d8a;
     &::after {
       content: "";
       position: absolute;
-      inset: 0;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      left: 0;
       width: 35%;
       background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.55), transparent);
       animation: aero-shine 2.4s ease-in-out infinite;
@@ -566,10 +592,10 @@ $aero-muted: #2d5d8a;
 
 @keyframes aero-drift {
   from {
-    translate: -3cqw 0;
+    translate: calc(var(--cqw) * -3) 0;
   }
   to {
-    translate: 3cqw -2cqh;
+    translate: calc(var(--cqw) * 3) calc(var(--cqh) * -2);
   }
 }
 
@@ -582,14 +608,14 @@ $aero-muted: #2d5d8a;
     opacity: 1;
   }
   50% {
-    transform: translate(1.5em, -60cqh);
+    transform: translate(1.5em, calc(var(--cqh) * -60));
   }
   90% {
     opacity: 1;
   }
   100% {
     opacity: 0;
-    transform: translate(-1em, -125cqh);
+    transform: translate(-1em, calc(var(--cqh) * -125));
   }
 }
 
@@ -625,10 +651,10 @@ $sleek-faint: #646a75;
   // A slow, accent-tinted glow over a fading dot grid, under a vignette.
   .glow {
     display: block;
-    top: 24cqh;
-    left: 76cqw;
-    width: 130cqh;
-    height: 130cqh;
+    top: calc(var(--cqh) * 24);
+    left: calc(var(--cqw) * 76);
+    width: calc(var(--cqh) * 130);
+    height: calc(var(--cqh) * 130);
     border-radius: 50%;
     background: radial-gradient(circle, tint(var(--accent), 24%, transparent), transparent 62%);
     transform: translate(-50%, -50%);
@@ -637,16 +663,22 @@ $sleek-faint: #646a75;
 
   .grid {
     display: block;
-    inset: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
     background-image: radial-gradient(rgb(255 255 255 / 0.08) 1px, transparent 1.2px);
-    background-size: 3.2cqh 3.2cqh;
+    background-size: calc(var(--cqh) * 3.2) calc(var(--cqh) * 3.2);
     mask-image: radial-gradient(ellipse at 70% 30%, #000, transparent 72%);
   }
 
   .backdrop::after {
     content: "";
     position: absolute;
-    inset: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
     background: radial-gradient(ellipse at 50% 45%, transparent 45%, rgb(0 0 0 / 0.65));
   }
 
@@ -770,11 +802,11 @@ $sleek-faint: #646a75;
 
 @keyframes sleek-drift {
   from {
-    translate: -4cqw 2cqh;
+    translate: calc(var(--cqw) * -4) calc(var(--cqh) * 2);
     opacity: 0.75;
   }
   to {
-    translate: 4cqw -3cqh;
+    translate: calc(var(--cqw) * 4) calc(var(--cqh) * -3);
     opacity: 1;
   }
 }
@@ -788,5 +820,13 @@ $sleek-faint: #646a75;
 
   .fill {
     transition: none;
+  }
+}
+
+// Real container units where supported (older embedded browsers use the viewport).
+@supports (container-type: size) {
+  .screen {
+    --cqh: 1cqh;
+    --cqw: 1cqw;
   }
 }
