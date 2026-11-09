@@ -22,6 +22,12 @@ They must have the correct permission to view/access the page.
 Admins can change the style of the loading screen.
 Requires: Server Management
 
+Style select:
+- Aero
+- Sleek
+
+There should be a preview of the loading screen, constructed from the same components of the actual one. Use fake user/game data.
+
 ## /admin/usergroups
 
 Admins can create, edit, remove usergroups.

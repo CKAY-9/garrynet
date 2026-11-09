@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { SideNav } from "@/components/SideNav";
 import "./globals.scss";
 
 export const metadata: Metadata = {
@@ -7,15 +6,14 @@ export const metadata: Metadata = {
   description: "An all-in-one web solution for Garry's Mod communities.",
 };
 
+/**
+ * Bare document shell. Website pages get their navigation from `(site)/layout.tsx`; the
+ * in-game loading screen (`/loading-screen/[server_id]`) renders full-screen without it.
+ */
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en">
-      <body>
-        <div className="shell">
-          <SideNav />
-          <main className="content">{children}</main>
-        </div>
-      </body>
+      <body>{children}</body>
     </html>
   );
 }

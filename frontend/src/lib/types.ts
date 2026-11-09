@@ -48,3 +48,66 @@ export type UsergroupBadge = {
 export type UserProfile = Omit<User, "email"> & {
   usergroups: UsergroupBadge[];
 };
+
+export type LoadingScreenStyle = "aero" | "sleek";
+
+/** The loading screen settings, from `GET /loading-screen`. Shared by every server. */
+export type LoadingScreenConfig = {
+  id: number;
+  style: LoadingScreenStyle;
+};
+
+/** A Garry's Mod server, as returned by the backend (never includes its access key). */
+export type Server = {
+  id: number;
+  name: string;
+  description: string;
+  /** Empty until the server's first heartbeat. */
+  gamemode: string;
+  splash_url: string | null;
+  icon_url: string | null;
+  /** Hex color, e.g. `#3b82f6`. */
+  color: string;
+  connection_address: string;
+  /** Empty until the server's first heartbeat. */
+  map: string;
+  last_heartbeat: string | null;
+  linked: boolean;
+  created_at: string;
+};
+
+/** A player's record on one server, kept up to date by the addon. */
+export type UserPlayer = {
+  id: number;
+  server_id: number;
+  steam_id: string;
+  user_id: number | null;
+  ingame_name: string;
+  /** Equals `first_joined` until the player returns. */
+  last_logon: string;
+  first_joined: string;
+  ingame_usergroup: string;
+  /** Gamemode-specific data, e.g. `{ darkrp_money: 5000 }`. */
+  stats: Record<string, unknown>;
+  /** Minutes. */
+  time_played: number;
+};
+
+/** The player who is loading in. */
+export type LoadingScreenPlayer = {
+  steam_id: string;
+  /** GarryNet username, else the in-game name, else the Steam name. */
+  name: string;
+  avatar_url: string | null;
+  user_id: number | null;
+  /** Their record on this server; `null` on their first visit. */
+  record: UserPlayer | null;
+};
+
+/** Everything one server's loading screen shows, from `GET /servers/{id}/loading-screen`. */
+export type LoadingScreenData = {
+  style: LoadingScreenStyle;
+  server: Server;
+  /** `null` when the page was opened without a valid SteamID64. */
+  player: LoadingScreenPlayer | null;
+};

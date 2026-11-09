@@ -1,5 +1,6 @@
 import Image from "next/image";
 import { UsergroupChip } from "@/components/UsergroupChip";
+import { dateFormat, fullFormat, timeAgo } from "@/lib/time";
 import type { UserProfile, UserStatus } from "@/lib/types";
 import styles from "./Profile.module.scss";
 
@@ -8,36 +9,6 @@ const statusLabels: Record<UserStatus, string> = {
   IDLE: "Idle",
   OFFLINE: "Offline",
 };
-
-const dateFormat = new Intl.DateTimeFormat("en", { dateStyle: "long", timeZone: "UTC" });
-const fullFormat = new Intl.DateTimeFormat("en", {
-  year: "numeric",
-  month: "long",
-  day: "numeric",
-  hour: "numeric",
-  minute: "2-digit",
-  timeZone: "UTC",
-  timeZoneName: "short",
-});
-const relativeFormat = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
-
-const units: [Intl.RelativeTimeFormatUnit, number][] = [
-  ["year", 365 * 24 * 60 * 60],
-  ["month", 30 * 24 * 60 * 60],
-  ["week", 7 * 24 * 60 * 60],
-  ["day", 24 * 60 * 60],
-  ["hour", 60 * 60],
-  ["minute", 60],
-];
-
-/** "3 minutes ago", "yesterday", or "just now" for under a minute. */
-function timeAgo(date: Date): string {
-  const seconds = (date.getTime() - Date.now()) / 1000;
-  for (const [unit, size] of units) {
-    if (Math.abs(seconds) >= size) return relativeFormat.format(Math.round(seconds / size), unit);
-  }
-  return "just now";
-}
 
 /** A user's profile: avatar, name, status, usergroups, bio and stats. */
 export function Profile({ user }: { user: UserProfile }) {
