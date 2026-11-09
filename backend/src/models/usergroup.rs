@@ -78,7 +78,7 @@ const DEFAULT_GROUPS: [DefaultGroup; 2] = [
     },
     DefaultGroup {
         name: "admin",
-        effect: UsergroupEffect::None,
+        effect: UsergroupEffect::Rainbow,
         color: "#e5484d",
         permissions: Permissions::ALL,
     },
