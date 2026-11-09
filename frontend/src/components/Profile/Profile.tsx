@@ -3,6 +3,7 @@ import { UsergroupChip } from "@/components/UsergroupChip";
 import { dateFormat, fullFormat, timeAgo } from "@/lib/time";
 import type { UserProfile, UserStatus } from "@/lib/types";
 import styles from "./Profile.module.scss";
+import Link from "next/link";
 
 const statusLabels: Record<UserStatus, string> = {
   ONLINE: "Online",
@@ -44,6 +45,8 @@ export function Profile({ user }: { user: UserProfile }) {
           )}
         </div>
       </header>
+
+      <Link href={`https://steamcommunity.com/profiles/${user.steam_id}`} className={styles.steam}>View on Steam</Link>
 
       <section className={styles.bio}>
         {user.bio ? <p>{user.bio}</p> : <p className={styles.empty}>No description yet.</p>}

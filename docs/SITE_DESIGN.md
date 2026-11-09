@@ -16,6 +16,8 @@ Should display the user's avatar, name, description, status, when they joined an
 
 Display all usergroups they're apart of as "chips" (small, reusable components). They should implement the usergroup's effect attribute.
 
+Should have a link to their steam profile.
+
 ## Navigation
 
 Community name and logo should always be displayed at the top of navigation.

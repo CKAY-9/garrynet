@@ -38,6 +38,29 @@ $border: 1px solid rgb(127 127 127 / 0.2);
   overflow-wrap: anywhere;
 }
 
+.steam {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border-radius: 0.375rem;
+  background: #171a21;
+  color: #fff;
+  width: fit-content;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background 0.15s, transform 0.15s;
+
+  &:hover {
+    background: #2a475e;
+  }
+
+  &:active {
+    transform: scale(0.97);
+  }
+}
+
 .status {
   --status-color: #9ba1a6;
   display: inline-flex;
