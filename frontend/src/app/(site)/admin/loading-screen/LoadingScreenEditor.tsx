@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useState, useTransition, type FormEvent } from "react";
 import { LoadingScreen, LoadingScreenFrame, previewServer } from "@/components/LoadingScreen";
 import type { LoadingScreenPlayer, LoadingScreenStyle } from "@/lib/types";
 import { saveLoadingScreenStyle } from "./actions";
@@ -21,11 +21,20 @@ export function LoadingScreenEditor({
   player: LoadingScreenPlayer;
 }) {
   const [state, save, saving] = useActionState(saveLoadingScreenStyle, { style: saved, result: "idle" });
+  const [, startTransition] = useTransition();
   const [selected, setSelected] = useState(saved);
   const changed = selected !== state.style;
 
+  // Not `<form action>`: React resets the form after an action, which snaps the controlled radios
+  // back to the previously rendered checked state and leaves them out of sync with `selected`.
+  function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    startTransition(() => save(data));
+  }
+
   return (
-    <form action={save} className={styles.editor}>
+    <form onSubmit={onSubmit} className={styles.editor}>
       <fieldset className={styles.styles}>
         <legend className={styles.legend}>Style</legend>
         {STYLES.map(({ value, label, description }) => (
