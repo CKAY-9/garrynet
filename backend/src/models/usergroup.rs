@@ -29,6 +29,36 @@ pub struct Usergroup {
     pub last_updated: Option<DateTime<Utc>>,
 }
 
+/// What's needed to display a usergroup, e.g. as a chip (no member list or permissions).
+#[derive(Clone, Debug, Serialize, sqlx::FromRow)]
+pub struct UsergroupBadge {
+    pub id: i64,
+    pub name: String,
+    pub effect: UsergroupEffect,
+    pub color: String,
+    pub icon_url: Option<String>,
+}
+
+impl From<Usergroup> for UsergroupBadge {
+    fn from(g: Usergroup) -> Self {
+        Self {
+            id: g.id,
+            name: g.name,
+            effect: g.effect,
+            color: g.color,
+            icon_url: g.icon_url,
+        }
+    }
+}
+
+/// A usergroup badge tagged with one of its members, from [`Usergroup::badges_for_users`].
+#[derive(sqlx::FromRow)]
+pub struct MemberBadge {
+    pub user_id: i64,
+    #[sqlx(flatten)]
+    pub badge: UsergroupBadge,
+}
+
 /// Name of the group every new user joins on their first login.
 pub const DEFAULT_GROUP: &str = "user";
 
@@ -143,6 +173,27 @@ impl Usergroup {
              ORDER BY g.id"
         ))
         .bind(user_id)
+        .fetch_all(db)
+        .await
+    }
+
+    /// Badges for every group in the database, in id order.
+    pub async fn badges(db: &PgPool) -> sqlx::Result<Vec<UsergroupBadge>> {
+        sqlx::query_as("SELECT id, name, effect, color, icon_url FROM usergroups ORDER BY id")
+            .fetch_all(db)
+            .await
+    }
+
+    /// The groups of each user in `user_ids`, in one query. Ordered by user, then group id.
+    pub async fn badges_for_users(db: &PgPool, user_ids: &[i64]) -> sqlx::Result<Vec<MemberBadge>> {
+        sqlx::query_as(
+            "SELECT um.user_id, g.id, g.name, g.effect, g.color, g.icon_url
+             FROM usergroup_members um
+             JOIN usergroups g ON g.id = um.usergroup_id
+             WHERE um.user_id = ANY($1)
+             ORDER BY um.user_id, g.id",
+        )
+        .bind(user_ids)
         .fetch_all(db)
         .await
     }

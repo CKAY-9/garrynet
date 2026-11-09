@@ -74,13 +74,16 @@ To be implemented.
 
 ## User Searching
 
-Should be implemented on the frontend in `/users/search`. More details in Part of [Site Design](SITE_DESIGN.md).
+Implemented on the frontend at `/users/search` (see [Site Design](SITE_DESIGN.md)). The side navigation has a search box that searches by name and opens the results there. With no filters, the page shows a few random users.
 
-- GET `/users/search?name=&last_activity=&id=&usergroup=&sort_by=`: returns all users according to the filter,
-    - name: username to match
-    - last_activity: when the user was last seen
-    - id: numerical id of the user (this is a one user match)
-    - usergroup: do the users belong to this group
-    - sort_by: `reputation+`, `reputation-`, `posts`
+- GET `/users/search?name=&last_activity=&id=&usergroup=&sort_by=&limit=`: users matching every given filter. No login required. Blank values are ignored.
+    - name: case-insensitive part of the username
+    - last_activity: how recently the user was seen: `online`, `hour`, `day`, `week`, or `month`
+    - id: GarryNet user id (matches at most one user)
+    - usergroup: id of a usergroup the users belong to
+    - sort_by: `reputation+` (most first; send the `+` as `%2B`), `reputation-` (least first), or `posts` (most forum posts first). When omitted, exact and prefix name matches come first, or the order is random if no name is given.
+    - limit: 1 to 100, default 24
 
- 
+    Each result has the user's public profile fields (no email or bio), `post_count`, and `usergroups`.
+
+- GET `/usergroups`: every usergroup's display details (`id`, `name`, `effect`, `color`, `icon_url`), used for the usergroup filter. No login required.

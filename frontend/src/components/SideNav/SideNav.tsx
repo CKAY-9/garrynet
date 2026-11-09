@@ -4,14 +4,17 @@ import { getCurrentUser } from "@/lib/auth";
 import { hasPermission, Permission } from "@/lib/permissions";
 import { CommunityBrand, CommunityBrandSkeleton } from "./CommunityBrand";
 import { NavLink } from "./NavLink";
+import { NavSearch } from "./NavSearch";
 import { NavShell } from "./NavShell";
-import { AdminIcon, ForumsIcon, HomeIcon, StoreIcon, SupportIcon } from "./icons";
+import { AdminIcon, ForumsIcon, HomeIcon, StoreIcon, SupportIcon, UsersIcon } from "./icons";
 import styles from "./SideNav.module.scss";
 
 const links = [
   { href: "/", label: "Home", icon: <HomeIcon /> },
   { href: "/forum", label: "Forums", icon: <ForumsIcon /> },
   { href: "/store", label: "Store", icon: <StoreIcon /> },
+  // Highlighted on profiles too, which live under `/users`.
+  { href: "/users/search", activePrefix: "/users", label: "Users", icon: <UsersIcon /> },
   { href: "/support", label: "Support", icon: <SupportIcon /> },
 ];
 
@@ -27,10 +30,11 @@ export function SideNav() {
         <Suspense fallback={<CommunityBrandSkeleton />}>
           <CommunityBrand />
         </Suspense>
+        <NavSearch />
         <ul className={styles.links}>
-          {links.map(({ href, label, icon }) => (
+          {links.map(({ href, activePrefix, label, icon }) => (
             <li key={href}>
-              <NavLink href={href} icon={icon}>
+              <NavLink href={href} activePrefix={activePrefix} icon={icon}>
                 {label}
               </NavLink>
             </li>

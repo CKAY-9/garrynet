@@ -28,7 +28,13 @@ export function NavShell({ children }: { children: ReactNode }) {
       >
         <MenuIcon />
       </button>
-      <nav className={`${styles.nav} ${open ? styles.open : ""}`} aria-label="Main" onClick={closeOnLink}>
+      <nav
+        className={`${styles.nav} ${open ? styles.open : ""}`}
+        aria-label="Main"
+        onClick={closeOnLink}
+        // The search form navigates too.
+        onSubmit={() => setOpen(false)}
+      >
         <button
           className={styles.close}
           type="button"

@@ -28,6 +28,14 @@ Part of [GarryNet Design](DESIGN.md).
 2. Steam redirects to the backend (`/auth/steam/callback`), which signs the user in with a JWT.
 3. The user is redirected to the frontend. Next.js can read the JWT server-side and use it to fetch the user's data.
 
+## User Searching
+
+**On Users Search Page `/users/search`**
+
+1. As a general user, I want to search up a user, so that I can view their profile
+2. I should be able to filter by name, usergroup, last activity, id, and sort by most, least reputation, or number of posts.
+3. Doing so will show the filtered users that I can engage with.
+
 ## Loading Screen
 
 **Loading into Garry's Mod server**

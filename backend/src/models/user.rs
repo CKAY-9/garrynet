@@ -1,6 +1,6 @@
 use chrono::{DateTime, TimeDelta, Utc};
 use serde::Serialize;
-use sqlx::PgPool;
+use sqlx::{PgPool, Postgres, QueryBuilder};
 
 use super::Usergroup;
 
@@ -16,6 +16,62 @@ pub enum UserStatus {
 /// How long after their last access a user counts as idle, then offline.
 const IDLE_AFTER: TimeDelta = TimeDelta::minutes(5);
 const OFFLINE_AFTER: TimeDelta = TimeDelta::minutes(15);
+
+/// How recently a searched-for user must have been seen.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LastActivity {
+    /// Currently ONLINE (seen within the idle threshold).
+    Online,
+    Hour,
+    Day,
+    Week,
+    Month,
+}
+
+impl LastActivity {
+    fn window(self) -> TimeDelta {
+        match self {
+            Self::Online => IDLE_AFTER,
+            Self::Hour => TimeDelta::hours(1),
+            Self::Day => TimeDelta::days(1),
+            Self::Week => TimeDelta::weeks(1),
+            Self::Month => TimeDelta::days(30),
+        }
+    }
+}
+
+/// Order of user search results.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum UserSort {
+    /// Exact username matches, then prefix matches, then the rest alphabetically. Random
+    /// when no name is given, so an empty search shows a few random users.
+    BestMatch,
+    ReputationDesc,
+    ReputationAsc,
+    /// Most forum posts first.
+    Posts,
+}
+
+/// Filters for [`User::search`]. Every filter is optional; together they must all match.
+#[derive(Debug)]
+pub struct UserSearch {
+    /// Case-insensitive substring of the username.
+    pub name: Option<String>,
+    pub id: Option<i64>,
+    /// Id of a usergroup the user must belong to.
+    pub usergroup: Option<i64>,
+    pub last_activity: Option<LastActivity>,
+    pub sort: UserSort,
+    pub limit: i64,
+}
+
+/// A user search result: the user plus how many forum posts they've made.
+#[derive(Debug, sqlx::FromRow)]
+pub struct UserSearchRow {
+    #[sqlx(flatten)]
+    pub user: User,
+    pub post_count: i64,
+}
 
 #[derive(Clone, Debug, Serialize, sqlx::FromRow)]
 pub struct User {
@@ -128,6 +184,72 @@ impl User {
         .bind(ids)
         .fetch_all(db)
         .await
+    }
+
+    /// Users matching every filter in `search`, at most `search.limit` of them.
+    pub async fn search(db: &PgPool, search: &UserSearch) -> sqlx::Result<Vec<UserSearchRow>> {
+        let mut q: QueryBuilder<Postgres> = QueryBuilder::new(
+            "SELECT u.*,
+                    (SELECT count(*) FROM forum_posts p WHERE p.author_id = u.id) AS post_count
+             FROM users u
+             WHERE true",
+        );
+
+        // Escaped so `%` and `_` in the search are matched literally.
+        let pattern = search.name.as_deref().map(|name| {
+            name.replace('\\', "\\\\")
+                .replace('%', "\\%")
+                .replace('_', "\\_")
+        });
+        if let Some(pattern) = &pattern {
+            q.push(" AND u.username ILIKE '%' || ")
+                .push_bind(pattern.clone())
+                .push(" || '%'");
+        }
+        if let Some(id) = search.id {
+            q.push(" AND u.id = ").push_bind(id);
+        }
+        if let Some(group) = search.usergroup {
+            q.push(
+                " AND EXISTS (SELECT 1 FROM usergroup_members um
+                              WHERE um.user_id = u.id AND um.usergroup_id = ",
+            )
+            .push_bind(group)
+            .push(")");
+        }
+        if let Some(activity) = search.last_activity {
+            if activity == LastActivity::Online {
+                q.push(" AND u.status = 'ONLINE'");
+            }
+            q.push(" AND u.last_seen > now() - make_interval(secs => ")
+                .push_bind(activity.window().num_seconds() as f64)
+                .push(")");
+        }
+
+        match (search.sort, &pattern) {
+            (UserSort::BestMatch, Some(pattern)) => {
+                q.push(" ORDER BY lower(u.username) = lower(")
+                    .push_bind(search.name.clone())
+                    .push(") DESC, u.username ILIKE ")
+                    .push_bind(pattern.clone())
+                    .push(" || '%' DESC, lower(u.username), u.id");
+            }
+            (UserSort::BestMatch, None) => {
+                q.push(" ORDER BY random()");
+            }
+            (UserSort::ReputationDesc, _) => {
+                q.push(" ORDER BY u.reputation DESC, u.id");
+            }
+            (UserSort::ReputationAsc, _) => {
+                q.push(" ORDER BY u.reputation ASC, u.id");
+            }
+            (UserSort::Posts, _) => {
+                q.push(" ORDER BY post_count DESC, u.id");
+            }
+        }
+        q.push(" LIMIT ").push_bind(search.limit);
+
+        q.build_query_as().fetch_all(db).await
     }
 
     /// Number of registered users.

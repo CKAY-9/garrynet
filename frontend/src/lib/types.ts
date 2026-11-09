@@ -53,6 +53,30 @@ export type UserProfile = Omit<User, "email"> & {
   usergroups: UsergroupBadge[];
 };
 
+/** A user as listed by `GET /users/search`: public profile basics plus their post count. */
+export type UserSearchResult = Pick<
+  UserProfile,
+  "id" | "username" | "avatar_url" | "reputation" | "status" | "joined" | "last_seen" | "usergroups"
+> & {
+  post_count: number;
+};
+
+/** `last_activity` filter: seen within this window (`online` = currently online). */
+export type LastActivity = "online" | "hour" | "day" | "week" | "month";
+
+/** `sort_by` for user search: most / least reputation, or most posts. */
+export type UserSort = "reputation+" | "reputation-" | "posts";
+
+/** Filters for `GET /users/search`. Blank values are ignored. */
+export type UserSearchFilters = {
+  name?: string;
+  id?: string;
+  /** Usergroup id. */
+  usergroup?: string;
+  last_activity?: LastActivity | "";
+  sort_by?: UserSort | "";
+};
+
 export type LoadingScreenStyle = "aero" | "sleek";
 
 /** The loading screen settings, from `GET /loading-screen`. Shared by every server. */

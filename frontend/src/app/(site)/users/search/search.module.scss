@@ -1,0 +1,48 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  max-width: 64rem;
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.title {
+  margin: 0;
+  font-size: 1.75rem;
+}
+
+.subtitle,
+.summary,
+.empty,
+.error {
+  margin: 0;
+  opacity: 0.7;
+}
+
+.results {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.summary {
+  font-size: 0.9rem;
+}
+
+.empty,
+.error {
+  padding: 2rem 1rem;
+  border: 1px dashed rgb(127 127 127 / 0.35);
+  border-radius: 0.75rem;
+  text-align: center;
+}
+
+.error {
+  color: #e5484d;
+  opacity: 1;
+}

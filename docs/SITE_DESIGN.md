@@ -35,6 +35,8 @@ More general redirects are higher up, e.g.,
 4. Users
 5. Support
 
+Below the community name is a user search box. Submitting it opens `/users/search?name=...`.
+
 User specific redirects are at the bottom, e.g.
 - Profile Preview
 - "Login with Steam" button (should include inline Steam icon)
@@ -49,6 +51,8 @@ It should take up the whole screen, have overflow scroll if necessary, and sligh
 ## Users Page
 
 Anyone should be able to grab a couple random users or filter search for them.
+
+`/users` redirects to `/users/search`. The page has a filter form (name, user id, usergroup, last active, sort) above a grid of user cards. Each card shows the user's avatar with a status dot, their name, when they were last seen, up to three usergroup chips, and their reputation, post count, and id. Each card links to the user's profile.
 
 ## Themes
 

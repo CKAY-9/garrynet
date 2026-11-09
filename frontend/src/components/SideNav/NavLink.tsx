@@ -5,7 +5,13 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import styles from "./SideNav.module.scss";
 
-type Props = { href: string; icon: ReactNode; children: ReactNode };
+type Props = {
+  href: string;
+  icon: ReactNode;
+  children: ReactNode;
+  /** Highlight the link on any route under this path instead of under `href`. */
+  activePrefix?: string;
+};
 
 /**
  * A side navigation link that highlights itself when its route is active. The pathname
@@ -22,8 +28,8 @@ export function NavLink(props: Props) {
 
 function ActiveNavLink(props: Props) {
   const pathname = usePathname();
-  const { href } = props;
-  const active = href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`);
+  const prefix = props.activePrefix ?? props.href;
+  const active = prefix === "/" ? pathname === "/" : pathname === prefix || pathname.startsWith(`${prefix}/`);
   return <NavLinkView {...props} active={active} />;
 }
 

@@ -1,21 +1,23 @@
 use actix_web::{HttpResponse, get, web};
+use std::collections::HashMap;
+
 use chrono::{DateTime, Utc};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::{
     auth::AuthUser,
     error::ApiError,
     models::{
         Permissions, User, Usergroup,
-        user::UserStatus,
-        usergroup::UsergroupEffect,
+        user::{LastActivity, UserSearch, UserSort, UserStatus},
+        usergroup::UsergroupBadge,
     },
     state::AppState,
 };
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
-    // `me` first, so `/users/me` isn't matched as `/users/{id}`.
-    cfg.service(me).service(profile);
+    // `me` and `search` first, so they aren't matched as `/users/{id}`.
+    cfg.service(me).service(search).service(profile);
 }
 
 /// The current user plus their effective permissions, so the frontend can decide which
@@ -52,16 +54,6 @@ struct Profile {
     usergroups: Vec<UsergroupBadge>,
 }
 
-/// What a profile needs to display a usergroup (no member list or permissions).
-#[derive(Serialize)]
-struct UsergroupBadge {
-    id: i64,
-    name: String,
-    effect: UsergroupEffect,
-    color: String,
-    icon_url: Option<String>,
-}
-
 /// Public profile of the user with the given GarryNet id. No login required.
 #[get("/users/{id}")]
 async fn profile(
@@ -75,13 +67,7 @@ async fn profile(
     let usergroups = Usergroup::for_user(&state.db, id)
         .await?
         .into_iter()
-        .map(|g| UsergroupBadge {
-            id: g.id,
-            name: g.name,
-            effect: g.effect,
-            color: g.color,
-            icon_url: g.icon_url,
-        })
+        .map(UsergroupBadge::from)
         .collect();
 
     Ok(HttpResponse::Ok().json(Profile {
@@ -96,4 +82,137 @@ async fn profile(
         last_seen: user.last_seen,
         usergroups,
     }))
+}
+
+/// Results returned when the request doesn't ask for a specific number.
+const DEFAULT_SEARCH_LIMIT: i64 = 24;
+const MAX_SEARCH_LIMIT: i64 = 100;
+
+/// Query string of `GET /users/search`. Every field is optional, and empty values are
+/// ignored, so a plain HTML form can submit all its fields.
+#[derive(Deserialize)]
+struct SearchQuery {
+    name: Option<String>,
+    id: Option<String>,
+    usergroup: Option<String>,
+    last_activity: Option<String>,
+    sort_by: Option<String>,
+    limit: Option<String>,
+}
+
+/// A user as listed in search results: their public profile plus their post count.
+#[derive(Serialize)]
+struct SearchResult {
+    id: i64,
+    username: String,
+    avatar_url: String,
+    reputation: i32,
+    status: UserStatus,
+    joined: DateTime<Utc>,
+    last_seen: DateTime<Utc>,
+    post_count: i64,
+    usergroups: Vec<UsergroupBadge>,
+}
+
+/// Users matching every given filter. No login required.
+///
+/// - `name`: case-insensitive substring of the username
+/// - `id`: GarryNet user id (matches at most one user)
+/// - `usergroup`: id of a group the users belong to
+/// - `last_activity`: `online`, `hour`, `day`, `week` or `month`: seen within that window
+/// - `sort_by`: `reputation+` (most), `reputation-` (least) or `posts` (most). Defaults
+///   to best name match, or random users when no name is given.
+/// - `limit`: 1 to 100, default 24
+#[get("/users/search")]
+async fn search(
+    state: web::Data<AppState>,
+    query: web::Query<SearchQuery>,
+) -> Result<HttpResponse, ApiError> {
+    let search = parse_search(query.into_inner())?;
+    let rows = User::search(&state.db, &search).await?;
+
+    let ids: Vec<i64> = rows.iter().map(|r| r.user.id).collect();
+    let mut groups: HashMap<i64, Vec<UsergroupBadge>> = HashMap::new();
+    for member in Usergroup::badges_for_users(&state.db, &ids).await? {
+        groups.entry(member.user_id).or_default().push(member.badge);
+    }
+
+    let results: Vec<SearchResult> = rows
+        .into_iter()
+        .map(|row| {
+            let user = row.user;
+            SearchResult {
+                status: user.current_status(),
+                usergroups: groups.remove(&user.id).unwrap_or_default(),
+                id: user.id,
+                username: user.username,
+                avatar_url: user.avatar_url,
+                reputation: user.reputation,
+                joined: user.joined,
+                last_seen: user.last_seen,
+                post_count: row.post_count,
+            }
+        })
+        .collect();
+    Ok(HttpResponse::Ok().json(results))
+}
+
+fn parse_search(query: SearchQuery) -> Result<UserSearch, ApiError> {
+    /// `None` for a missing or blank value, else the trimmed value.
+    fn present(value: Option<String>) -> Option<String> {
+        value
+            .map(|v| v.trim().to_owned())
+            .filter(|v| !v.is_empty())
+    }
+    fn id(field: &str, value: Option<String>) -> Result<Option<i64>, ApiError> {
+        present(value)
+            .map(|v| {
+                v.parse::<i64>()
+                    .map_err(|_| ApiError::BadRequest(format!("{field} must be a number")))
+            })
+            .transpose()
+    }
+
+    let last_activity = present(query.last_activity)
+        .map(|v| match v.as_str() {
+            "online" => Ok(LastActivity::Online),
+            "hour" => Ok(LastActivity::Hour),
+            "day" => Ok(LastActivity::Day),
+            "week" => Ok(LastActivity::Week),
+            "month" => Ok(LastActivity::Month),
+            _ => Err(ApiError::BadRequest(
+                "last_activity must be one of online, hour, day, week, month".to_owned(),
+            )),
+        })
+        .transpose()?;
+
+    // An unencoded `+` in a query string decodes to a space, which `present` trims, so
+    // `reputation` on its own means `reputation+`.
+    let sort = match present(query.sort_by).as_deref() {
+        None => UserSort::BestMatch,
+        Some("reputation+" | "reputation") => UserSort::ReputationDesc,
+        Some("reputation-") => UserSort::ReputationAsc,
+        Some("posts") => UserSort::Posts,
+        Some(_) => {
+            return Err(ApiError::BadRequest(
+                "sort_by must be one of reputation+, reputation-, posts".to_owned(),
+            ));
+        }
+    };
+
+    let limit = id("limit", query.limit)?.unwrap_or(DEFAULT_SEARCH_LIMIT);
+    if !(1..=MAX_SEARCH_LIMIT).contains(&limit) {
+        return Err(ApiError::BadRequest(format!(
+            "limit must be between 1 and {MAX_SEARCH_LIMIT}"
+        )));
+    }
+
+    Ok(UserSearch {
+        name: present(query.name),
+        id: id("id", query.id)?,
+        usergroup: id("usergroup", query.usergroup)?,
+        last_activity,
+        sort,
+        limit,
+    })
 }
