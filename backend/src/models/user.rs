@@ -119,6 +119,24 @@ impl User {
         .await
     }
 
+    /// Number of registered users.
+    pub async fn count(db: &PgPool) -> sqlx::Result<i64> {
+        sqlx::query_scalar("SELECT count(*) FROM users")
+            .fetch_one(db)
+            .await
+    }
+
+    /// Number of users whose [`current_status`](Self::current_status) is ONLINE.
+    pub async fn count_online(db: &PgPool) -> sqlx::Result<i64> {
+        sqlx::query_scalar(
+            "SELECT count(*) FROM users
+             WHERE status = 'ONLINE' AND last_seen > now() - make_interval(secs => $1)",
+        )
+        .bind(IDLE_AFTER.num_seconds() as f64)
+        .fetch_one(db)
+        .await
+    }
+
     /// Records that the user accessed a route: marks them online and bumps `last_seen`.
     /// Returns `None` if the user no longer exists.
     pub async fn touch(db: &PgPool, id: i64) -> sqlx::Result<Option<User>> {

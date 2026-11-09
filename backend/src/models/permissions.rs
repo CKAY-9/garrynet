@@ -68,6 +68,14 @@ impl Permissions {
         self.0 & other.0 == other.0
     }
 
+    /// Display name of a single flag, e.g. `"Admin Access"`.
+    pub fn name(self) -> &'static str {
+        Self::FLAGS
+            .into_iter()
+            .find(|(flag, _)| *flag == self)
+            .map_or("Unknown", |(_, name)| name)
+    }
+
     /// Names of the set permissions, in bit order.
     pub fn names(self) -> impl Iterator<Item = &'static str> {
         Self::FLAGS

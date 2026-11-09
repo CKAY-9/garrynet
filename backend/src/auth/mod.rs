@@ -11,7 +11,14 @@ use actix_web::{
     web,
 };
 
-use crate::{config::Config, error::ApiError, models::User, state::AppState};
+use sqlx::PgPool;
+
+use crate::{
+    config::Config,
+    error::ApiError,
+    models::{Permissions, User, Usergroup},
+    state::AppState,
+};
 
 /// Name of the httpOnly cookie holding the user's JWT. The frontend reads it by this name.
 pub const AUTH_COOKIE: &str = "garrynet_token";
@@ -75,5 +82,18 @@ impl FromRequest for AuthUser {
                 .ok_or(ApiError::Unauthorized)?;
             Ok(AuthUser(user))
         })
+    }
+}
+
+impl AuthUser {
+    /// The user's effective permissions, or 403 unless they include every flag in
+    /// `required`.
+    pub async fn require(&self, db: &PgPool, required: Permissions) -> Result<Permissions, ApiError> {
+        let permissions = Usergroup::permissions_for_user(db, self.0.id).await?;
+        if permissions.contains(required) {
+            Ok(permissions)
+        } else {
+            Err(ApiError::Forbidden(required.name()))
+        }
     }
 }

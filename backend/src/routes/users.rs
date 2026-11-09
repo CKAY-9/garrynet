@@ -6,7 +6,7 @@ use crate::{
     auth::AuthUser,
     error::ApiError,
     models::{
-        User, Usergroup,
+        Permissions, User, Usergroup,
         user::UserStatus,
         usergroup::UsergroupEffect,
     },
@@ -18,10 +18,23 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(me).service(profile);
 }
 
+/// The current user plus their effective permissions, so the frontend can decide which
+/// links and pages to show. The backend still checks permissions on every protected route.
+#[derive(Serialize)]
+struct Me {
+    #[serde(flatten)]
+    user: User,
+    permissions: Permissions,
+}
+
 /// The currently authenticated user.
 #[get("/users/me")]
-async fn me(AuthUser(user): AuthUser) -> HttpResponse {
-    HttpResponse::Ok().json(user)
+async fn me(
+    state: web::Data<AppState>,
+    AuthUser(user): AuthUser,
+) -> Result<HttpResponse, ApiError> {
+    let permissions = Usergroup::permissions_for_user(&state.db, user.id).await?;
+    Ok(HttpResponse::Ok().json(Me { user, permissions }))
 }
 
 /// A user's public profile: everything but their email, plus the groups they belong to.

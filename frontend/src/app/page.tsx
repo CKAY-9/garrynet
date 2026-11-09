@@ -1,3 +1,3 @@
 export default function Home() {
-  return <main />;
+  return <h1>GarryNet</h1>;
 }

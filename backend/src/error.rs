@@ -6,6 +6,9 @@ pub enum ApiError {
     #[error("authentication required")]
     Unauthorized,
 
+    #[error("missing permission: {0}")]
+    Forbidden(&'static str),
+
     #[error("{0} not found")]
     NotFound(&'static str),
 
@@ -26,6 +29,7 @@ impl ResponseError for ApiError {
     fn status_code(&self) -> StatusCode {
         match self {
             Self::Unauthorized => StatusCode::UNAUTHORIZED,
+            Self::Forbidden(_) => StatusCode::FORBIDDEN,
             Self::NotFound(_) => StatusCode::NOT_FOUND,
             Self::SteamVerification(_) => StatusCode::UNAUTHORIZED,
             Self::SteamUnavailable(_) => StatusCode::BAD_GATEWAY,

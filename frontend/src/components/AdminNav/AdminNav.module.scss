@@ -1,0 +1,47 @@
+$border: 1px solid rgb(127 127 127 / 0.2);
+
+.nav {
+  border-bottom: $border;
+  // Tabs scroll sideways on narrow screens instead of wrapping.
+  overflow-x: auto;
+}
+
+.tabs {
+  display: flex;
+  gap: 0.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tab {
+  display: block;
+  padding: 0.6rem 0.9rem;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  color: inherit;
+  font-weight: 500;
+  white-space: nowrap;
+  text-decoration: none;
+  opacity: 0.7;
+  transition: opacity 0.15s, border-color 0.15s, background 0.15s;
+
+  &:hover {
+    opacity: 1;
+    background: rgb(127 127 127 / 0.1);
+  }
+
+  &:active {
+    background: rgb(127 127 127 / 0.18);
+  }
+}
+
+.active {
+  opacity: 1;
+  border-bottom-color: currentColor;
+}
+
+.skeleton {
+  height: 2.6rem;
+  border-bottom: $border;
+}

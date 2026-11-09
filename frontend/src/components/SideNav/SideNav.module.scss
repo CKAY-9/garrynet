@@ -1,0 +1,133 @@
+// Sidebar is 15rem wide; at this breakpoint that is still < 30% of the viewport (15 / 52 = 28.8%).
+$breakpoint: 52rem;
+
+.nav {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 1rem;
+  width: 15rem;
+  height: 100dvh;
+  padding: 1rem 0.75rem;
+  flex-shrink: 0;
+  overflow-y: auto;
+  background: var(--background);
+  border-right: 1px solid rgb(127 127 127 / 0.2);
+}
+
+.hamburger,
+.close {
+  display: none;
+}
+
+.hamburger,
+.close {
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border: 0;
+  border-radius: 0.5rem;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.15s;
+
+  &:hover {
+    background: rgb(127 127 127 / 0.15);
+  }
+
+  &:active {
+    transform: scale(0.92);
+  }
+}
+
+.links {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.link {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: 0.5rem;
+  color: inherit;
+  font-weight: 500;
+  text-decoration: none;
+  opacity: 0.75;
+  transition: background 0.15s, opacity 0.15s, transform 0.15s;
+
+  &:hover {
+    background: rgb(127 127 127 / 0.15);
+    opacity: 1;
+    transform: translateX(2px);
+  }
+
+  &:active {
+    transform: translateX(2px) scale(0.97);
+  }
+}
+
+.active {
+  background: rgb(127 127 127 / 0.2);
+  opacity: 1;
+}
+
+.icon {
+  display: inline-flex;
+}
+
+.user {
+  display: flex;
+  flex-direction: column;
+}
+
+// Mobile: the nav becomes an overlay opened by the hamburger button.
+@media (max-width: $breakpoint) {
+  .hamburger {
+    display: inline-flex;
+    position: fixed;
+    top: 0.5rem;
+    left: 0.5rem;
+    z-index: 10;
+    background: var(--background);
+    border: 1px solid rgb(127 127 127 / 0.2);
+  }
+
+  .close {
+    display: inline-flex;
+    align-self: flex-end;
+    flex-shrink: 0;
+  }
+
+  // Full-screen overlay with a translucent, blurred background; scrolls if content overflows.
+  .nav {
+    position: fixed;
+    inset: 0;
+    z-index: 30;
+    width: auto;
+    height: 100dvh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border-right: 0;
+    background: color-mix(in srgb, var(--background) 80%, transparent);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.2s, visibility 0.2s;
+
+    &.open {
+      opacity: 1;
+      visibility: visible;
+    }
+  }
+}
