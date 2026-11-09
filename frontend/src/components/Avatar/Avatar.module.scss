@@ -1,0 +1,23 @@
+.avatar {
+  flex-shrink: 0;
+  object-fit: cover;
+}
+
+.rounded {
+  border-radius: 22%;
+}
+
+.circle {
+  border-radius: 50%;
+}
+
+.initial {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #3b82f6, #6e56cf);
+  color: #fff;
+  font-weight: 700;
+  line-height: 1;
+  user-select: none;
+}

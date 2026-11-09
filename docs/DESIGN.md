@@ -22,15 +22,15 @@ Each deployment of GarryNet is meant for one community.
 id: number
 name: string
 description: string
-logo_url?: string
-splash_background?: string // displayed on homepage
-external_links: string[] // default = []
+logo_url?: string // http(s) URL
+splash_background?: string // http(s) image URL, displayed behind the homepage header
+external_links: string[] // http(s) URLs, default = []
 created_at: utc timestamp
 last_updated? utc timestamp
 key_figures: json // array of { user_id?: number, name: string, profile_picture: string, role: string, description: string }
 ```
 
-If starting for the first time, a skeleton community entry should be created that can be edited later.
+If starting for the first time, a skeleton community entry should be created that can be edited later. There is only ever one community; existing details are never overwritten on startup.
 
 Skeleton Community:
 - name: "GarryNet Community"
@@ -46,9 +46,16 @@ Skeleton Community:
 
 ### Routes
 
-- POST `/community`: create a new community, requires Community Management permission (creation shouldn't need to be called)
-- GET `/community`: return the current community object
-- PUT `/community`: update the community, requires Community Management permission
+- POST `/community`: create a new community, requires Admin Access and Community Management (creation shouldn't need to be called; 409 if one already exists)
+- GET `/community`: return the current community object (public; recreates the skeleton if missing)
+- PUT `/community`: replace the community details, requires Admin Access and Community Management
+
+POST/PUT take `name`, `description`, `logo_url`, `splash_background`, `external_links`, `key_figures`. Blank optional URLs become null; a key figure's `user_id` must belong to an existing user.
+
+### Display
+
+- Homepage: splash background, logo, name, description, external links, then key figures (linking to their profile when `user_id` is set).
+- Navigation: logo and name at the top, on every page. Without a logo, the name's initial is shown.
 
 ## Store
 

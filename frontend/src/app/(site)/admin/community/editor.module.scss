@@ -1,0 +1,265 @@
+$border: 1px solid rgb(127 127 127 / 0.25);
+$accent: #3b82f6;
+
+.editor {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 1.25rem;
+  border: $border;
+  border-radius: 0.75rem;
+}
+
+.legend {
+  padding: 0 0.35rem;
+  font-weight: 600;
+}
+
+.identity {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.fields {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-width: 14rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.label {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.hint {
+  margin: 0;
+  font-size: 0.8rem;
+  opacity: 0.65;
+}
+
+.input {
+  width: 100%;
+  padding: 0.5rem 0.65rem;
+  border: $border;
+  border-radius: 0.4rem;
+  background: rgb(127 127 127 / 0.06);
+  color: inherit;
+  font: inherit;
+  transition: border-color 0.15s, background 0.15s;
+
+  &:hover {
+    border-color: rgb(127 127 127 / 0.45);
+  }
+
+  &:focus {
+    outline: none;
+    border-color: $accent;
+    background: rgb(59 130 246 / 0.06);
+  }
+}
+
+.textarea {
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.splashPreview {
+  aspect-ratio: 4 / 1;
+  max-width: 100%;
+  border-radius: 0.5rem;
+  background-color: rgb(127 127 127 / 0.1);
+  background-size: cover;
+  background-position: center;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.iconButton {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border: 0;
+  border-radius: 0.4rem;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0.7;
+  transition: background 0.15s, opacity 0.15s, transform 0.1s;
+
+  &:hover:not(:disabled) {
+    background: rgb(127 127 127 / 0.15);
+    opacity: 1;
+  }
+
+  &:active:not(:disabled) {
+    transform: scale(0.92);
+  }
+
+  &:disabled {
+    cursor: default;
+    opacity: 0.25;
+  }
+}
+
+.add {
+  align-self: flex-start;
+  padding: 0.45rem 0.9rem;
+  border: 1px dashed rgb(127 127 127 / 0.4);
+  border-radius: 0.4rem;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+
+  &:hover:not(:disabled) {
+    border-color: $accent;
+    background: rgb(59 130 246 / 0.08);
+  }
+
+  &:disabled {
+    cursor: default;
+    opacity: 0.45;
+  }
+}
+
+.figure {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem;
+  border: $border;
+  border-radius: 0.6rem;
+  background: rgb(127 127 127 / 0.03);
+}
+
+.figureHeader {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.figureTitle {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.figureActions {
+  display: flex;
+  gap: 0.15rem;
+}
+
+.figureFields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  gap: 0.75rem;
+}
+
+// Stays in view while scrolling a long form.
+.actions {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 0;
+  border-top: $border;
+  background: var(--background);
+}
+
+.save {
+  padding: 0.5rem 1.25rem;
+  border: 0;
+  border-radius: 0.4rem;
+  color: #fff;
+  background: $accent;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.15s, transform 0.1s;
+
+  &:hover:not(:disabled) {
+    background: #2f6fd8;
+  }
+
+  &:active:not(:disabled) {
+    transform: translateY(1px);
+  }
+
+  &:disabled {
+    cursor: default;
+    opacity: 0.45;
+  }
+}
+
+.discard {
+  padding: 0.5rem 0.9rem;
+  border: $border;
+  border-radius: 0.4rem;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  transition: background 0.15s;
+
+  &:hover:not(:disabled) {
+    background: rgb(127 127 127 / 0.12);
+  }
+
+  &:disabled {
+    cursor: default;
+    opacity: 0.45;
+  }
+}
+
+.message {
+  flex: 1;
+  margin: 0;
+  font-size: 0.9rem;
+  opacity: 0.8;
+}
+
+.error {
+  color: #e5484d;
+}
+
+.view {
+  color: $accent;
+  font-size: 0.9rem;
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}

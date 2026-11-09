@@ -111,3 +111,46 @@ export type LoadingScreenData = {
   /** `null` when the page was opened without a valid SteamID64. */
   player: LoadingScreenPlayer | null;
 };
+
+/** A notable member of the community, shown on the homepage. */
+export type KeyFigure = {
+  /** Their GarryNet account, if they have one. Absent otherwise. */
+  user_id?: number;
+  name: string;
+  /** Image URL; empty for none. */
+  profile_picture: string;
+  role: string;
+  description: string;
+};
+
+/** The community this deployment serves, from `GET /community`. */
+export type Community = {
+  id: number;
+  name: string;
+  description: string;
+  logo_url: string | null;
+  /** Image URL shown behind the homepage header. */
+  splash_background: string | null;
+  external_links: string[];
+  key_figures: KeyFigure[];
+  created_at: string;
+  last_updated: string | null;
+};
+
+/** The editable parts of the community, sent to `PUT /community`. */
+export type CommunityDetails = Pick<
+  Community,
+  "name" | "description" | "logo_url" | "splash_background" | "external_links" | "key_figures"
+>;
+
+/** The parts of a server admins edit, sent to `POST /servers` and `PUT /servers/{id}`. */
+export type ServerDetails = Pick<
+  Server,
+  "name" | "description" | "splash_url" | "icon_url" | "color" | "connection_address"
+>;
+
+/** A server with a newly generated access key; the only time the backend returns the key. */
+export type ServerWithAccessKey = {
+  server: Server;
+  access_key: string;
+};

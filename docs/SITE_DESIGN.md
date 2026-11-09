@@ -10,7 +10,11 @@ Should display the user's avatar, name, description, status, when they joined an
 
 Display all usergroups they're apart of as "chips" (small, reusable components). They should implement the usergroup's effect attribute.
 
-## Side Navigation
+## Navigation
+
+Community name and logo should always be displayed at the top of navigation.
+
+### Side Navigation
 
 Redirects in general should have inline icons and subtle hover/click animations.
 
@@ -29,7 +33,7 @@ User specific redirects are at the bottom, e.g.
 - "Login with Steam" button (should include inline Steam icon)
 - "Logout" button (should be stylized with a logout icon)
 
-## Mobile Navigation
+### Mobile Navigation
 
 Instead of being on the side, users now press a hamburger icon which reveals an overlayed navigation.
 

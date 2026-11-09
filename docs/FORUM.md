@@ -55,3 +55,17 @@ content: string
 created_at: utc timestamp
 edited?: utc timestamp // null/empty if no edit applied
 ```
+
+## Pages
+
+### /forum
+
+The homepage of the Forum. Just include all the different sections with their categories in each. Statistics like online users, total posts.
+
+### /forum/{category_id}
+
+Navigating here will reveal the category page which contains threads related to it.
+
+### /forum/{category_id}/{thread_id}
+
+Thread page. Shows all posts in the thread, with the principal post/author being at the top.

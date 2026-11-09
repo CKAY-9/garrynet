@@ -1,9 +1,10 @@
 import { Suspense } from "react";
-import { headers } from "next/headers";
+import Link from "next/link";
 import { previewPlayer } from "@/components/LoadingScreen";
 import { requirePermission } from "@/lib/auth";
 import { getLoadingScreenConfig } from "@/lib/loadingScreen";
 import { Permission } from "@/lib/permissions";
+import { loadingUrlLine, siteOrigin } from "@/lib/site";
 import styles from "../admin.module.scss";
 import { LoadingScreenEditor } from "./LoadingScreenEditor";
 
@@ -19,7 +20,7 @@ export default function LoadingScreenPage() {
 async function LoadingScreenSettings() {
   await requirePermission(Permission.AdminAccess | Permission.ServerManagement);
   const config = await getLoadingScreenConfig();
-  const loadingUrl = `${await siteOrigin()}/loading-screen?server=<SERVER_ID>&steamid=%s&mapname=%m`;
+  const loadingUrl = loadingUrlLine(await siteOrigin(), "<SERVER_ID>");
 
   return (
     <>
@@ -36,21 +37,14 @@ async function LoadingScreenSettings() {
         </h2>
         <p className={styles.note}>
           Add this to each server&apos;s <code>server.cfg</code>, with the server&apos;s GarryNet id in place
-          of <code>&lt;SERVER_ID&gt;</code>. Garry&apos;s Mod fills in the player&apos;s SteamID (
+          of <code>&lt;SERVER_ID&gt;</code> (each server&apos;s page under <Link href="/admin/servers">Servers</Link> shows its
+          own line). Garry&apos;s Mod fills in the player&apos;s SteamID (
           <code>%s</code>) and the map (<code>%m</code>).
         </p>
         <pre className={styles.code}>
-          <code>sv_loadingurl &quot;{loadingUrl}&quot;</code>
+          <code>{loadingUrl}</code>
         </pre>
       </section>
     </>
   );
-}
-
-/** This site's origin as the browser sees it, e.g. `https://example.com`. */
-async function siteOrigin(): Promise<string> {
-  const h = await headers();
-  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
-  const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
-  return `${proto}://${host}`;
 }

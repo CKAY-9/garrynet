@@ -119,6 +119,17 @@ impl User {
         .await
     }
 
+    /// The ids in `ids` that don't belong to any user.
+    pub async fn missing_ids(db: &PgPool, ids: &[i64]) -> sqlx::Result<Vec<i64>> {
+        sqlx::query_scalar(
+            "SELECT id FROM unnest($1::BIGINT[]) AS t(id)
+             WHERE NOT EXISTS (SELECT 1 FROM users u WHERE u.id = t.id)",
+        )
+        .bind(ids)
+        .fetch_all(db)
+        .await
+    }
+
     /// Number of registered users.
     pub async fn count(db: &PgPool) -> sqlx::Result<i64> {
         sqlx::query_scalar("SELECT count(*) FROM users")

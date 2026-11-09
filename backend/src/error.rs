@@ -12,6 +12,13 @@ pub enum ApiError {
     #[error("{0} not found")]
     NotFound(&'static str),
 
+    /// The request body failed validation; the message says which field and why.
+    #[error("{0}")]
+    BadRequest(String),
+
+    #[error("{0} already exists")]
+    Conflict(&'static str),
+
     #[error("steam login could not be verified: {0}")]
     SteamVerification(String),
 
@@ -31,6 +38,8 @@ impl ResponseError for ApiError {
             Self::Unauthorized => StatusCode::UNAUTHORIZED,
             Self::Forbidden(_) => StatusCode::FORBIDDEN,
             Self::NotFound(_) => StatusCode::NOT_FOUND,
+            Self::BadRequest(_) => StatusCode::BAD_REQUEST,
+            Self::Conflict(_) => StatusCode::CONFLICT,
             Self::SteamVerification(_) => StatusCode::UNAUTHORIZED,
             Self::SteamUnavailable(_) => StatusCode::BAD_GATEWAY,
             Self::Database(_) | Self::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,

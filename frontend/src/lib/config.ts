@@ -5,3 +5,6 @@ export const steamLoginUrl = `${publicApiUrl}/auth/steam`;
 
 /** Clears the auth cookie on the backend (POST). */
 export const logoutUrl = `${publicApiUrl}/auth/logout`;
+
+/** Shown when the community has no logo of its own (`public/logo.svg`, a copy of `assets/logo.svg`). */
+export const defaultCommunityLogo = "/logo.svg";

@@ -11,7 +11,7 @@ use std::{sync::Arc, time::Duration};
 use actix_web::{App, HttpServer, middleware::Logger, web};
 use sqlx::{PgPool, postgres::PgPoolOptions};
 
-use crate::{auth::jwt::JwtKeys, config::Config, models::Usergroup, state::AppState};
+use crate::{auth::jwt::JwtKeys, config::Config, models::{Community, Usergroup}, state::AppState};
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -68,7 +68,8 @@ async fn main() -> std::io::Result<()> {
     .await
 }
 
-/// Connects to Postgres, applies migrations and creates the default usergroups.
+/// Connects to Postgres, applies migrations and creates the default usergroups and the
+/// skeleton community.
 async fn connect_db(database_url: &str) -> std::io::Result<PgPool> {
     let db = PgPoolOptions::new()
         .max_connections(10)
@@ -81,6 +82,9 @@ async fn connect_db(database_url: &str) -> std::io::Result<PgPool> {
         .await
         .map_err(std::io::Error::other)?;
     Usergroup::ensure_defaults(&db)
+        .await
+        .map_err(std::io::Error::other)?;
+    Community::ensure_exists(&db)
         .await
         .map_err(std::io::Error::other)?;
     Ok(db)

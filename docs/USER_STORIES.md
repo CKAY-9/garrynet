@@ -44,4 +44,9 @@ Part of [GarryNet Design](DESIGN.md).
 1. As a user with `Server Management`, I want to register a new server, so that I can link it later.
 2. I first provide a name and description.
 3. I am given a generated access key to use on a server running the GarryNet addon.
-4. I paste the key into the GarryNet addon menu to link the server.
+
+**Linking a Garry's Mod Server**
+1. As a Garry's Mod superadmin, I want to paste the generated `access_key`, so that I can link this server to GarryNet
+2. Run `!gnet`
+3. If the server is already linked to an instance of GarryNet, give options, otherwise have a text box for `access_key`
+4. The key is sent to the server and verified, then the server is linked and given a rolling JWT.

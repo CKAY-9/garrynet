@@ -16,11 +16,26 @@ icon_url?: string
 color: string // hex
 connection_address: string
 map: string // "" until the first heartbeat
-access_key: string // used to verify the server
+access_key: string // SHA-256 hash of the key; the key itself is shown once, when generated
 last_heartbeat: utc timestamp // when the server last checked in
 linked: boolean // true once the server has connected with its access key
 created_at: utc timestamp
 ```
+
+Keys look like `gnet_` followed by 64 hex characters. Regenerating a key unlinks the server until it links again with the new key.
+
+Status, as shown in the admin dashboard: not linked, waiting for heartbeat (linked, no heartbeat yet), online (heartbeat within the last 5 minutes) or offline.
+
+### Routes
+
+- GET `/servers`: every server, oldest first (public; never includes `access_key`)
+- GET `/servers/{id}`: one server (public)
+- POST `/servers`: register a server, returns `{ server, access_key }`
+- PUT `/servers/{id}`: replace the editable details
+- DELETE `/servers/{id}`: delete the server and its player records
+- POST `/servers/{id}/access-key`: generate a new access key and unlink the server, returns `{ server, access_key }`
+
+Everything but the GETs requires Admin Access and Server Management. POST/PUT take `name` (required), `description`, `splash_url`, `icon_url`, `color` (hex, default `#3b82f6`) and `connection_address`. Blank optional URLs become null. `gamemode`, `map`, `last_heartbeat` and `linked` come from the server itself.
 
 ## Loading Screen
 
