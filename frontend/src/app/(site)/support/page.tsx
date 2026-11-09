@@ -19,7 +19,6 @@ export default function SupportPage({ searchParams }: PageProps<"/support">) {
 /** /support: the user's on-going and finished tickets, plus a few FAQs. */
 async function Support({ searchParams }: { searchParams: SearchParams }) {
   const [viewer, filters] = await Promise.all([getSupportViewer(), readTicketFilters(searchParams)]);
-  const faqs = getFaqs(undefined, 3);
 
   const header = (
     <header className={styles.header}>
@@ -37,7 +36,7 @@ async function Support({ searchParams }: { searchParams: SearchParams }) {
           {/* Plain anchor: a full navigation to the backend, which redirects to Steam. */}
           <a href={steamLoginUrl}>Log in with Steam</a> to open a support ticket or see your existing ones.
         </p>
-        <FaqSection faqs={await faqs} />
+        <FaqSection faqs={await getFaqs(undefined, 3)} />
       </div>
     );
   }
@@ -45,7 +44,7 @@ async function Support({ searchParams }: { searchParams: SearchParams }) {
   const [active, done, faqList] = await Promise.all([
     getMyTickets(filters, "active"),
     getMyTickets(filters, "done"),
-    faqs,
+    getFaqs(undefined, 3),
   ]);
 
   return (

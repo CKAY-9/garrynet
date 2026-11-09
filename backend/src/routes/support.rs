@@ -216,7 +216,7 @@ async fn set_status(
         .await?
         .ok_or(ApiError::NotFound("ticket"))?;
     if ticket.status == body.status {
-        return Err(bad(format!("ticket is already {:?}", body.status).to_uppercase()));
+        return Err(bad(format!("ticket is already {}", format!("{:?}", body.status).to_uppercase())));
     }
     let updated = ticket.set_status(&state.db, body.status, user.0.id).await?;
     log::info!(
