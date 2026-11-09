@@ -58,3 +58,15 @@ Part of [GarryNet Design](DESIGN.md).
 2. Run `!gnet`
 3. If the server is already linked to an instance of GarryNet, give options, otherwise have a text box for `access_key`
 4. The key is sent to the server and verified, then the server is linked and given a rolling JWT.
+
+## Support
+
+**Creating a new Ticket**
+1. As a general user, I want to create a support ticket, so that I can get into contact with the support team
+2. I do this by going to `/support`, and clicking New ticket
+3. New ticket (`/support/new`) asks for title, subject, category, involved users, and the message.
+
+**Reviewing my existing Tickets**
+1. As a general user, I want to see all my previous and current tickets listed, so that I can view them in more detail
+2. I do this by going to `/support` and viewing the list of tickets
+3. I can sort and filter them
