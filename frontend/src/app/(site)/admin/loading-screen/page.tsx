@@ -4,9 +4,11 @@ import { previewPlayer } from "@/components/LoadingScreen";
 import { requirePermission } from "@/lib/auth";
 import { getLoadingScreenConfig } from "@/lib/loadingScreen";
 import { Permission } from "@/lib/permissions";
-import { loadingUrlLine, siteOrigin } from "@/lib/site";
+import { getServers } from "@/lib/servers";
+import { siteOrigin } from "@/lib/site";
 import styles from "../admin.module.scss";
 import { LoadingScreenEditor } from "./LoadingScreenEditor";
+import { ServerSetupLine } from "./ServerSetupLine";
 
 export default function LoadingScreenPage() {
   return (
@@ -19,8 +21,7 @@ export default function LoadingScreenPage() {
 
 async function LoadingScreenSettings() {
   await requirePermission(Permission.AdminAccess | Permission.ServerManagement);
-  const config = await getLoadingScreenConfig();
-  const loadingUrl = loadingUrlLine(await siteOrigin(), "<SERVER_ID>");
+  const [config, servers, origin] = await Promise.all([getLoadingScreenConfig(), getServers(), siteOrigin()]);
 
   return (
     <>
@@ -36,14 +37,11 @@ async function LoadingScreenSettings() {
           Server setup
         </h2>
         <p className={styles.note}>
-          Add this to each server&apos;s <code>server.cfg</code>, with the server&apos;s GarryNet id in place
-          of <code>&lt;SERVER_ID&gt;</code> (each server&apos;s page under <Link href="/admin/servers">Servers</Link> shows its
-          own line). Garry&apos;s Mod fills in the player&apos;s SteamID (
-          <code>%s</code>) and the map (<code>%m</code>).
+          Pick a server to fill in its GarryNet id, then add the line to that server&apos;s <code>server.cfg</code>
+          (each server&apos;s page under <Link href="/admin/servers">Servers</Link> shows its own line too).
+          Garry&apos;s Mod fills in the player&apos;s SteamID (<code>%s</code>) and the map (<code>%m</code>).
         </p>
-        <pre className={styles.code}>
-          <code>{loadingUrl}</code>
-        </pre>
+        <ServerSetupLine origin={origin} servers={servers.map(({ id, name }) => ({ id, name }))} />
       </section>
     </>
   );
