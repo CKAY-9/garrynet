@@ -8,6 +8,7 @@ GarryNet is a community platform (forum, store, Garry's Mod server integration) 
 - [PERMISSIONS.md](PERMISSIONS.md): usergroups and permission bits
 - [FORUM.md](FORUM.md): sections, categories, threads, posts
 - [SERVERS.md](SERVERS.md): Garry's Mod servers and the loading screen
+- [ADDON.md](ADDON.md): the Garry's Mod addon
 - [AUTH.md](AUTH.md): authentication and banned users
 - [ADMIN.md](ADMIN.md): admin pages
 - [USER_STORIES.md](USER_STORIES.md): user stories
