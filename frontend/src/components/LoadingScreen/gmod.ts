@@ -36,3 +36,11 @@ declare global {
 export const GMOD_BRIDGE_SCRIPT = `(function(){var q=window.${GMOD_QUEUE}=[];${JSON.stringify(
   GMOD_CALLBACKS,
 )}.forEach(function(n){window[n]=function(){q.push([n,Array.prototype.slice.call(arguments)])}})})();`;
+
+/**
+ * React reveals streamed (`<Suspense>`) content with a script that waits on
+ * `requestAnimationFrame` and timers, which Garry's Mod's loading panel doesn't reliably
+ * run, leaving a blank screen. This ES5 fallback does the same swap from a plain
+ * interval once the document has been parsed. React's own swap is then a no-op.
+ */
+export const STREAM_REVEAL_SCRIPT = `(function(){function r(){var t=document.querySelectorAll('template[id^="B:"]');for(var i=0;i<t.length;i++){var e=t[i],s=document.getElementById("S:"+e.id.slice(2)),a=e.previousSibling,z=e.nextSibling;if(!s||!a||!z||a.nodeType!==8||z.nodeType!==8)continue;var p=e.parentNode;while(a.nextSibling&&a.nextSibling!==z)p.removeChild(a.nextSibling);while(s.firstChild)p.insertBefore(s.firstChild,z);a.data="$";s.parentNode.removeChild(s)}}var n=0,h=setInterval(function(){if(document.readyState!=="loading")r();if(++n>200)clearInterval(h)},100)})();`;

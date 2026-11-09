@@ -12,6 +12,7 @@ const nextConfig: NextConfig = {
     // Steam avatars (avatars.steamstatic.com and its CDN mirrors).
     remotePatterns: [{ protocol: "https", hostname: "**.steamstatic.com" }],
   },
+  allowedDevOrigins: ['loopback.gmod'],
 };
 
 export default nextConfig;
