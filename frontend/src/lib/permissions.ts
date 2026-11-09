@@ -18,3 +18,19 @@ export const Permission = {
 export function hasPermission(permissions: number, required: number): boolean {
   return (permissions & required) === required;
 }
+
+/** Display names for each flag, lowest bit first (see docs/PERMISSIONS.md). */
+export const PERMISSION_LABELS: readonly { flag: number; label: string }[] = [
+  { flag: Permission.SiteAccess, label: "Site Access" },
+  { flag: Permission.UserPosts, label: "User Posts" },
+  { flag: Permission.ThreadManagement, label: "Thread Management" },
+  { flag: Permission.CategoryManagement, label: "Category Management" },
+  { flag: Permission.SectionManagement, label: "Section Management" },
+  { flag: Permission.UserManagement, label: "User Management" },
+  { flag: Permission.AdminAccess, label: "Admin Access" },
+  { flag: Permission.ElevatedControl, label: "Elevated Control" },
+  { flag: Permission.UsergroupManagement, label: "Usergroup Management" },
+  { flag: Permission.UserMessages, label: "User Messages" },
+  { flag: Permission.ServerManagement, label: "Server Management" },
+  { flag: Permission.CommunityManagement, label: "Community Management" },
+];

@@ -2,7 +2,8 @@ import "server-only";
 import { connection } from "next/server";
 import axios from "axios";
 import { backend } from "./backend";
-import type { UsergroupBadge, UserProfile, UserSearchFilters, UserSearchResult } from "./types";
+import { authHeaders } from "./auth";
+import type { Usergroup, UsergroupBadge, UserProfile, UserSearchFilters, UserSearchResult } from "./types";
 
 /**
  * The public profile of the user with GarryNet id `id`, or `null` if there is no such
@@ -56,5 +57,15 @@ export class UserSearchError extends Error {}
 export async function getUsergroups(): Promise<UsergroupBadge[]> {
   await connection();
   const { data } = await backend.get<UsergroupBadge[]>("/usergroups");
+  return data;
+}
+
+/**
+ * Every usergroup with its members and permissions. The backend requires Admin Access and
+ * Usergroup Management, so call `requirePermission` first. Request-time.
+ */
+export async function getAdminUsergroups(): Promise<Usergroup[]> {
+  await connection();
+  const { data } = await backend.get<Usergroup[]>("/admin/usergroups", { headers: await authHeaders() });
   return data;
 }

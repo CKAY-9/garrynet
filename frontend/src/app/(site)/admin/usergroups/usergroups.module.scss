@@ -1,0 +1,57 @@
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.8rem 1rem;
+  border: 1px solid rgb(127 127 127 / 0.25);
+  border-left: 4px solid var(--group-color);
+  border-radius: 0.6rem;
+}
+
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.id {
+  opacity: 0.5;
+  font-size: 0.85rem;
+}
+
+.meta {
+  margin-left: auto;
+  font-size: 0.8rem;
+  opacity: 0.65;
+}
+
+.perms {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.perm {
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  background: rgb(127 127 127 / 0.12);
+  font-size: 0.78rem;
+}
+
+.none {
+  font-size: 0.85rem;
+  opacity: 0.55;
+}

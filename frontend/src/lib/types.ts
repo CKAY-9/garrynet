@@ -45,6 +45,16 @@ export type UsergroupBadge = {
   icon_url: string | null;
 };
 
+/** A usergroup in full, from `GET /admin/usergroups` (needs Usergroup Management). */
+export type Usergroup = UsergroupBadge & {
+  /** Ids of the users in this group. */
+  members: number[];
+  /** Permission bit flag; see `Permission`. */
+  permissions: number;
+  created_at: string;
+  last_updated: string | null;
+};
+
 /**
  * A user's public profile, from `GET /users/{id}`. Excludes the email; `status` accounts
  * for inactivity (idle after 5 minutes, offline after 15).
