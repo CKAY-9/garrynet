@@ -30,7 +30,9 @@ Configure your enviornment variables according to the provided `.env.example` sa
 1. Clone this repository onto your web server
     - Optionally: remove the addon folder or move it to your Garry's Mod server's `/addons` folder
 2. Setup the required enviornment variables
-3. Run `docker compose up -D`
+3. Run `docker compose up -d --build`
+    - `.env` is read from `backend/` and `frontend/` if present. `DATABASE_URL`, `BIND_ADDR` and the frontend's `API_URL` are overridden to use the compose network.
+    - `NEXT_PUBLIC_API_URL` is baked in at build time, so re-run with `--build` after changing it.
 
 ### Manually
 
