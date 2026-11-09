@@ -47,7 +47,25 @@ export type PostingAccess = "guest" | "forbidden" | "allowed";
 
 /** Reads the session cookie; see `getCurrentUser`. */
 export async function getPostingAccess(): Promise<PostingAccess> {
+  return (await getForumViewer()).access;
+}
+
+/** What the current user can do on the forum. */
+export type ForumViewer = {
+  access: PostingAccess;
+  /** `null` when logged out. */
+  userId: number | null;
+  /** Has Thread Management: can lock, sticky, edit and delete anyone's threads and posts. */
+  moderator: boolean;
+};
+
+/** Reads the session cookie; see `getCurrentUser`. The backend enforces all of this too. */
+export async function getForumViewer(): Promise<ForumViewer> {
   const user = await getCurrentUser();
-  if (!user) return "guest";
-  return hasPermission(user.permissions, Permission.SiteAccess | Permission.UserPosts) ? "allowed" : "forbidden";
+  if (!user) return { access: "guest", userId: null, moderator: false };
+  return {
+    access: hasPermission(user.permissions, Permission.SiteAccess | Permission.UserPosts) ? "allowed" : "forbidden",
+    userId: user.id,
+    moderator: hasPermission(user.permissions, Permission.SiteAccess | Permission.ThreadManagement),
+  };
 }

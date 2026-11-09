@@ -39,6 +39,13 @@ last_updated?: utc timestamp // empty/null if no changes since creation
 
 ## Thread
 
+Deleting a thread deletes all of its posts; deleting a thread's first post deletes the thread.
+Threads can be edited in the form of
+- sticky
+- locked
+- allow templating
+- title
+
 ```
 id: number
 author_id: number
@@ -78,6 +85,18 @@ Reading is public. Writing needs a login; sections and categories also need Admi
 - POST `/forum/categories/{id}/threads`: start a thread (`title`, max 128 characters; `content`, the first post). Requires Site Access and User Posts; 423 if the category is locked
 - GET `/forum/threads/{id}`: `{ category, section, thread, posts }`. The thread's first post comes first, then replies oldest first; each post includes `author`
 - POST `/forum/threads/{id}/posts`: reply (`content`, max 20,000 characters). Requires Site Access and User Posts; 423 if the thread or its category is locked. Bumps the thread's `last_activity`
+- PATCH `/forum/threads/{id}`: change any of `title`, `locked`, `sticky`, `allow_template` (omitted fields are left alone). Authors can change `title` and `allow_template`; `locked` and `sticky` need Thread Management
+- DELETE `/forum/threads/{id}`: delete a thread and all its posts
+- PATCH `/forum/posts/{id}`: replace a post's `content` (same rules as replying) and set `edited`. Doesn't bump `last_activity`
+- DELETE `/forum/posts/{id}`: delete a post. Deleting a thread's first post deletes the thread; deleting a reply rewinds the thread's `last_activity` to its newest remaining post
+
+### Managing threads and posts
+
+The four routes above follow the same rules:
+
+- Users with Site Access and Thread Management (moderators) can manage any thread or post, even in a locked thread or category.
+- Otherwise users can only manage their own threads and posts, and only while they can still post (Site Access and User Posts, so not banned). 403 for someone else's.
+- Authors can't change anything in a locked thread or category (423).
 
 Post content is GitHub-flavored Markdown (tables, strikethrough, task lists, footnotes). The backend stores the Markdown source after sanitizing it (`src/routes/markdown.rs`): raw HTML is backslash-escaped so it shows as text, and a link or image whose URL isn't http(s), mailto or relative is a 400. The frontend renders it with react-markdown (`components/Markdown`), where single newlines are line breaks, raw HTML is skipped and unsafe URLs are dropped, as a second layer.
 
@@ -95,4 +114,4 @@ Navigating here will reveal the category page which contains threads related to 
 
 ### /forum/{category_id}/{thread_id}
 
-Thread page. Shows all posts in the thread, with the principal post/author being at the top, then a reply box for users who can post (unless the thread or category is locked). A thread opened under the wrong category id redirects to the right one.
+Thread page. Shows all posts in the thread, with the principal post/author being at the top, then a reply box for users who can post (unless the thread or category is locked). Users who can manage the thread get Rename and Delete thread buttons under the title (plus Lock and Sticky for moderators), and Edit and Delete buttons on each post they can manage. Deletes ask for confirmation inline. A thread opened under the wrong category id redirects to the right one.

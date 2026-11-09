@@ -9,7 +9,8 @@ $breakpoint: 52rem;
   justify-content: space-between;
   gap: 1rem;
   width: 15rem;
-  height: 100dvh;
+  height: 100vh;
+
   padding: 1rem 0.75rem;
   flex-shrink: 0;
   overflow-y: auto;
@@ -219,7 +220,7 @@ $breakpoint: 52rem;
     inset: 0;
     z-index: 30;
     width: auto;
-    height: 100dvh;
+    height: 100vh;
     overflow-y: auto;
     overscroll-behavior: contain;
     border-right: 0;

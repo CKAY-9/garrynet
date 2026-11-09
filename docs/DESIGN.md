@@ -62,10 +62,6 @@ POST/PUT take `name`, `description`, `logo_url`, `splash_background`, `external_
 
 To be implemented. Will use Stripe.
 
-## Support Pages
-
-To be implemented. Will include support tickets and documentation.
-
 ## Private Messages
 
 To be implemented.
