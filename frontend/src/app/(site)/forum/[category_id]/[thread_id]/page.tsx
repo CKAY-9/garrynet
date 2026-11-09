@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import { notFound, redirect } from "next/navigation";
 import { ForumThreadPage } from "@/components/Forum";
-import { getForumThread, getPostingAccess } from "@/lib/forum";
+import { getForumThread, getForumViewer } from "@/lib/forum";
 
 export default function ThreadPage({ params }: PageProps<"/forum/[category_id]/[thread_id]">) {
   return (
@@ -15,9 +15,9 @@ export default function ThreadPage({ params }: PageProps<"/forum/[category_id]/[
 }
 
 async function Thread({ categoryId, threadId }: { categoryId: string; threadId: string }) {
-  const [data, access] = await Promise.all([getForumThread(threadId), getPostingAccess()]);
+  const [data, viewer] = await Promise.all([getForumThread(threadId), getForumViewer()]);
   if (!data) notFound();
   // Threads are looked up by id alone; send stale or mistyped category ids to the real one.
   if (String(data.category.id) !== categoryId) redirect(`/forum/${data.category.id}/${data.thread.id}`);
-  return <ForumThreadPage {...data} access={access} />;
+  return <ForumThreadPage {...data} viewer={viewer} />;
 }

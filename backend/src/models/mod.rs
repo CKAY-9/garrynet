@@ -4,6 +4,7 @@ pub mod loading_screen;
 pub mod permissions;
 pub mod player;
 pub mod server;
+pub mod support;
 pub mod user;
 pub mod usergroup;
 

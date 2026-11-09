@@ -7,6 +7,7 @@ GarryNet is a community platform (forum, store, Garry's Mod server integration) 
 - [USERS.md](USERS.md): users, status, punishments, per-server players
 - [PERMISSIONS.md](PERMISSIONS.md): usergroups and permission bits
 - [FORUM.md](FORUM.md): sections, categories, threads, posts
+- [SUPPORT.MD](SUPPORT.MD): support tickets, messages, FAQs
 - [SERVERS.md](SERVERS.md): Garry's Mod servers and the loading screen
 - [ADDON.md](ADDON.md): the Garry's Mod addon
 - [AUTH.md](AUTH.md): authentication and banned users
@@ -61,10 +62,6 @@ POST/PUT take `name`, `description`, `logo_url`, `splash_background`, `external_
 ## Store
 
 To be implemented. Will use Stripe.
-
-## Support Pages
-
-To be implemented. Will include support tickets and documentation.
 
 ## Private Messages
 

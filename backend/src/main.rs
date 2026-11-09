@@ -11,7 +11,12 @@ use std::{sync::Arc, time::Duration};
 use actix_web::{App, HttpServer, middleware::Logger, web};
 use sqlx::{PgPool, postgres::PgPoolOptions};
 
-use crate::{auth::jwt::JwtKeys, config::Config, models::{Community, Usergroup}, state::AppState};
+use crate::{
+    auth::jwt::JwtKeys,
+    config::Config,
+    models::{Community, Usergroup, support::SupportTicket},
+    state::AppState,
+};
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -56,6 +61,7 @@ async fn main() -> std::io::Result<()> {
 
     log::info!("GarryNet backend listening on http://{}", config.bind_addr);
     shell::spawn(state.db.clone());
+    spawn_ticket_auto_close(state.db.clone());
 
     HttpServer::new(move || {
         App::new()
@@ -88,6 +94,22 @@ async fn connect_db(database_url: &str) -> std::io::Result<PgPool> {
         .await
         .map_err(std::io::Error::other)?;
     Ok(db)
+}
+
+/// Closes support tickets that have waited on their user for too long (see
+/// `SupportTicket::auto_close`), once now and then every hour.
+fn spawn_ticket_auto_close(db: PgPool) {
+    actix_web::rt::spawn(async move {
+        let mut tick = tokio::time::interval(Duration::from_secs(60 * 60));
+        loop {
+            tick.tick().await;
+            match SupportTicket::auto_close(&db).await {
+                Ok(0) => {}
+                Ok(n) => log::info!("automatically closed {n} inactive support ticket(s)"),
+                Err(e) => log::error!("failed to auto-close support tickets: {e}"),
+            }
+        }
+    });
 }
 
 /// One-shot command mode. Only needs `DATABASE_URL`.

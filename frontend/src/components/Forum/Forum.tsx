@@ -4,7 +4,7 @@ import { Avatar } from "@/components/Avatar";
 import { Markdown } from "@/components/Markdown";
 import { StatCard } from "@/components/StatCard";
 import { steamLoginUrl } from "@/lib/config";
-import type { PostingAccess } from "@/lib/forum";
+import type { ForumViewer, PostingAccess } from "@/lib/forum";
 import { fullFormat, timeAgo } from "@/lib/time";
 import type {
   ForumCategory,
@@ -14,6 +14,7 @@ import type {
   ForumThreadPage as ThreadData,
 } from "@/lib/types";
 import { NewThreadForm, ReplyForm } from "./Composer";
+import { PostBody, ThreadTools } from "./Manage";
 import styles from "./Forum.module.scss";
 
 type Crumb = { href?: string; label: string };
@@ -170,8 +171,18 @@ function ThreadBadges({ thread }: { thread: ForumThread }) {
   );
 }
 
+/**
+ * Whether `viewer` may edit or delete something `authorId` wrote in `thread`. Mirrors the
+ * backend (`manager` in src/routes/forum.rs): moderators always; authors while they can post
+ * and neither the thread nor its category is locked.
+ */
+function canManage(viewer: ForumViewer, authorId: number, thread: ForumThread, category: ForumCategory): boolean {
+  if (viewer.moderator) return true;
+  return viewer.userId === authorId && viewer.access === "allowed" && !thread.locked && !category.locked;
+}
+
 /** /forum/{category_id}/{thread_id}: every post, the thread's first post at the top. */
-export function ForumThreadPage({ category, section, thread, posts, access }: ThreadData & { access: PostingAccess }) {
+export function ForumThreadPage({ category, section, thread, posts, viewer }: ThreadData & { viewer: ForumViewer }) {
   return (
     <div className={styles.page}>
       <Breadcrumbs
@@ -188,6 +199,12 @@ export function ForumThreadPage({ category, section, thread, posts, access }: Th
           <ThreadBadges thread={thread} />
         </h1>
       </header>
+      <ThreadTools
+        key={thread.title}
+        thread={thread}
+        canManage={canManage(viewer, thread.author_id, thread, category)}
+        moderator={viewer.moderator}
+      />
       {posts.map((post) => (
         <article
           key={post.id}
@@ -208,7 +225,14 @@ export function ForumThreadPage({ category, section, thread, posts, access }: Th
                 </>
               )}
             </div>
-            <Markdown className={styles.content}>{post.content}</Markdown>
+            <PostBody
+              postId={post.id}
+              content={post.content}
+              thread={thread}
+              canManage={canManage(viewer, post.author_id, thread, category)}
+            >
+              <Markdown className={styles.content}>{post.content}</Markdown>
+            </PostBody>
             <div className={styles.reactions} aria-label="Reactions">
               <span title="Likes">👍 {post.likes.length}</span>
               <span title="Dislikes">👎 {post.dislikes.length}</span>
@@ -216,7 +240,7 @@ export function ForumThreadPage({ category, section, thread, posts, access }: Th
           </div>
         </article>
       ))}
-      <ReplyArea category={category} thread={thread} access={access} />
+      <ReplyArea category={category} thread={thread} access={viewer.access} />
     </div>
   );
 }

@@ -386,6 +386,89 @@ impl ForumThread {
         tx.commit().await?;
         Ok(post)
     }
+
+    /// Applies the changes that are set. Changing a thread doesn't count as activity.
+    pub async fn update(&self, db: &PgPool, changes: &ThreadChanges) -> sqlx::Result<Self> {
+        sqlx::query_as(concat!(
+            "UPDATE forum_threads
+                SET title = COALESCE($2, title),
+                    locked = COALESCE($3, locked),
+                    sticky = COALESCE($4, sticky),
+                    allow_template = COALESCE($5, allow_template)
+              WHERE id = $1
+              RETURNING ", thread_columns!()
+        ))
+        .bind(self.id)
+        .bind(&changes.title)
+        .bind(changes.locked)
+        .bind(changes.sticky)
+        .bind(changes.allow_template)
+        .fetch_one(db)
+        .await
+    }
+
+    /// Deletes the thread and all its posts.
+    pub async fn delete(&self, db: &PgPool) -> sqlx::Result<()> {
+        sqlx::query("DELETE FROM forum_threads WHERE id = $1")
+            .bind(self.id)
+            .execute(db)
+            .await?;
+        Ok(())
+    }
+}
+
+/// Thread fields to change; `None` leaves a field as it is. Already validated (see
+/// `routes::forum`).
+#[derive(Debug, Default)]
+pub struct ThreadChanges {
+    pub title: Option<String>,
+    pub locked: Option<bool>,
+    pub sticky: Option<bool>,
+    pub allow_template: Option<bool>,
+}
+
+impl ForumPost {
+    pub async fn find_by_id(db: &PgPool, id: i64) -> sqlx::Result<Option<Self>> {
+        sqlx::query_as(concat!("SELECT ", post_columns!(), " FROM forum_posts WHERE id = $1"))
+            .bind(id)
+            .fetch_optional(db)
+            .await
+    }
+
+    /// Replaces the content and marks the post edited.
+    pub async fn edit(&self, db: &PgPool, content: &str) -> sqlx::Result<Self> {
+        sqlx::query_as(concat!(
+            "UPDATE forum_posts SET content = $2, edited = now()
+             WHERE id = $1
+             RETURNING ", post_columns!()
+        ))
+        .bind(self.id)
+        .bind(content)
+        .fetch_one(db)
+        .await
+    }
+
+    /// Deletes a reply and rewinds the thread's last activity to its newest remaining post.
+    /// A thread's first post is deleted with [`ForumThread::delete`] instead.
+    pub async fn delete_reply(&self, db: &PgPool) -> sqlx::Result<()> {
+        let mut tx = db.begin().await?;
+        sqlx::query("DELETE FROM forum_posts WHERE id = $1")
+            .bind(self.id)
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query(
+            "UPDATE forum_threads t
+                SET last_activity = COALESCE(
+                    (SELECT max(p.created_at) FROM forum_posts p WHERE p.thread_id = t.id),
+                    t.created_at)
+              WHERE t.id = $1",
+        )
+        .bind(self.thread_id)
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(())
+    }
 }
 
 impl ForumStats {

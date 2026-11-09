@@ -46,6 +46,7 @@ The default usergroups are created on startup if no group with that name exists;
 - 0x200, User Messages: If set, users can privately message other users.
 - 0x400, Server Management: If set, users can create, edit, remove, and link/unlink Garry's Mod servers.
 - 0x800, Community Management: If set, users can edit community details.
+- 0x1000, Support Team: If set, users can access other tickets and help
 
 **Dangerous Actions**
 

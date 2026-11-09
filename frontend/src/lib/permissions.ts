@@ -12,6 +12,7 @@ export const Permission = {
   UserMessages: 0x200,
   ServerManagement: 0x400,
   CommunityManagement: 0x800,
+  SupportTeam: 0x1000,
 } as const;
 
 /** True if `permissions` includes every flag in `required`. */
@@ -33,4 +34,5 @@ export const PERMISSION_LABELS: readonly { flag: number; label: string }[] = [
   { flag: Permission.UserMessages, label: "User Messages" },
   { flag: Permission.ServerManagement, label: "Server Management" },
   { flag: Permission.CommunityManagement, label: "Community Management" },
+  { flag: Permission.SupportTeam, label: "Support Team" },
 ];

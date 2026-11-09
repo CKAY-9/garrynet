@@ -1,17 +1,18 @@
 //! The forum; see docs/FORUM.md. Reading is public. Sections and categories are managed
-//! by admins; threads and replies need User Posts.
+//! by admins; threads and replies need User Posts. Authors manage their own threads and
+//! posts; Thread Management manages anyone's.
 
-use actix_web::{HttpResponse, delete, get, post, web};
+use actix_web::{HttpResponse, delete, get, patch, post, web};
 use serde::{Deserialize, Serialize};
 
 use crate::{
     auth::AuthUser,
     error::ApiError,
     models::{
-        Permissions, User,
+        Permissions, User, Usergroup,
         forum::{
-            CategoryDetails, ForumCategory, ForumSection, ForumStats,
-            ForumThread, PostWithAuthor, SectionDetails, SectionWithCategories, ThreadSummary,
+            CategoryDetails, ForumCategory, ForumPost, ForumSection, ForumStats, ForumThread,
+            PostWithAuthor, SectionDetails, SectionWithCategories, ThreadChanges, ThreadSummary,
         },
     },
     routes::{
@@ -30,7 +31,11 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .service(get_category)
         .service(create_thread)
         .service(get_thread)
-        .service(create_post);
+        .service(update_thread)
+        .service(delete_thread)
+        .service(create_post)
+        .service(edit_post)
+        .service(delete_post);
 }
 
 /// Like the other admin pages, managing the forum needs Admin Access as well as the
@@ -41,6 +46,9 @@ const MANAGE_CATEGORIES: Permissions =
     Permissions::ADMIN_ACCESS.union(Permissions::CATEGORY_MANAGEMENT);
 /// Site Access too: without it a user is banned.
 const POST: Permissions = Permissions::SITE_ACCESS.union(Permissions::USER_POSTS);
+/// Moderating threads and posts happens on the forum itself, so it doesn't need Admin
+/// Access; Site Access still does, so a banned moderator can't moderate.
+const MODERATE: Permissions = Permissions::SITE_ACCESS.union(Permissions::THREAD_MANAGEMENT);
 
 const MAX_NAME: usize = 64;
 const MAX_DESCRIPTION: usize = 256;
@@ -267,6 +275,162 @@ async fn create_post(
     }
     let post = thread.reply(&state.db, user.0.id, &content).await?;
     Ok(HttpResponse::Created().json(post))
+}
+
+#[derive(Deserialize)]
+struct ThreadUpdateBody {
+    title: Option<String>,
+    locked: Option<bool>,
+    sticky: Option<bool>,
+    allow_template: Option<bool>,
+}
+
+/// Changes a thread's title, lock, sticky or template flag; omitted fields stay as they
+/// are. Authors can change their own thread's title and template flag (see [`manager`]);
+/// locking and stickying need Thread Management.
+#[patch("/forum/threads/{id}")]
+async fn update_thread(
+    state: web::Data<AppState>,
+    user: AuthUser,
+    id: web::Path<i64>,
+    body: web::Json<ThreadUpdateBody>,
+) -> Result<HttpResponse, ApiError> {
+    let body = body.into_inner();
+    let changes = ThreadChanges {
+        title: body.title.map(|t| required_text("title", &t, MAX_TITLE)).transpose()?,
+        locked: body.locked,
+        sticky: body.sticky,
+        allow_template: body.allow_template,
+    };
+    if changes.title.is_none()
+        && changes.locked.is_none()
+        && changes.sticky.is_none()
+        && changes.allow_template.is_none()
+    {
+        return Err(bad("nothing to change".to_owned()));
+    }
+    let thread = find_thread(&state, id.into_inner()).await?;
+    let role = manager(&state, &user, thread.author_id, &thread).await?;
+    if role == Manager::Author && (changes.locked.is_some() || changes.sticky.is_some()) {
+        return Err(ApiError::Forbidden(Permissions::THREAD_MANAGEMENT.name()));
+    }
+    let updated = thread.update(&state.db, &changes).await?;
+    log::info!("user {} updated forum thread {} ({changes:?})", user.0.id, thread.id);
+    Ok(HttpResponse::Ok().json(updated))
+}
+
+/// Deletes a thread with all its posts. Authors can delete their own (see [`manager`]).
+#[delete("/forum/threads/{id}")]
+async fn delete_thread(
+    state: web::Data<AppState>,
+    user: AuthUser,
+    id: web::Path<i64>,
+) -> Result<HttpResponse, ApiError> {
+    let thread = find_thread(&state, id.into_inner()).await?;
+    manager(&state, &user, thread.author_id, &thread).await?;
+    thread.delete(&state.db).await?;
+    log::info!("user {} deleted forum thread {} ({:?})", user.0.id, thread.id, thread.title);
+    Ok(HttpResponse::NoContent().finish())
+}
+
+/// Replaces a post's content and marks it edited. Authors can edit their own (see
+/// [`manager`]).
+#[patch("/forum/posts/{id}")]
+async fn edit_post(
+    state: web::Data<AppState>,
+    user: AuthUser,
+    id: web::Path<i64>,
+    body: web::Json<PostBody>,
+) -> Result<HttpResponse, ApiError> {
+    let content = markdown("content", &body.content, MAX_CONTENT)?;
+    let (post, thread) = find_post(&state, id.into_inner()).await?;
+    manager(&state, &user, post.author_id, &thread).await?;
+    let edited = post.edit(&state.db, &content).await?;
+    if user.0.id != post.author_id {
+        log::info!("user {} edited forum post {} by user {}", user.0.id, post.id, post.author_id);
+    }
+    Ok(HttpResponse::Ok().json(edited))
+}
+
+/// Deletes a post. Deleting a thread's first post deletes the whole thread. Authors can
+/// delete their own (see [`manager`]).
+#[delete("/forum/posts/{id}")]
+async fn delete_post(
+    state: web::Data<AppState>,
+    user: AuthUser,
+    id: web::Path<i64>,
+) -> Result<HttpResponse, ApiError> {
+    let (post, thread) = find_post(&state, id.into_inner()).await?;
+    manager(&state, &user, post.author_id, &thread).await?;
+    if post.id == thread.thread_post_id {
+        thread.delete(&state.db).await?;
+        log::info!("user {} deleted forum thread {} with its first post", user.0.id, thread.id);
+    } else {
+        post.delete_reply(&state.db).await?;
+        log::info!(
+            "user {} deleted forum post {} by user {} in thread {}",
+            user.0.id, post.id, post.author_id, thread.id
+        );
+    }
+    Ok(HttpResponse::NoContent().finish())
+}
+
+/// How a user may manage a thread or post.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Manager {
+    /// Has Thread Management: can manage anything, locked or not.
+    Moderator,
+    /// Wrote it, and may still post.
+    Author,
+}
+
+/// Whether `user` may manage a thread or post written by `author_id` in `thread`.
+/// Moderators (Site Access + Thread Management) can manage anything. Authors can manage
+/// their own as long as they can still post (Site Access + User Posts, so not banned)
+/// and neither the thread nor its category is locked.
+async fn manager(
+    state: &AppState,
+    user: &AuthUser,
+    author_id: i64,
+    thread: &ForumThread,
+) -> Result<Manager, ApiError> {
+    let permissions = Usergroup::permissions_for_user(&state.db, user.0.id).await?;
+    if permissions.contains(MODERATE) {
+        return Ok(Manager::Moderator);
+    }
+    if author_id != user.0.id {
+        return Err(ApiError::Forbidden(Permissions::THREAD_MANAGEMENT.name()));
+    }
+    for flag in [Permissions::SITE_ACCESS, Permissions::USER_POSTS] {
+        if !permissions.contains(flag) {
+            return Err(ApiError::Forbidden(flag.name()));
+        }
+    }
+    if thread.locked {
+        return Err(ApiError::Locked("thread"));
+    }
+    let category = ForumCategory::find_by_id(&state.db, thread.category_id)
+        .await?
+        .ok_or(ApiError::NotFound("category"))?;
+    if category.locked {
+        return Err(ApiError::Locked("category"));
+    }
+    Ok(Manager::Author)
+}
+
+async fn find_thread(state: &AppState, id: i64) -> Result<ForumThread, ApiError> {
+    ForumThread::find_by_id(&state.db, id)
+        .await?
+        .ok_or(ApiError::NotFound("thread"))
+}
+
+/// A post and the thread it belongs to.
+async fn find_post(state: &AppState, id: i64) -> Result<(ForumPost, ForumThread), ApiError> {
+    let post = ForumPost::find_by_id(&state.db, id)
+        .await?
+        .ok_or(ApiError::NotFound("post"))?;
+    let thread = find_thread(state, post.thread_id).await?;
+    Ok((post, thread))
 }
 
 async fn category_and_section(

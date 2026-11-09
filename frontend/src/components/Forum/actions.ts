@@ -33,3 +33,45 @@ export async function replyToThread(threadId: number, content: string): Promise<
     return data;
   });
 }
+
+/** Thread fields to change; omitted ones stay as they are. Locking and stickying need Thread Management. */
+export type ThreadChanges = { title?: string; locked?: boolean; sticky?: boolean; allow_template?: boolean };
+
+/** Changes a thread and refreshes the page. */
+export async function updateThread(threadId: number, changes: ThreadChanges): Promise<ActionResult<ForumThread>> {
+  return runAction("change the thread", async () => {
+    const { data } = await backend.patch<ForumThread>(`/forum/threads/${threadId}`, changes, {
+      headers: await authHeaders(),
+    });
+    refresh();
+    return data;
+  });
+}
+
+/** Deletes a thread with all its posts, then opens its category. */
+export async function deleteThread(threadId: number, categoryId: number): Promise<ActionResult<never>> {
+  const result = await runAction("delete the thread", async () => {
+    await backend.delete(`/forum/threads/${threadId}`, { headers: await authHeaders() });
+  });
+  if (!result.ok) return result;
+  redirect(`/forum/${categoryId}`);
+}
+
+/** Replaces a post's content and refreshes the page. */
+export async function editPost(postId: number, content: string): Promise<ActionResult<ForumPost>> {
+  return runAction("edit the post", async () => {
+    const { data } = await backend.patch<ForumPost>(`/forum/posts/${postId}`, { content }, {
+      headers: await authHeaders(),
+    });
+    refresh();
+    return data;
+  });
+}
+
+/** Deletes a reply and refreshes the page. Delete a thread's first post with `deleteThread`. */
+export async function deletePost(postId: number): Promise<ActionResult<void>> {
+  return runAction("delete the post", async () => {
+    await backend.delete(`/forum/posts/${postId}`, { headers: await authHeaders() });
+    refresh();
+  });
+}
