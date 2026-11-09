@@ -4,6 +4,7 @@ pub mod community;
 pub mod forum;
 pub mod gnet;
 pub mod loading_screen;
+pub mod markdown;
 pub mod servers;
 pub mod users;
 pub mod validate;

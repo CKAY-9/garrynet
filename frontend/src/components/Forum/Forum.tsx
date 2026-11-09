@@ -1,6 +1,7 @@
 import type { CSSProperties, ReactNode } from "react";
 import Link from "next/link";
 import { Avatar } from "@/components/Avatar";
+import { Markdown } from "@/components/Markdown";
 import { StatCard } from "@/components/StatCard";
 import { steamLoginUrl } from "@/lib/config";
 import type { PostingAccess } from "@/lib/forum";
@@ -207,7 +208,7 @@ export function ForumThreadPage({ category, section, thread, posts, access }: Th
                 </>
               )}
             </div>
-            <div className={styles.content}>{post.content}</div>
+            <Markdown className={styles.content}>{post.content}</Markdown>
             <div className={styles.reactions} aria-label="Reactions">
               <span title="Likes">👍 {post.likes.length}</span>
               <span title="Dislikes">👎 {post.dislikes.length}</span>

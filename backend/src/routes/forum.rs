@@ -14,7 +14,10 @@ use crate::{
             ForumThread, PostWithAuthor, SectionDetails, SectionWithCategories, ThreadSummary,
         },
     },
-    routes::validate::{bad, hex_color, optional_url, required_text, text},
+    routes::{
+        markdown::markdown,
+        validate::{bad, hex_color, optional_url, required_text, text},
+    },
     state::AppState,
 };
 
@@ -199,7 +202,7 @@ async fn create_thread(
 ) -> Result<HttpResponse, ApiError> {
     user.require(&state.db, POST).await?;
     let title = required_text("title", &body.title, MAX_TITLE)?;
-    let content = required_text("content", &body.content, MAX_CONTENT)?;
+    let content = markdown("content", &body.content, MAX_CONTENT)?;
     let category = ForumCategory::find_by_id(&state.db, id.into_inner())
         .await?
         .ok_or(ApiError::NotFound("category"))?;
@@ -249,7 +252,7 @@ async fn create_post(
     body: web::Json<PostBody>,
 ) -> Result<HttpResponse, ApiError> {
     user.require(&state.db, POST).await?;
-    let content = required_text("content", &body.content, MAX_CONTENT)?;
+    let content = markdown("content", &body.content, MAX_CONTENT)?;
     let thread = ForumThread::find_by_id(&state.db, id.into_inner())
         .await?
         .ok_or(ApiError::NotFound("thread"))?;

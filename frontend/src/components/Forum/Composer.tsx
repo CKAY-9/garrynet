@@ -47,7 +47,7 @@ export function NewThreadForm({ categoryId }: { categoryId: number }) {
         />
       </label>
       <label className={styles.field}>
-        <span className={styles.label}>Post</span>
+        <span className={styles.label}>Post (Markdown supported)</span>
         <textarea
           className={`${styles.input} ${styles.textarea}`}
           value={content}
@@ -101,7 +101,7 @@ export function ReplyForm({ threadId }: { threadId: number }) {
         onChange={(e) => setContent(e.target.value)}
         maxLength={MAX_CONTENT}
         rows={5}
-        placeholder="Write a reply..."
+        placeholder="Write a reply... (Markdown supported)"
         aria-label="Reply"
         required
       />

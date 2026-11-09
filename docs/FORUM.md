@@ -58,7 +58,7 @@ allow_template: boolean // if set, users can copy this thread as a template for 
 id: number
 author_id: number
 thread_id: number
-content: string
+content: string // Markdown, see below
 created_at: utc timestamp
 edited?: utc timestamp // null/empty if no edit applied
 likes: number[] // list of ids who liked the post
@@ -78,6 +78,8 @@ Reading is public. Writing needs a login; sections and categories also need Admi
 - POST `/forum/categories/{id}/threads`: start a thread (`title`, max 128 characters; `content`, the first post). Requires Site Access and User Posts; 423 if the category is locked
 - GET `/forum/threads/{id}`: `{ category, section, thread, posts }`. The thread's first post comes first, then replies oldest first; each post includes `author`
 - POST `/forum/threads/{id}/posts`: reply (`content`, max 20,000 characters). Requires Site Access and User Posts; 423 if the thread or its category is locked. Bumps the thread's `last_activity`
+
+Post content is GitHub-flavored Markdown (tables, strikethrough, task lists, footnotes). The backend stores the Markdown source after sanitizing it (`src/routes/markdown.rs`): raw HTML is backslash-escaped so it shows as text, and a link or image whose URL isn't http(s), mailto or relative is a 400. The frontend renders it with react-markdown (`components/Markdown`), where single newlines are line breaks, raw HTML is skipped and unsafe URLs are dropped, as a second layer.
 
 Names are at most 64 characters, and positions must be -1 or greater. A blank `accent` defaults to `#3b82f6`.
 
