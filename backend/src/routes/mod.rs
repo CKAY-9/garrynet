@@ -6,6 +6,7 @@ pub mod gnet;
 pub mod loading_screen;
 pub mod markdown;
 pub mod servers;
+pub mod support;
 pub mod usergroups;
 pub mod users;
 pub mod validate;
@@ -20,6 +21,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .configure(gnet::configure)
         .configure(loading_screen::configure)
         .configure(servers::configure)
+        .configure(support::configure)
         .configure(usergroups::configure)
         .configure(users::configure);
 }

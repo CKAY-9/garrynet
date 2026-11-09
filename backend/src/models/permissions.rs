@@ -24,9 +24,11 @@ impl Permissions {
     pub const USER_MESSAGES: Self = Self(0x200);
     pub const SERVER_MANAGEMENT: Self = Self(0x400);
     pub const COMMUNITY_MANAGEMENT: Self = Self(0x800);
+    /// Can see and respond to every support ticket, and manage FAQs.
+    pub const SUPPORT_TEAM: Self = Self(0x1000);
 
     /// Every permission bit, with its display name.
-    pub const FLAGS: [(Self, &'static str); 12] = [
+    pub const FLAGS: [(Self, &'static str); 13] = [
         (Self::SITE_ACCESS, "Site Access"),
         (Self::USER_POSTS, "User Posts"),
         (Self::THREAD_MANAGEMENT, "Thread Management"),
@@ -39,6 +41,7 @@ impl Permissions {
         (Self::USER_MESSAGES, "User Messages"),
         (Self::SERVER_MANAGEMENT, "Server Management"),
         (Self::COMMUNITY_MANAGEMENT, "Community Management"),
+        (Self::SUPPORT_TEAM, "Support Team"),
     ];
 
     pub const ALL: Self = {
@@ -111,7 +114,7 @@ mod tests {
 
     #[test]
     fn all_covers_every_documented_bit() {
-        assert_eq!(Permissions::ALL.0, 0xFFF);
+        assert_eq!(Permissions::ALL.0, 0x1FFF);
     }
 
     #[test]
