@@ -19,6 +19,10 @@ pub enum ApiError {
     #[error("{0} already exists")]
     Conflict(&'static str),
 
+    /// The forum category or thread is locked against changes.
+    #[error("this {0} is locked")]
+    Locked(&'static str),
+
     #[error("steam login could not be verified: {0}")]
     SteamVerification(String),
 
@@ -40,6 +44,7 @@ impl ResponseError for ApiError {
             Self::NotFound(_) => StatusCode::NOT_FOUND,
             Self::BadRequest(_) => StatusCode::BAD_REQUEST,
             Self::Conflict(_) => StatusCode::CONFLICT,
+            Self::Locked(_) => StatusCode::LOCKED,
             Self::SteamVerification(_) => StatusCode::UNAUTHORIZED,
             Self::SteamUnavailable(_) => StatusCode::BAD_GATEWAY,
             Self::Database(_) | Self::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,

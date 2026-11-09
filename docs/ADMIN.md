@@ -15,6 +15,7 @@ There should be a navigation bar within the dashboard where they can navigate to
 - `/admin/servers`
 - `/admin/loading-screen`
 - `/admin/community`
+- `/admin/forum`
 
 They must have the correct permission to view/access the page.
 
@@ -47,3 +48,12 @@ Requires: Usergroup Management
 
 Admins can edit the community details: name, description, logo, splash background, external links and key figures (add, remove, reorder). Changes apply when saved.
 Requires: Community Management
+
+## /admin/forum
+
+Admins can create and delete forum sections and categories (see [FORUM.md](FORUM.md)). Deleting asks for a second click, since it removes every thread inside.
+Requires: Section Management or Category Management. Each form only shows with its own permission.
+
+- Lists every section with its categories, positions and activity.
+- New section: name, accent color, description, icon URL, position.
+- New category: section, name, description, position, locked.

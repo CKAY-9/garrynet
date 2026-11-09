@@ -16,13 +16,14 @@ icon_url?: string
 color: string // hex
 connection_address: string
 map: string // "" until the first heartbeat
-access_key: string // SHA-256 hash of the key; the key itself is shown once, when generated
+access_key?: string // SHA-256 hash of the key; the key itself is shown once, when generated. Cleared once used to link
+token_version: number // server JWTs are only accepted while they carry this; bumped on link, unlink and new access key
 last_heartbeat: utc timestamp // when the server last checked in
 linked: boolean // true once the server has connected with its access key
 created_at: utc timestamp
 ```
 
-Keys look like `gnet_` followed by 64 hex characters. Regenerating a key unlinks the server until it links again with the new key.
+Keys look like `gnet_` followed by 64 hex characters. Regenerating a key unlinks the server (revoking its token) until it links again with the new key. The addon's routes and the token are described in [ADDON.md](ADDON.md).
 
 Status, as shown in the admin dashboard: not linked, waiting for heartbeat (linked, no heartbeat yet), online (heartbeat within the last 5 minutes) or offline.
 

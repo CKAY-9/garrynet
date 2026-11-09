@@ -16,7 +16,7 @@ use sqlx::PgPool;
 use crate::{
     config::Config,
     error::ApiError,
-    models::{Permissions, User, Usergroup},
+    models::{Permissions, Server, User, Usergroup},
     state::AppState,
 };
 
@@ -49,14 +49,75 @@ pub fn removal_cookie(config: &Config) -> Cookie<'static> {
 /// Extracts the JWT from `Authorization: Bearer <token>` (used by the Next.js server) or,
 /// failing that, from the auth cookie (direct browser requests).
 fn token_from_request(req: &HttpRequest) -> Option<String> {
-    let bearer = req
-        .headers()
+    bearer_token(req).or_else(|| req.cookie(AUTH_COOKIE).map(|c| c.value().to_owned()))
+}
+
+/// The token in `Authorization: Bearer <token>`.
+fn bearer_token(req: &HttpRequest) -> Option<String> {
+    req.headers()
         .get(header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.strip_prefix("Bearer "))
         .map(|t| t.trim().to_owned())
-        .filter(|t| !t.is_empty());
-    bearer.or_else(|| req.cookie(AUTH_COOKIE).map(|c| c.value().to_owned()))
+        .filter(|t| !t.is_empty())
+}
+
+/// The value of the `Authorization` header, with or without a `Bearer ` prefix. Used for
+/// the access key when a server links.
+pub fn authorization(req: &HttpRequest) -> Option<String> {
+    bearer_token(req).or_else(|| {
+        req.headers()
+            .get(header::AUTHORIZATION)
+            .and_then(|v| v.to_str().ok())
+            .map(|t| t.trim().to_owned())
+            .filter(|t| !t.is_empty())
+    })
+}
+
+/// A linked Garry's Mod server, authenticated by the JWT it got when linking
+/// (`Authorization: Bearer <token>`). Requests with a missing, expired or revoked token, or
+/// from a server that has since been unlinked or deleted, are rejected with 401.
+pub struct AuthServer {
+    pub id: i64,
+    claims: jwt::ServerClaims,
+}
+
+impl FromRequest for AuthServer {
+    type Error = ApiError;
+    type Future = Pin<Box<dyn Future<Output = Result<Self, Self::Error>>>>;
+
+    fn from_request(req: &HttpRequest, _: &mut Payload) -> Self::Future {
+        let state = req.app_data::<web::Data<AppState>>().cloned();
+        let token = bearer_token(req);
+
+        Box::pin(async move {
+            let state =
+                state.ok_or_else(|| ApiError::Internal("AppState not registered".into()))?;
+            let token = token.ok_or(ApiError::Unauthorized)?;
+            let claims = state.jwt.verify_server(&token)?;
+            let id = claims.server_id()?;
+            match Server::token_version(&state.db, id).await? {
+                Some(version) if version == claims.ver => Ok(AuthServer { id, claims }),
+                _ => Err(ApiError::Unauthorized),
+            }
+        })
+    }
+}
+
+impl AuthServer {
+    /// 401 unless the token belongs to server `id` (the one in the request path).
+    pub fn require_id(&self, id: i64) -> Result<(), ApiError> {
+        if self.id == id { Ok(()) } else { Err(ApiError::Unauthorized) }
+    }
+
+    /// A replacement token if the current one is due for rotation.
+    pub fn rotated_token(&self, keys: &jwt::JwtKeys) -> Result<Option<String>, ApiError> {
+        if self.claims.should_rotate() {
+            keys.issue_server(self.id, self.claims.ver).map(Some)
+        } else {
+            Ok(None)
+        }
+    }
 }
 
 /// The authenticated user. Add it as a handler argument to require login; requests

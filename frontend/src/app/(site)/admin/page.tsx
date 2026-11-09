@@ -35,8 +35,7 @@ async function Dashboard() {
           Forum
         </h2>
         <dl className={styles.stats}>
-          {/* TODO: real data once the forum exists (posts over the past week). */}
-          <StatCard label="Posts" detail="Past 7 days" todo />
+          <StatCard label="Posts" value={stats.forum.posts_week} detail="Past 7 days" />
         </dl>
       </section>
 

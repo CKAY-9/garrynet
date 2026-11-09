@@ -178,6 +178,183 @@ a.figureHeader:hover .figureName {
   opacity: 0.85;
 }
 
+.servers {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr));
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  > li {
+    display: flex;
+  }
+}
+
+// Tinted by the server's own color (`--server-color`).
+.server {
+  --server-color: #{$accent};
+
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.85rem;
+  padding: 1rem;
+  border: $border;
+  border-top: 3px solid var(--server-color);
+  border-radius: 0.75rem;
+  background: linear-gradient(
+    160deg,
+    color-mix(in srgb, var(--server-color) 14%, transparent),
+    transparent 65%
+  );
+}
+
+// The splash fills the card, darkened at the bottom so the text stays readable.
+.serverSplash {
+  background-size: cover;
+  background-position: center;
+  color: #fff;
+  box-shadow: inset 0 -12rem 7rem -3rem rgb(0 0 0 / 0.8);
+
+  .serverStatus {
+    background: rgb(0 0 0 / 0.35);
+    backdrop-filter: blur(6px);
+  }
+
+  .serverAddress {
+    background: rgb(0 0 0 / 0.35);
+  }
+}
+
+.serverHeader {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.serverIdentity {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.serverName {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.serverDetails {
+  font-size: 0.85rem;
+  opacity: 0.8;
+  overflow-wrap: anywhere;
+}
+
+.serverStatus {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  opacity: 0.75;
+
+  &.online {
+    color: #2f9e57;
+    background: rgb(47 158 87 / 0.14);
+    opacity: 1;
+
+    .dot {
+      animation: pulse 2s infinite;
+    }
+  }
+}
+
+.dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgb(47 158 87 / 0.6);
+  }
+
+  70% {
+    box-shadow: 0 0 0 0.4rem rgb(47 158 87 / 0);
+  }
+
+  100% {
+    box-shadow: 0 0 0 0 rgb(47 158 87 / 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .serverStatus.online .dot {
+    animation: none;
+  }
+}
+
+.serverDescription {
+  margin: 0;
+  font-size: 0.92rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  opacity: 0.85;
+}
+
+.serverFooter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-top: auto;
+}
+
+.serverAddress {
+  padding: 0.2rem 0.5rem;
+  border-radius: 0.4rem;
+  background: rgb(127 127 127 / 0.12);
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+}
+
+.connect {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.95rem;
+  border-radius: 999px;
+  background: var(--server-color);
+  color: #fff;
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: filter 0.15s, transform 0.15s;
+
+  &:hover {
+    filter: brightness(1.1);
+    transform: translateY(-1px);
+  }
+
+  &:active {
+    transform: scale(0.97);
+  }
+}
+
+.serverSkeleton {
+  min-height: 9rem;
+  max-width: 24rem;
+}
+
 .skeleton {
   border: 0;
   background: rgb(127 127 127 / 0.12);

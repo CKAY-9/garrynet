@@ -7,6 +7,41 @@ use crate::{error::ApiError, models::User};
 /// Standard user tokens are valid for 24 hours.
 pub const USER_TOKEN_TTL: Duration = Duration::hours(24);
 
+/// How long a server token is valid. A server that stays offline for longer has to be
+/// linked again with a new access key.
+pub const SERVER_TOKEN_TTL: Duration = Duration::days(30);
+
+/// Server tokens are rolling: once a token is this old, the next authenticated response
+/// carries a replacement.
+pub const SERVER_TOKEN_ROTATE_AFTER: Duration = Duration::hours(1);
+
+/// `aud` of server tokens. User tokens have none, so neither kind passes for the other.
+const SERVER_AUDIENCE: &str = "garrynet-server";
+
+/// Claims of a token issued to a Garry's Mod server running the addon.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ServerClaims {
+    /// GarryNet server id.
+    pub sub: String,
+    pub aud: String,
+    /// `servers.token_version` when the token was issued; the token is only accepted while
+    /// it still matches.
+    pub ver: i64,
+    pub iat: i64,
+    pub exp: i64,
+}
+
+impl ServerClaims {
+    pub fn server_id(&self) -> Result<i64, ApiError> {
+        self.sub.parse().map_err(|_| ApiError::Unauthorized)
+    }
+
+    /// Whether the token is old enough to be replaced.
+    pub fn should_rotate(&self) -> bool {
+        Utc::now().timestamp() - self.iat >= SERVER_TOKEN_ROTATE_AFTER.num_seconds()
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
     /// GarryNet user id.
@@ -49,6 +84,31 @@ impl JwtKeys {
         let data = decode::<Claims>(token, &self.decoding, &validation)
             .map_err(|_| ApiError::Unauthorized)?;
         data.claims.sub.parse().map_err(|_| ApiError::Unauthorized)
+    }
+
+    /// Issues a token for server `server_id` at `servers.token_version` = `version`.
+    pub fn issue_server(&self, server_id: i64, version: i64) -> Result<String, ApiError> {
+        let now = Utc::now();
+        let claims = ServerClaims {
+            sub: server_id.to_string(),
+            aud: SERVER_AUDIENCE.to_owned(),
+            ver: version,
+            iat: now.timestamp(),
+            exp: (now + SERVER_TOKEN_TTL).timestamp(),
+        };
+        encode(&Header::new(Algorithm::HS256), &claims, &self.encoding)
+            .map_err(|e| ApiError::Internal(format!("failed to sign server JWT: {e}")))
+    }
+
+    /// Validates a server token's signature, audience and expiry. The caller still has to
+    /// check `ver` against the database.
+    pub fn verify_server(&self, token: &str) -> Result<ServerClaims, ApiError> {
+        let mut validation = Validation::new(Algorithm::HS256);
+        validation.leeway = 0;
+        validation.set_audience(&[SERVER_AUDIENCE]);
+        decode::<ServerClaims>(token, &self.decoding, &validation)
+            .map(|data| data.claims)
+            .map_err(|_| ApiError::Unauthorized)
     }
 }
 
@@ -100,5 +160,36 @@ mod tests {
         };
         let token = encode(&Header::default(), &claims, &keys.encoding).unwrap();
         assert!(keys.verify(&token).is_err());
+    }
+
+    #[test]
+    fn server_round_trip() {
+        let keys = JwtKeys::new(SECRET);
+        let claims = keys.verify_server(&keys.issue_server(7, 3).unwrap()).unwrap();
+        assert_eq!(claims.server_id().unwrap(), 7);
+        assert_eq!(claims.ver, 3);
+        assert!(!claims.should_rotate());
+    }
+
+    #[test]
+    fn user_and_server_tokens_are_not_interchangeable() {
+        let keys = JwtKeys::new(SECRET);
+        let user_token = keys.issue(&user()).unwrap();
+        let server_token = keys.issue_server(42, 1).unwrap();
+        assert!(keys.verify_server(&user_token).is_err());
+        assert!(keys.verify(&server_token).is_err());
+    }
+
+    #[test]
+    fn rotates_old_server_tokens() {
+        let issued = Utc::now() - SERVER_TOKEN_ROTATE_AFTER - Duration::seconds(1);
+        let claims = ServerClaims {
+            sub: "1".into(),
+            aud: SERVER_AUDIENCE.into(),
+            ver: 1,
+            iat: issued.timestamp(),
+            exp: (issued + SERVER_TOKEN_TTL).timestamp(),
+        };
+        assert!(claims.should_rotate());
     }
 }

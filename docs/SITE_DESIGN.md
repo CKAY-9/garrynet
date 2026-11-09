@@ -4,6 +4,12 @@ Part of [GarryNet Design](DESIGN.md). Frontend layout and visuals.
 
 The whole site should have a consistent structure of [SIDE NAVIGATION] [CONTENT].
 
+## Home Page
+
+Should display community details (icon, description, name, splash, when applicable).
+Should display key figures.
+Should display any connected servers and a link to connect to them (`steam://`).
+
 ## Profile Page
 
 Should display the user's avatar, name, description, status, when they joined and were last seen, reputation.
@@ -26,7 +32,8 @@ More general redirects are higher up, e.g.,
 1. Home
 2. Forums
 3. Store
-4. Support
+4. Users
+5. Support
 
 User specific redirects are at the bottom, e.g.
 - Profile Preview
@@ -38,6 +45,10 @@ User specific redirects are at the bottom, e.g.
 Instead of being on the side, users now press a hamburger icon which reveals an overlayed navigation.
 
 It should take up the whole screen, have overflow scroll if necessary, and slightly transparent/blur background.
+
+## Users Page
+
+Anyone should be able to grab a couple random users or filter search for them.
 
 ## Themes
 

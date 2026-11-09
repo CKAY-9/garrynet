@@ -12,15 +12,15 @@ import styles from "./AdminNav.module.scss";
 export async function AdminNav() {
   const user = await getCurrentUser();
   if (!user) return null;
-  const allowed = (permission: number) =>
-    hasPermission(user.permissions, Permission.AdminAccess | permission);
-  if (!allowed(Permission.AdminAccess)) return null;
+  if (!hasPermission(user.permissions, Permission.AdminAccess)) return null;
+  const allowed = (permission: number, any = false) =>
+    any ? (user.permissions & permission) !== 0 : hasPermission(user.permissions, permission);
 
   return (
     <nav className={styles.nav} aria-label="Admin">
       <ul className={styles.tabs}>
         {adminPages
-          .filter(({ permission }) => allowed(permission))
+          .filter(({ permission, any }) => allowed(permission, any))
           .map(({ href, label }) => (
             <li key={href}>
               <AdminNavLink href={href}>{label}</AdminNavLink>

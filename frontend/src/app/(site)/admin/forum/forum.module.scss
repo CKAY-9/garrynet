@@ -1,0 +1,154 @@
+$border: 1px solid rgb(127 127 127 / 0.2);
+$danger: #e5484d;
+
+.sections {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.section {
+  border: $border;
+  border-left: 4px solid;
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+.categories {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0 0 0.25rem 1.5rem;
+  list-style: none;
+
+  > .meta {
+    padding: 0.5rem 1rem;
+  }
+}
+
+.item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  padding: 0.65rem 1rem;
+
+  .categories > & {
+    border-top: $border;
+  }
+
+  a {
+    color: inherit;
+    font-weight: 600;
+  }
+}
+
+.itemText {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.meta {
+  font-size: 0.8rem;
+  opacity: 0.65;
+}
+
+.empty {
+  margin: 0;
+  opacity: 0.7;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 0.75rem;
+  align-items: start;
+}
+
+.colorRow {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.colorPicker {
+  flex-shrink: 0;
+  width: 2.5rem;
+  height: 2.3rem;
+  padding: 0.15rem;
+  border: $border;
+  border-radius: 0.4rem;
+  background: none;
+  cursor: pointer;
+}
+
+.checkbox {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding-top: 1.6rem;
+  cursor: pointer;
+
+  > span {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+  }
+
+  input {
+    margin-top: 0.2rem;
+  }
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.deleteWrap {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.danger,
+.dangerConfirm {
+  padding: 0.3rem 0.75rem;
+  border: 1px solid rgb(229 72 77 / 0.5);
+  border-radius: 0.4rem;
+  background: none;
+  color: $danger;
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background-color 0.15s;
+
+  &:hover:not(:disabled) {
+    background: rgb(229 72 77 / 0.1);
+  }
+
+  &:disabled {
+    cursor: default;
+    opacity: 0.5;
+  }
+}
+
+.dangerConfirm {
+  border-color: $danger;
+  background: $danger;
+  color: #fff;
+
+  &:hover:not(:disabled) {
+    background: #c93b40;
+  }
+}

@@ -6,6 +6,10 @@ The forum is the community hub, where users can interact and post about any topi
 
 ## Section
 
+Sections should be rendered on the forum homepage, and should contain all of their categories. There should be clear seperation between sections.
+Section headers should have the name, icon (if applicable), and accent color.
+All of a section's categories are reachable from here.
+
 ```
 id: number
 name: string
@@ -18,6 +22,9 @@ last_updated?: utc timestamp // empty/null if no changes since creation
 ```
 
 ## Category
+
+Categories are collection of threads. Categories belong to sections. Locked categories
+mean no new changes can happen except for unlocking it. 
 
 ```
 id: number
@@ -54,7 +61,25 @@ thread_id: number
 content: string
 created_at: utc timestamp
 edited?: utc timestamp // null/empty if no edit applied
+likes: number[] // list of ids who liked the post
+dislikes: number[] // list of ids who disliked the post
 ```
+
+## Routes
+
+Reading is public. Writing needs a login; sections and categories also need Admin Access.
+
+- GET `/forum`: every section (in display order) with its categories, each with `thread_count`, `post_count` and `latest` (the most recently active thread: `id`, `title`, `last_activity`, `author`), plus `stats` (`threads`, `posts`, `members`, `online`)
+- POST `/forum/sections`: create a section (`name`, `accent`, `icon_url`, `description`, `position`). Requires Admin Access and Section Management
+- DELETE `/forum/sections/{id}`: delete a section and everything in it. Requires Admin Access and Section Management
+- POST `/forum/categories`: create a category (`name`, `section_id`, `description`, `locked`, `position`). Requires Admin Access and Category Management
+- DELETE `/forum/categories/{id}`: delete a category and its threads. Requires Admin Access and Category Management
+- GET `/forum/categories/{id}`: `{ category, section, threads }`. Threads list stickies first, then most recently active; each includes `author` (`id`, `username`, `avatar_url`) and `replies`
+- POST `/forum/categories/{id}/threads`: start a thread (`title`, max 128 characters; `content`, the first post). Requires Site Access and User Posts; 423 if the category is locked
+- GET `/forum/threads/{id}`: `{ category, section, thread, posts }`. The thread's first post comes first, then replies oldest first; each post includes `author`
+- POST `/forum/threads/{id}/posts`: reply (`content`, max 20,000 characters). Requires Site Access and User Posts; 423 if the thread or its category is locked. Bumps the thread's `last_activity`
+
+Names are at most 64 characters, and positions must be -1 or greater. A blank `accent` defaults to `#3b82f6`.
 
 ## Pages
 
@@ -64,8 +89,8 @@ The homepage of the Forum. Just include all the different sections with their ca
 
 ### /forum/{category_id}
 
-Navigating here will reveal the category page which contains threads related to it.
+Navigating here will reveal the category page which contains threads related to it. Users who can post get a "New thread" button (unless the category is locked); logged-out users are prompted to log in.
 
 ### /forum/{category_id}/{thread_id}
 
-Thread page. Shows all posts in the thread, with the principal post/author being at the top.
+Thread page. Shows all posts in the thread, with the principal post/author being at the top, then a reply box for users who can post (unless the thread or category is locked). A thread opened under the wrong category id redirects to the right one.

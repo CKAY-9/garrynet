@@ -8,7 +8,7 @@ Part of [GarryNet Design](DESIGN.md).
 
 1. As a general user, I should see the side navigation and the community's splash page.
    - The splash page shows the community name, description, background, and general information.
-2. I should be able to navigate to `/forums`, `/store`, `/players`, and `/loading-screen`, and see a "Login with Steam" button.
+2. I should be able to navigate to `/forum`, `/store`, `/players`, and `/loading-screen`, and see a "Login with Steam" button.
 
 **Viewing Profile**
 

@@ -10,6 +10,7 @@ local BASE = "garrynet/"
 local FILES = {
 	"sh_config.lua",
 	"sh_util.lua",
+	"sh_status.lua",
 
 	"sv_storage.lua",
 	"sv_http.lua",

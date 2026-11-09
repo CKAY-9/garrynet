@@ -71,3 +71,16 @@ time_played: number // in minutes; the addon updates it every minute
 Player Punishments are in-game punishments such as kicks, bans, jails, and warnings.
 
 To be implemented.
+
+## User Searching
+
+Should be implemented on the frontend in `/users/search`. More details in Part of [Site Design](SITE_DESIGN.md).
+
+- GET `/users/search?name=&last_activity=&id=&usergroup=&sort_by=`: returns all users according to the filter,
+    - name: username to match
+    - last_activity: when the user was last seen
+    - id: numerical id of the user (this is a one user match)
+    - usergroup: do the users belong to this group
+    - sort_by: `reputation+`, `reputation-`, `posts`
+
+ 

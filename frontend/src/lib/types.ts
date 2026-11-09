@@ -27,6 +27,10 @@ export type AdminStats = {
     /** Users currently ONLINE. */
     active: number;
   };
+  forum: {
+    /** Posts made in the past 7 days. */
+    posts_week: number;
+  };
 };
 
 export type UsergroupEffect = "halo" | "rainbow" | "flash" | "none";
@@ -154,3 +158,104 @@ export type ServerWithAccessKey = {
   server: Server;
   access_key: string;
 };
+
+/** A top-level grouping on the forum homepage. */
+export type ForumSection = {
+  id: number;
+  name: string;
+  /** Hex color. */
+  accent: string;
+  icon_url: string | null;
+  /** Max 256 characters. */
+  description: string;
+  /** Listed highest to lowest; -1 is always last. */
+  position: number;
+  created_at: string;
+  last_updated: string | null;
+};
+
+export type ForumCategory = {
+  id: number;
+  name: string;
+  section_id: number;
+  /** Max 256 characters. */
+  description: string;
+  /** Prevents new threads from being created. */
+  locked: boolean;
+  /** Same ordering rules as `ForumSection`. */
+  position: number;
+  created_at: string;
+  last_updated: string | null;
+};
+
+export type ForumThread = {
+  id: number;
+  author_id: number;
+  category_id: number;
+  title: string;
+  /** Id of the thread's first post. */
+  thread_post_id: number;
+  created_at: string;
+  last_activity: string;
+  /** Prevents any changes to the thread. */
+  locked: boolean;
+  /** Listed before non-sticky threads. */
+  sticky: boolean;
+  /** Users can copy this thread as a template for new threads. */
+  allow_template: boolean;
+};
+
+export type ForumPost = {
+  id: number;
+  author_id: number;
+  thread_id: number;
+  content: string;
+  created_at: string;
+  edited: string | null;
+  /** Ids of users who liked the post. */
+  likes: number[];
+  dislikes: number[];
+};
+
+/** The author fields the forum displays next to threads and posts. */
+export type ForumAuthor = Pick<User, "id" | "username" | "avatar_url">;
+
+/** A category with its activity, as listed on the forum homepage. */
+export type ForumCategorySummary = ForumCategory & {
+  thread_count: number;
+  post_count: number;
+  /** The most recently active thread, if any. */
+  latest: { id: number; title: string; last_activity: string; author: ForumAuthor } | null;
+};
+
+/** The forum homepage, from `GET /forum`. Sections and categories are in display order. */
+export type ForumHome = {
+  sections: (ForumSection & { categories: ForumCategorySummary[] })[];
+  stats: { threads: number; posts: number; members: number; online: number };
+};
+
+/** A thread as listed in its category. */
+export type ForumThreadSummary = ForumThread & { author: ForumAuthor; replies: number };
+
+/** A category page, from `GET /forum/categories/{id}`. Stickies first, then most recently active. */
+export type ForumCategoryPage = {
+  category: ForumCategory;
+  section: ForumSection;
+  threads: ForumThreadSummary[];
+};
+
+export type ForumPostWithAuthor = ForumPost & { author: ForumAuthor };
+
+/** A thread page, from `GET /forum/threads/{id}`. The first post, then replies oldest first. */
+export type ForumThreadPage = {
+  category: ForumCategory;
+  section: ForumSection;
+  thread: ForumThread;
+  posts: ForumPostWithAuthor[];
+};
+
+/** Sent to `POST /forum/sections`. */
+export type ForumSectionDetails = Pick<ForumSection, "name" | "accent" | "icon_url" | "description" | "position">;
+
+/** Sent to `POST /forum/categories`. */
+export type ForumCategoryDetails = Pick<ForumCategory, "name" | "section_id" | "description" | "locked" | "position">;

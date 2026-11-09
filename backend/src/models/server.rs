@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
-use sqlx::PgPool;
+use sqlx::{PgConnection, PgPool};
 
 /// A Garry's Mod server, minus its `access_key`, so it's safe to send to anyone.
 #[derive(Clone, Debug, Serialize, sqlx::FromRow)]
@@ -138,18 +138,82 @@ impl Server {
         .await
     }
 
-    /// Replaces the access key and unlinks the server, so it must link again with the new
-    /// key. Returns `None` if the server doesn't exist.
+    /// Replaces the access key and unlinks the server, revoking its tokens, so it must link
+    /// again with the new key. Returns `None` if the server doesn't exist.
     pub async fn reset_access_key(
         db: &PgPool,
         id: i64,
         access_key: &AccessKey,
     ) -> sqlx::Result<Option<Server>> {
         sqlx::query_as(with_columns!(
-            "UPDATE servers SET access_key = $2, linked = false WHERE id = $1 RETURNING"
+            "UPDATE servers
+             SET access_key = $2, linked = false, token_version = token_version + 1
+             WHERE id = $1
+             RETURNING"
         ))
         .bind(id)
         .bind(&access_key.hash)
+        .fetch_optional(db)
+        .await
+    }
+
+    /// Links the server whose access key is `key`: marks it linked, revokes the key (it's
+    /// single-use) and any earlier tokens. Returns the server and the token version to issue
+    /// its JWT for, or `None` if no server has that key.
+    pub async fn link(db: &PgPool, key: &str) -> sqlx::Result<Option<(Server, i64)>> {
+        let row: Option<(i64, i64)> = sqlx::query_as(
+            "UPDATE servers
+             SET access_key = NULL, linked = true, token_version = token_version + 1
+             WHERE access_key = $1
+             RETURNING id, token_version",
+        )
+        .bind(AccessKey::hash(key))
+        .fetch_optional(db)
+        .await?;
+        let Some((id, version)) = row else {
+            return Ok(None);
+        };
+        Ok(Server::find_by_id(db, id).await?.map(|server| (server, version)))
+    }
+
+    /// Unlinks the server at its own request: revokes its tokens and any access key. An
+    /// admin has to generate a new key before it can link again.
+    pub async fn unlink(db: &PgPool, id: i64) -> sqlx::Result<()> {
+        sqlx::query(
+            "UPDATE servers
+             SET access_key = NULL, linked = false, token_version = token_version + 1
+             WHERE id = $1",
+        )
+        .bind(id)
+        .execute(db)
+        .await?;
+        Ok(())
+    }
+
+    /// The token version server JWTs must carry, or `None` if the server doesn't exist or
+    /// isn't linked.
+    pub async fn token_version(db: &PgPool, id: i64) -> sqlx::Result<Option<i64>> {
+        sqlx::query_scalar("SELECT token_version FROM servers WHERE id = $1 AND linked")
+            .bind(id)
+            .fetch_optional(db)
+            .await
+    }
+
+    /// Records a heartbeat: the server's current gamemode and map, checked in now.
+    pub async fn heartbeat(
+        db: &mut PgConnection,
+        id: i64,
+        gamemode: &str,
+        map: &str,
+    ) -> sqlx::Result<Option<Server>> {
+        sqlx::query_as(with_columns!(
+            "UPDATE servers SET gamemode = $2, map = $3, last_heartbeat = now()
+             WHERE id = $1
+             RETURNING"
+        ))
+        .bind(id)
+        .bind(gamemode)
+        .bind(map)
         .fetch_optional(db)
         .await
     }

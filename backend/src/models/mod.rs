@@ -1,4 +1,5 @@
 pub mod community;
+pub mod forum;
 pub mod loading_screen;
 pub mod permissions;
 pub mod player;

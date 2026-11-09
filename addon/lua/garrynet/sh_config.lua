@@ -18,9 +18,8 @@ GarryNet.Config = {
 	AccessKeyLength = 69,
 }
 
--- Backend base URL, e.g. "https://example.com/api". No trailing slash.
+-- Backend base URL: wherever the GarryNet backend is reachable, e.g. "https://api.example.com".
 -- Set in server.cfg: garrynet_api_url "https://..."
--- TODO: confirm the real public API prefix of the backend deployment.
 if SERVER then
 	CreateConVar("garrynet_api_url", "", FCVAR_PROTECTED + FCVAR_ARCHIVE, "Base URL of the GarryNet backend.")
 end
@@ -33,4 +32,5 @@ GarryNet.Net = {
 	Unlink = "GarryNet.Unlink", -- client -> server: unlink requested
 	ForceSync = "GarryNet.ForceSync", -- client -> server: force an interval update
 	Result = "GarryNet.Result", -- server -> client: result of Link/Unlink/ForceSync (success, message)
+	Notify = "GarryNet.Notify", -- server -> client: chat notice for superadmins (linked, out of sync, ...)
 }

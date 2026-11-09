@@ -10,7 +10,7 @@ import styles from "./SideNav.module.scss";
 
 const links = [
   { href: "/", label: "Home", icon: <HomeIcon /> },
-  { href: "/forums", label: "Forums", icon: <ForumsIcon /> },
+  { href: "/forum", label: "Forums", icon: <ForumsIcon /> },
   { href: "/store", label: "Store", icon: <StoreIcon /> },
   { href: "/support", label: "Support", icon: <SupportIcon /> },
 ];
