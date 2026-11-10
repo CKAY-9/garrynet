@@ -14,7 +14,10 @@ use std::{
 use sqlx::PgPool;
 use tokio::sync::mpsc;
 
-use crate::models::{Permissions, User, Usergroup};
+use crate::{
+    models::{Permissions, User, Usergroup},
+    notify,
+};
 
 const HELP: &str = "\
 commands:
@@ -177,6 +180,7 @@ async fn usergroup_add(db: &PgPool, user: &User, group: &Usergroup) -> Result<St
         group.id,
         Usergroup::permissions_for_user(db, user.id).await?
     );
+    notify::usergroup_membership(db, group.id, user.id, true, None).await;
     Ok(String::new())
 }
 
@@ -201,6 +205,7 @@ async fn usergroup_remove(
             describe(user)
         );
     }
+    notify::usergroup_membership(db, group.id, user.id, false, None).await;
     Ok(String::new())
 }
 

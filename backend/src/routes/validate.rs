@@ -1,5 +1,5 @@
-//! Request-body validation shared by the routes. Each helper trims its input and returns
-//! a 400 naming the field when it's invalid.
+//! Request validation shared by the routes. Each helper trims its input and returns a 400
+//! naming the field when it's invalid.
 
 use crate::error::ApiError;
 
@@ -58,6 +58,20 @@ pub fn hex_color(field: &str, value: &str) -> Result<String, ApiError> {
         return Err(bad(format!("{field} must be a hex color like #3b82f6, got {value:?}")));
     }
     Ok(value.to_ascii_lowercase())
+}
+
+/// `None` for a missing or blank value, else the trimmed value. For query strings, so a
+/// plain HTML form can submit all its fields.
+pub fn present(value: Option<String>) -> Option<String> {
+    value
+        .map(|v| v.trim().to_owned())
+        .filter(|v| !v.is_empty())
+}
+
+/// Parses an enum from its SCREAMING_SNAKE_CASE name (case-insensitively), as serde would.
+pub fn parse_enum<T: serde::de::DeserializeOwned>(field: &str, value: &str) -> Result<T, ApiError> {
+    serde_json::from_value(serde_json::Value::String(value.to_ascii_uppercase()))
+        .map_err(|_| bad(format!("{field} is not a known {field}: {value:?}")))
 }
 
 #[cfg(test)]

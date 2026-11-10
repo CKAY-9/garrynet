@@ -686,6 +686,39 @@ export type StoredFile = Attachment & {
   completed_at: string | null;
 };
 
+// Notifications (docs/NOTIFICATIONS.md)
+
+export type NotificationType = "SUPPORT" | "STORE" | "FORUM" | "ACCOUNT" | "SYSTEM";
+
+/** One of the current user's notifications. `title` and `body` are plain text: never render them as Markdown or HTML. */
+export type Notification = {
+  id: number;
+  user_id: number;
+  type: NotificationType;
+  /** At most 128 characters. */
+  title: string;
+  /** At most 512 characters. */
+  body: string | null;
+  /** Site-relative path starting with a single "/", or `null` when there is nothing to link to (e.g. a deleted thread). */
+  url: string | null;
+  /** Bumped when a repeat collapses into this notification. */
+  created_at: string;
+  /** `null` while unread. */
+  read_at: string | null;
+};
+
+/** A page of `GET /notifications`, newest first. `next_cursor` is `null` on the last page. */
+export type NotificationPage = {
+  notifications: Notification[];
+  next_cursor: string | null;
+};
+
+/** The `/notifications` filters, from the URL. */
+export type NotificationFilters = {
+  unread: boolean;
+  type: NotificationType | "";
+};
+
 /** Where and how to send a pending file's bytes. */
 export type UploadTarget = {
   method: "PUT";

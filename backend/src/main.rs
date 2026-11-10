@@ -2,6 +2,7 @@ mod auth;
 mod config;
 mod error;
 mod models;
+mod notify;
 mod routes;
 mod shell;
 mod state;
@@ -16,7 +17,10 @@ use sqlx::{PgPool, postgres::PgPoolOptions};
 use crate::{
     auth::jwt::JwtKeys,
     config::Config,
-    models::{Community, File, Usergroup, store::Purchase, support::SupportTicket},
+    models::{
+        Community, File, Usergroup, notification::Notification, store::Purchase,
+        support::SupportTicket,
+    },
     state::AppState,
     storage::Storage,
     stripe::Stripe,
@@ -82,6 +86,7 @@ async fn main() -> std::io::Result<()> {
     spawn_ticket_auto_close(state.db.clone());
     spawn_purchase_sweeper(state.db.clone());
     spawn_upload_sweeper(state.db.clone(), state.storage.clone());
+    spawn_notification_sweeper(state.db.clone());
 
     HttpServer::new(move || {
         App::new()
@@ -124,9 +129,29 @@ fn spawn_ticket_auto_close(db: PgPool) {
         loop {
             tick.tick().await;
             match SupportTicket::auto_close(&db).await {
-                Ok(0) => {}
-                Ok(n) => log::info!("automatically closed {n} inactive support ticket(s)"),
+                Ok(closed) if closed.is_empty() => {}
+                Ok(closed) => {
+                    log::info!("automatically closed {} inactive support ticket(s)", closed.len());
+                    for ticket in &closed {
+                        notify::ticket_auto_closed(&db, ticket).await;
+                    }
+                }
                 Err(e) => log::error!("failed to auto-close support tickets: {e}"),
+            }
+        }
+    });
+}
+
+/// Applies notification retention (see `Notification::sweep`), once now and then every hour.
+fn spawn_notification_sweeper(db: PgPool) {
+    actix_web::rt::spawn(async move {
+        let mut tick = tokio::time::interval(Duration::from_secs(60 * 60));
+        loop {
+            tick.tick().await;
+            match Notification::sweep(&db).await {
+                Ok(0) => {}
+                Ok(n) => log::info!("deleted {n} old notification(s)"),
+                Err(e) => log::error!("failed to sweep notifications: {e}"),
             }
         }
     });

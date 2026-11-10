@@ -4,6 +4,8 @@ $breakpoint: 52rem;
 .nav {
   position: sticky;
   top: 0;
+  // Above the content, so the notifications flyout (fixed, inside the nav) isn't covered by it.
+  z-index: 20;
   display: flex;
   flex-direction: column;
   justify-content: space-between;

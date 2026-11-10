@@ -17,6 +17,7 @@ use crate::{
             ReceiptView, StoreDiscount, StoreItem, StoreSummary,
         },
     },
+    notify,
     state::AppState,
     stripe::{CheckoutParams, Event},
 };
@@ -291,10 +292,13 @@ async fn handle_event(state: &AppState, event: &Event) -> Result<(), ApiError> {
             }
             let payment_intent = str_field("payment_intent").unwrap_or_else(|| format!("session:{session}"));
             match Purchase::mark_paid(&state.db, &session, &payment_intent).await? {
-                Some((receipt, fulfillment)) => log::info!(
-                    "purchase paid: receipt {} for user {} ({} {}), fulfillment {} for server {}",
-                    receipt.id, receipt.buyer_id, receipt.price, receipt.currency, fulfillment.id, fulfillment.server_id
-                ),
+                Some((receipt, fulfillment)) => {
+                    log::info!(
+                        "purchase paid: receipt {} for user {} ({} {}), fulfillment {} for server {}",
+                        receipt.id, receipt.buyer_id, receipt.price, receipt.currency, fulfillment.id, fulfillment.server_id
+                    );
+                    notify::purchase_paid(&state.db, &receipt).await;
+                }
                 None => log::debug!("checkout session {session} already handled or unknown ({})", event.id),
             }
         }
@@ -337,6 +341,10 @@ async fn settle(state: &AppState, payment_intent: Option<String>, status: Receip
             receipt.status,
             fulfillment.map_or("none".to_owned(), |f| f.id.to_string())
         );
+        // Disputes aren't a user notification; staff handle them from the admin pages.
+        if receipt.status == ReceiptStatus::Refunded {
+            notify::purchase_refunded(&state.db, &receipt, None).await;
+        }
     }
     Ok(())
 }
