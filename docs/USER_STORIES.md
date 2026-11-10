@@ -131,3 +131,24 @@ users can copy it
 follow it's structure
 2. Clicking a post with templating enabled should redirect to a new thread form, with
 title and content filled in. I can edit content and title, then post.
+
+## Admin
+
+**Add a User to a Usergroup**
+1. As an admin with equivalent permission and `Usergroup Management`, I want to add a user to a usergroup
+2. Going to `/admin/usergroups/{ID}` should have a members section.
+3. I click "Add user" and am shown a search box with 10 matching results
+4. I click the user and they're added to the group
+
+**Viewing Users in Usergroup**
+1. As an admin with equivalent permission and `Usergroup Management`, I want to view all users of a usergroup,
+so that I can manage their membership
+2. Going to `/admin/usergroups/{ID}` should list all users in a members section.
+3. Each user has their name and icon, and an "X" (close) inline with them.
+4. There should be a filter input to refine results (name or id)
+
+**Removing User from Usergroup**
+1. As an admin with equivalent permission and `Usergroup Management`, I want to remove a user from a usergroup
+2. I view all members of a usergroup
+3. I find the user and click the "X" next to their name
+4. This removes them from the group

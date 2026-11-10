@@ -22,7 +22,7 @@ The two default usergroups are `user` and `admin`.
 - Admin: has all permissions
 - User: all basic permissions and can access site
 
-To upgrade a user to a specific usergroup, use the interactive shell on the backend with the command `usergroup add [USER_ID] [GROUP_NAME/ID]`.
+Members are added and removed from the group's page under `/admin/usergroups` (see [Managing Usergroups](#managing-usergroups)), or with the interactive shell on the backend with the command `usergroup add [USER_ID] [GROUP_NAME/ID]`.
 
 To remove: `usergroup remove [USER_ID] [GROUP_NAME/ID]`
 
@@ -41,12 +41,16 @@ Usergroups are created, edited and deleted from `/admin/usergroups` (see [ADMIN.
 - POST `/admin/usergroups`: `{ name, effect, color, permissions, icon_url? }`; returns the new group (201). 409 if the name is taken.
 - PUT `/admin/usergroups/{id}`: same body; replaces the group's details and bumps `last_updated`.
 - DELETE `/admin/usergroups/{id}`: deletes the group; its members leave it (204).
+- GET `/admin/usergroups/{id}/members`: the group's members, `{ id, username, avatar_url, added_at }[]`, by name.
+- POST `/admin/usergroups/{id}/members`: `{ user_id }`; adds the user and returns the member (201). 404 if the user doesn't exist, 409 if they're already a member.
+- DELETE `/admin/usergroups/{id}/members/{user_id}`: removes the user (204). 404 if they aren't a member.
 
 Rules:
 - `name`: 1-32 characters, unique regardless of case, not only digits (the shell takes a group id or name).
 - `color`: hex (`#rgb`, `#rrggbb` or `#rrggbbaa`). `icon_url`: an http(s) URL or blank.
 - `permissions`: only documented bits. Editors can only grant or revoke permissions they hold themselves (403 otherwise), so Usergroup Management can't be used to escalate.
-- A change that would remove the editor's own `Admin Access` or `Usergroup Management` (editing or deleting one of their groups) is refused with 400.
+- Adding or removing members requires holding every permission the group grants (403 otherwise), so a moderator can't put anyone, themselves included, into `admin`.
+- A change that would remove the editor's own `Admin Access` or `Usergroup Management` (editing or deleting one of their groups, or leaving one) is refused with 400.
 - Changes are logged.
 
 ## Permission Bits

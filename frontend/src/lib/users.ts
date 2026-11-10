@@ -3,7 +3,7 @@ import { connection } from "next/server";
 import axios from "axios";
 import { backend } from "./backend";
 import { authHeaders } from "./auth";
-import type { Usergroup, UsergroupBadge, UserProfile, UserSearchFilters, UserSearchResult } from "./types";
+import type { Usergroup, UsergroupBadge, UsergroupMember, UserProfile, UserSearchFilters, UserSearchResult } from "./types";
 
 /**
  * The public profile of the user with GarryNet id `id`, or `null` if there is no such
@@ -81,4 +81,13 @@ export async function getAdminUsergroup(id: string): Promise<Usergroup | null> {
     if (axios.isAxiosError(err) && err.response?.status === 404) return null;
     throw err;
   }
+}
+
+/** A usergroup's members with names and avatars, by name. Same requirements as `getAdminUsergroups`. */
+export async function getUsergroupMembers(id: number): Promise<UsergroupMember[]> {
+  await connection();
+  const { data } = await backend.get<UsergroupMember[]>(`/admin/usergroups/${id}/members`, {
+    headers: await authHeaders(),
+  });
+  return data;
 }

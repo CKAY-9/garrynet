@@ -18,7 +18,10 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .service(get_full)
         .service(create)
         .service(update)
-        .service(remove);
+        .service(remove)
+        .service(list_members)
+        .service(add_member)
+        .service(remove_member);
 }
 
 /// Like the other admin pages, managing usergroups needs Admin Access as well as the
@@ -119,6 +122,73 @@ async fn remove(
     Ok(HttpResponse::NoContent().finish())
 }
 
+/// A usergroup's members with their names and avatars. Requires Admin Access and Usergroup
+/// Management.
+#[get("/admin/usergroups/{id}/members")]
+async fn list_members(
+    state: web::Data<AppState>,
+    user: AuthUser,
+    id: web::Path<i64>,
+) -> Result<HttpResponse, ApiError> {
+    user.require(&state.db, MANAGE).await?;
+    let members = Usergroup::members(&state.db, id.into_inner())
+        .await?
+        .ok_or(ApiError::NotFound("usergroup"))?;
+    Ok(HttpResponse::Ok().json(members))
+}
+
+#[derive(Deserialize)]
+struct AddMemberBody {
+    user_id: i64,
+}
+
+/// Adds a user to a usergroup; returns the new member (201). Requires Admin Access and
+/// Usergroup Management, and every permission the group grants.
+#[post("/admin/usergroups/{id}/members")]
+async fn add_member(
+    state: web::Data<AppState>,
+    user: AuthUser,
+    id: web::Path<i64>,
+    body: web::Json<AddMemberBody>,
+) -> Result<HttpResponse, ApiError> {
+    let editor = editor(&state, &user).await?;
+    let group_id = id.into_inner();
+    let user_id = body.user_id;
+    let member = Usergroup::add_member_as(&state.db, group_id, user_id, editor)
+        .await
+        .map_err(edit_error)?;
+    log::info!(
+        "user {} added user {user_id} to usergroup {group_id}; their effective permissions are now {}",
+        user.0.id,
+        Usergroup::permissions_for_user(&state.db, user_id).await?
+    );
+    Ok(HttpResponse::Created().json(member))
+}
+
+/// Removes a user from a usergroup (204). Requires Admin Access and Usergroup Management,
+/// and every permission the group grants. Refused if it would lock the editor out.
+#[delete("/admin/usergroups/{id}/members/{user_id}")]
+async fn remove_member(
+    state: web::Data<AppState>,
+    user: AuthUser,
+    path: web::Path<(i64, i64)>,
+) -> Result<HttpResponse, ApiError> {
+    let editor = editor(&state, &user).await?;
+    let (group_id, user_id) = path.into_inner();
+    Usergroup::remove_member_as(&state.db, group_id, user_id, editor)
+        .await
+        .map_err(edit_error)?;
+    let permissions = Usergroup::permissions_for_user(&state.db, user_id).await?;
+    log::info!(
+        "user {} removed user {user_id} from usergroup {group_id}; their effective permissions are now {permissions}",
+        user.0.id,
+    );
+    if !permissions.contains(Permissions::SITE_ACCESS) {
+        log::warn!("user {user_id} no longer has Site Access and can only use support pages");
+    }
+    Ok(HttpResponse::NoContent().finish())
+}
+
 /// Checks the user may manage usergroups and describes them for the model's checks.
 async fn editor(state: &AppState, user: &AuthUser) -> Result<Editor, ApiError> {
     let permissions = user.require(&state.db, MANAGE).await?;
@@ -133,12 +203,15 @@ fn edit_error(e: EditError) -> ApiError {
     match e {
         EditError::NotFound => ApiError::NotFound("usergroup"),
         EditError::NameTaken => ApiError::Conflict("a usergroup with this name"),
+        EditError::UserNotFound => ApiError::NotFound("user"),
+        EditError::AlreadyMember => ApiError::Conflict("this membership"),
+        EditError::NotMember => ApiError::NotFound("usergroup member"),
         EditError::DefaultGroup => {
             bad("the default user and admin groups can't be renamed or deleted".to_owned())
         }
         EditError::NotHeld(missing) => ApiError::Forbidden(missing.names().collect::<Vec<_>>().join(", ")),
         EditError::LocksOut => bad(
-            "this would remove your own Admin Access or Usergroup Control, locking you out of usergroups"
+            "this would remove your own Admin Access or Usergroup Management, locking you out of usergroups"
                 .to_owned(),
         ),
         EditError::Database(e) => e.into(),

@@ -3,13 +3,14 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { UsergroupChip } from "@/components/UsergroupChip";
 import { requirePermission } from "@/lib/auth";
-import { Permission, isDefaultGroup } from "@/lib/permissions";
+import { Permission, hasPermission, isDefaultGroup } from "@/lib/permissions";
 import { dateFormat, fullFormat, timeAgo } from "@/lib/time";
-import { getAdminUsergroup } from "@/lib/users";
+import { getAdminUsergroup, getUsergroupMembers } from "@/lib/users";
 import styles from "../../admin.module.scss";
 import servers from "../../servers/servers.module.scss";
 import { DeleteUsergroup } from "./DeleteUsergroup";
 import { UsergroupEditor } from "./UsergroupEditor";
+import { UsergroupMembers } from "./UsergroupMembers";
 
 export default function UsergroupPage({ params }: PageProps<"/admin/usergroups/[usergroup_id]">) {
   return (
@@ -26,6 +27,7 @@ async function UsergroupSettings({ id }: { id: string }) {
   const user = await requirePermission(Permission.AdminAccess | Permission.UsergroupManagement);
   const group = await getAdminUsergroup(id);
   if (!group) notFound();
+  const members = await getUsergroupMembers(group.id);
 
   return (
     <>
@@ -67,6 +69,19 @@ async function UsergroupSettings({ id }: { id: string }) {
           </div>
         </dl>
         <UsergroupEditor group={group} held={user.permissions} />
+      </section>
+
+      <section className={styles.section} aria-labelledby="members-heading">
+        <h2 id="members-heading" className={styles.sectionTitle}>
+          Members <span className={servers.id}>{members.length}</span>
+        </h2>
+        <UsergroupMembers
+          groupId={group.id}
+          groupName={group.name}
+          members={members}
+          viewerId={user.id}
+          canEdit={hasPermission(user.permissions, group.permissions)}
+        />
       </section>
 
       {!isDefaultGroup(group.name) && (

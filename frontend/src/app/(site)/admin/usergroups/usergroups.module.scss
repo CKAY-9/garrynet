@@ -122,3 +122,173 @@
   font-size: 0.75rem;
   opacity: 0.55;
 }
+
+// Members
+
+.members {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.memberTools {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.addUser {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.75rem;
+  border: 1px solid rgb(59 130 246 / 0.35);
+  border-radius: 0.6rem;
+  background: rgb(59 130 246 / 0.05);
+}
+
+.results {
+  margin: 0;
+  padding: 0.25rem;
+  list-style: none;
+  border: 1px solid rgb(127 127 127 / 0.2);
+  border-radius: 0.5rem;
+  background: var(--background);
+
+  button {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    padding: 0.4rem 0.6rem;
+    border: 0;
+    border-radius: 0.35rem;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+
+    &:hover:not(:disabled) {
+      background: rgb(127 127 127 / 0.12);
+    }
+
+    &:disabled {
+      cursor: default;
+      opacity: 0.6;
+    }
+  }
+
+  li {
+    padding: 0.4rem 0.6rem;
+    font-size: 0.85rem;
+    opacity: 0.7;
+
+    &:has(button) {
+      padding: 0;
+      opacity: 1;
+    }
+  }
+}
+
+.resultState {
+  margin-left: auto;
+  font-size: 0.8rem;
+  opacity: 0.7;
+}
+
+.memberBox {
+  overflow: hidden;
+  border: 1px solid rgb(127 127 127 / 0.2);
+  border-radius: 0.6rem;
+}
+
+.memberFilter {
+  padding: 0.5rem;
+  border-bottom: 1px solid rgb(127 127 127 / 0.15);
+  background: rgb(127 127 127 / 0.05);
+}
+
+.memberEmpty {
+  margin: 0;
+  padding: 0.75rem;
+}
+
+.memberList {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.member {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.5rem 0.75rem;
+
+  & + & {
+    border-top: 1px solid rgb(127 127 127 / 0.15);
+  }
+
+  &[aria-busy="true"] {
+    opacity: 0.5;
+  }
+}
+
+.memberName {
+  display: flex;
+  flex: 1;
+  align-items: baseline;
+  gap: 0.4rem;
+  min-width: 0;
+
+  a {
+    overflow: hidden;
+    color: inherit;
+    font-weight: 600;
+    text-decoration: none;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+}
+
+.memberSince {
+  font-size: 0.8rem;
+  opacity: 0.6;
+
+  @media (max-width: 480px) {
+    display: none;
+  }
+}
+
+.removeMember {
+  flex-shrink: 0;
+  width: 1.9rem;
+  height: 1.9rem;
+  border: 1px solid transparent;
+  border-radius: 0.4rem;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 1.15rem;
+  line-height: 1;
+  opacity: 0.6;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, opacity 0.15s;
+
+  &:hover:not(:disabled) {
+    border-color: rgb(229 72 77 / 0.4);
+    background: rgb(229 72 77 / 0.1);
+    color: #e5484d;
+    opacity: 1;
+  }
+
+  &:disabled {
+    cursor: default;
+  }
+}
