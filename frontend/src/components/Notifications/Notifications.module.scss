@@ -1,0 +1,458 @@
+$border: 1px solid rgb(127 127 127 / 0.2);
+$accent: #3b82f6;
+$danger: #e5484d;
+// Must match the side navigation's breakpoint (SideNav.module.scss).
+$breakpoint: 52rem;
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.typeIcon {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  background: rgb(127 127 127 / 0.14);
+
+  svg {
+    width: 16px;
+    height: 16px;
+  }
+}
+
+.meta {
+  font-size: 0.78rem;
+  opacity: 0.65;
+}
+
+.unreadTitle {
+  font-weight: 700;
+}
+
+// Bell (side navigation)
+
+.bell {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 0.25rem;
+}
+
+// Reset the button so it matches the navigation links (`.link` in SideNav.module.scss).
+.bellButton {
+  width: 100%;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+}
+
+.badge {
+  min-width: 1.35rem;
+  margin-left: auto;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  background: $danger;
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.3;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+// Dropdown: a flyout beside the sidebar on wide screens, inline in the overlay on narrow ones.
+
+.panel {
+  position: fixed;
+  left: var(--flyout-left, 15.5rem);
+  bottom: var(--flyout-bottom, 1rem);
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  width: 22rem;
+  max-width: calc(100vw - var(--flyout-left, 15.5rem) - 0.5rem);
+  max-height: min(30rem, calc(100vh - 1rem));
+  overflow-y: auto;
+  padding: 0.35rem;
+  border: $border;
+  border-radius: 0.75rem;
+  background: var(--background);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.25);
+}
+
+@media (max-width: $breakpoint) {
+  .panel {
+    position: static;
+    width: auto;
+    max-width: none;
+    max-height: none;
+    margin-top: 0.25rem;
+    box-shadow: none;
+    background: rgb(127 127 127 / 0.06);
+  }
+}
+
+.panelNote {
+  margin: 0;
+  padding: 0.85rem 0.75rem;
+  font-size: 0.9rem;
+  opacity: 0.75;
+}
+
+.textButton {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.recent {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.recentRow {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  width: 100%;
+  padding: 0.55rem 0.6rem;
+  border: 0;
+  border-radius: 0.5rem;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.15s;
+
+  &:hover {
+    background: rgb(127 127 127 / 0.12);
+  }
+}
+
+.recentText {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.recentTitle {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 0.9rem;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.dot {
+  flex-shrink: 0;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: $accent;
+}
+
+.viewAll {
+  display: block;
+  margin-top: 0.25rem;
+  padding: 0.55rem;
+  border-top: $border;
+  color: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-align: center;
+  text-decoration: none;
+  border-radius: 0 0 0.5rem 0.5rem;
+
+  &:hover {
+    background: rgb(127 127 127 / 0.12);
+  }
+}
+
+// /notifications page
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  max-width: 52rem;
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+
+  h1 {
+    margin: 0;
+    font-size: clamp(1.5rem, 3.5vw, 2rem);
+  }
+
+  p {
+    margin: 0;
+    opacity: 0.75;
+  }
+}
+
+.filters {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.tabs {
+  display: flex;
+  gap: 0.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-bottom: $border;
+}
+
+.tab {
+  display: block;
+  padding: 0.6rem 0.9rem;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  color: inherit;
+  font-weight: 500;
+  text-decoration: none;
+  opacity: 0.7;
+  transition: opacity 0.15s, border-color 0.15s, background 0.15s;
+
+  &:hover {
+    opacity: 1;
+    background: rgb(127 127 127 / 0.1);
+  }
+}
+
+.activeTab {
+  opacity: 1;
+  border-bottom-color: currentColor;
+}
+
+.typeChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.typeChip {
+  display: inline-block;
+  padding: 0.3rem 0.8rem;
+  border: $border;
+  border-radius: 999px;
+  color: inherit;
+  font-size: 0.85rem;
+  text-decoration: none;
+  transition: background 0.15s, border-color 0.15s;
+
+  &:hover {
+    background: rgb(127 127 127 / 0.12);
+  }
+}
+
+.activeChip {
+  border-color: currentColor;
+  background: rgb(127 127 127 / 0.18);
+  font-weight: 600;
+}
+
+.listSection {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.bulk {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.confirm {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+}
+
+.tool {
+  padding: 0.3rem 0.7rem;
+  border: $border;
+  border-radius: 0.35rem;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 0.82rem;
+  white-space: nowrap;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    background: rgb(127 127 127 / 0.12);
+  }
+
+  &:disabled {
+    cursor: default;
+    opacity: 0.45;
+  }
+}
+
+.dangerTool {
+  border-color: rgb(229 72 77 / 0.6);
+  color: $danger;
+
+  &:hover:not(:disabled) {
+    background: rgb(229 72 77 / 0.12);
+  }
+}
+
+.status {
+  margin: 0;
+  font-size: 0.85rem;
+  opacity: 0.8;
+
+  &:empty {
+    display: none;
+  }
+}
+
+.error {
+  color: $danger;
+  opacity: 1;
+}
+
+.rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: $border;
+  border-radius: 0.75rem;
+  overflow: hidden;
+
+  li + li {
+    border-top: $border;
+  }
+}
+
+.row {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: start;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem;
+  transition: background 0.15s;
+
+  &:has(.rowLink):hover {
+    background: rgb(127 127 127 / 0.08);
+  }
+}
+
+.unreadRow {
+  background: rgb(59 130 246 / 0.07);
+  box-shadow: inset 3px 0 0 $accent;
+}
+
+.rowMain {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.rowTitle {
+  overflow-wrap: anywhere;
+}
+
+// The whole row follows the link; the tools sit above it.
+.rowLink {
+  color: inherit;
+  text-decoration: none;
+
+  &::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+  }
+
+  &:focus-visible {
+    outline: none;
+
+    &::after {
+      outline: 2px solid $accent;
+      outline-offset: -2px;
+      border-radius: inherit;
+    }
+  }
+}
+
+.rowBody {
+  margin: 0;
+  font-size: 0.88rem;
+  opacity: 0.8;
+  overflow-wrap: anywhere;
+  white-space: pre-line;
+}
+
+.rowTools {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.35rem;
+}
+
+@media (max-width: 36rem) {
+  .row {
+    grid-template-columns: auto 1fr;
+  }
+
+  .rowTools {
+    grid-column: 2;
+    justify-content: flex-start;
+  }
+}
+
+.empty {
+  padding: 1.25rem 1.1rem;
+  opacity: 0.65;
+}
+
+.loadMore {
+  align-self: center;
+  padding: 0.45rem 1.2rem;
+  font-size: 0.9rem;
+}

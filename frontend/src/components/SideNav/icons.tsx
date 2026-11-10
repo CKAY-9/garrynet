@@ -68,6 +68,30 @@ export const AdminIcon = () => (
   </Icon>
 );
 
+export const BellIcon = () => (
+  <Icon>
+    <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
+    <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+  </Icon>
+);
+
+/** One person; the ACCOUNT notification type. */
+export const AccountIcon = () => (
+  <Icon>
+    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+    <circle cx="12" cy="7" r="4" />
+  </Icon>
+);
+
+/** Megaphone; the SYSTEM notification type (announcements). */
+export const SystemIcon = () => (
+  <Icon>
+    <path d="M3 11v2a1 1 0 0 0 1 1h3l6 5V5L7 10H4a1 1 0 0 0-1 1z" />
+    <path d="M17 9a4 4 0 0 1 0 6" />
+    <path d="M19.5 6.5a8 8 0 0 1 0 11" />
+  </Icon>
+);
+
 export const LogoutIcon = () => (
   <Icon>
     <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
