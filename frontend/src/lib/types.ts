@@ -61,6 +61,18 @@ export type Usergroup = UsergroupBadge & {
   last_updated: string | null;
 };
 
+/** A member of a usergroup, from `GET /admin/usergroups/{id}/members`. */
+export type UsergroupMember = {
+  id: number;
+  username: string;
+  avatar_url: string;
+  /** When they joined the group. */
+  added_at: string;
+};
+
+/** A usergroup's editable fields, sent to `POST`/`PUT /admin/usergroups`. */
+export type UsergroupDetails = Pick<Usergroup, "name" | "effect" | "color" | "permissions" | "icon_url">;
+
 /**
  * A user's public profile, from `GET /users/{id}`. Excludes the email; `status` accounts
  * for inactivity (idle after 5 minutes, offline after 15).

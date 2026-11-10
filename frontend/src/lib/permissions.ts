@@ -40,3 +40,11 @@ export const PERMISSION_LABELS: readonly { flag: number; label: string }[] = [
   { flag: Permission.StoreManagement, label: "Store Management" },
   { flag: Permission.StoreFinance, label: "Store Finance" },
 ];
+
+/**
+ * The usergroups GarryNet creates itself (see `DEFAULT_GROUPS` in the backend). Matched by
+ * name, so they can't be renamed or deleted.
+ */
+export function isDefaultGroup(name: string): boolean {
+  return ["user", "admin"].includes(name.toLowerCase());
+}
