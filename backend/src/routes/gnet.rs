@@ -1,14 +1,18 @@
 //! Routes used by the GarryNet Garry's Mod addon (docs/ADDON.md). A server links once with
 //! its access key, then authenticates with the JWT it gets back.
 
-use actix_web::{HttpRequest, HttpResponse, post, web};
+use actix_web::{HttpRequest, HttpResponse, get, post, web};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::{
     auth::{AuthServer, authorization},
     error::ApiError,
-    models::{Server, UserPlayer, player::PlayerSession},
+    models::{
+        Server, UserPlayer,
+        player::PlayerSession,
+        store::{AckResult, Fulfillment},
+    },
     routes::validate::{bad, text},
     state::AppState,
 };
@@ -20,7 +24,9 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .app_data(web::JsonConfig::default().limit(256 * 1024))
             .service(link)
             .service(heartbeat)
-            .service(unlink),
+            .service(unlink)
+            .service(fulfillments)
+            .service(acknowledge_fulfillment),
     );
 }
 
@@ -152,6 +158,67 @@ fn sessions(players: Vec<PlayerBody>, now: DateTime<Utc>) -> Result<Vec<PlayerSe
 
 fn truncate(value: &str, max: usize) -> String {
     value.trim().chars().take(max).collect()
+}
+
+#[derive(Deserialize)]
+struct FulfillmentQuery {
+    /// Only this player's fulfillments (e.g. when they join).
+    steam_id: Option<String>,
+}
+
+/// Store fulfillments the server has to act on (docs/STORE.md): pending ones to deliver,
+/// failed ones to retry, and revoked ones whose rewards it delivered and must take back.
+/// Oldest first. `?steam_id=` narrows it to one player.
+#[get("/{id}/fulfillments")]
+async fn fulfillments(
+    state: web::Data<AppState>,
+    auth: AuthServer,
+    id: web::Path<i64>,
+    query: web::Query<FulfillmentQuery>,
+) -> Result<HttpResponse, ApiError> {
+    auth.require_id(id.into_inner())?;
+    let steam_id = query.into_inner().steam_id.map(|s| s.trim().to_owned()).filter(|s| !s.is_empty());
+    let work = Fulfillment::work_for_server(&state.db, auth.id, steam_id.as_deref()).await?;
+    Ok(HttpResponse::Ok().json(work))
+}
+
+#[derive(Deserialize)]
+struct AckBody {
+    result: AckResult,
+    /// What went wrong, for `failed`.
+    #[serde(default)]
+    error: String,
+}
+
+const MAX_ERROR: usize = 1000;
+
+/// The addon reports what it did with a fulfillment: `fulfilled`, `failed` (with `error`;
+/// retried later) or `revoked` (the rewards of a revoked fulfillment were taken back).
+/// Idempotent: repeating a report changes nothing. Returns the fulfillment as it stands.
+#[post("/{id}/fulfillments/{fulfillment_id}/ack")]
+async fn acknowledge_fulfillment(
+    state: web::Data<AppState>,
+    auth: AuthServer,
+    path: web::Path<(i64, i64)>,
+    body: web::Json<AckBody>,
+) -> Result<HttpResponse, ApiError> {
+    let (id, fulfillment_id) = path.into_inner();
+    auth.require_id(id)?;
+    let body = body.into_inner();
+    let error = truncate(&body.error, MAX_ERROR);
+    let error = (body.result == AckResult::Failed).then_some(if error.is_empty() { "unknown error" } else { error.as_str() });
+    let fulfillment = Fulfillment::acknowledge(&state.db, auth.id, fulfillment_id, body.result, error)
+        .await?
+        .ok_or(ApiError::NotFound("fulfillment"))?;
+    match body.result {
+        AckResult::Fulfilled => log::info!("server {} fulfilled store purchase {fulfillment_id} for {}", auth.id, fulfillment.steam_id),
+        AckResult::Failed => log::warn!(
+            "server {} failed to fulfill store purchase {fulfillment_id} (attempt {}): {}",
+            auth.id, fulfillment.attempts, fulfillment.last_error.as_deref().unwrap_or("")
+        ),
+        AckResult::Revoked => log::info!("server {} revoked the rewards of store purchase {fulfillment_id}", auth.id),
+    }
+    Ok(HttpResponse::Ok().json(fulfillment))
 }
 
 /// Unlinks the server at the addon's request, revoking its token.

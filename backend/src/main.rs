@@ -5,6 +5,7 @@ mod models;
 mod routes;
 mod shell;
 mod state;
+mod stripe;
 
 use std::{sync::Arc, time::Duration};
 
@@ -14,8 +15,9 @@ use sqlx::{PgPool, postgres::PgPoolOptions};
 use crate::{
     auth::jwt::JwtKeys,
     config::Config,
-    models::{Community, Usergroup, support::SupportTicket},
+    models::{Community, Usergroup, store::Purchase, support::SupportTicket},
     state::AppState,
+    stripe::Stripe,
 };
 
 #[actix_web::main]
@@ -52,16 +54,23 @@ async fn main() -> std::io::Result<()> {
         .build()
         .map_err(std::io::Error::other)?;
 
+    let stripe = config.stripe.clone().map(|stripe| Stripe::new(http.clone(), stripe));
+    if stripe.is_none() {
+        log::warn!("STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET are not set: the store can't take payments");
+    }
+
     let state = AppState {
         db,
         jwt: JwtKeys::new(&config.jwt_secret),
         config: Arc::new(config.clone()),
         http,
+        stripe,
     };
 
     log::info!("GarryNet backend listening on http://{}", config.bind_addr);
     shell::spawn(state.db.clone());
     spawn_ticket_auto_close(state.db.clone());
+    spawn_purchase_sweeper(state.db.clone());
 
     HttpServer::new(move || {
         App::new()
@@ -107,6 +116,27 @@ fn spawn_ticket_auto_close(db: PgPool) {
                 Ok(0) => {}
                 Ok(n) => log::info!("automatically closed {n} inactive support ticket(s)"),
                 Err(e) => log::error!("failed to auto-close support tickets: {e}"),
+            }
+        }
+    });
+}
+
+/// Checkout Sessions expire after 30 minutes; a pending purchase this old has missed its
+/// `checkout.session.expired` webhook.
+const STALE_PURCHASE_MINUTES: i64 = 90;
+
+/// Cancels store purchases whose Checkout Session has long expired without Stripe telling
+/// us, returning their reserved stock. Every 10 minutes. A purchase that was in fact paid is
+/// reinstated when its webhook finally arrives (see `Purchase::mark_paid`).
+fn spawn_purchase_sweeper(db: PgPool) {
+    actix_web::rt::spawn(async move {
+        let mut tick = tokio::time::interval(Duration::from_secs(10 * 60));
+        loop {
+            tick.tick().await;
+            match Purchase::cancel_stale(&db, STALE_PURCHASE_MINUTES).await {
+                Ok(cancelled) if cancelled.is_empty() => {}
+                Ok(cancelled) => log::info!("cancelled {} stale store purchase(s)", cancelled.len()),
+                Err(e) => log::error!("failed to sweep stale store purchases: {e}"),
             }
         }
     });

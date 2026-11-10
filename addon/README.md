@@ -3,7 +3,7 @@
 Garry's Mod addon that connects a server to a GarryNet deployment. See [docs/ADDON.md](../docs/ADDON.md),
 [docs/SERVERS.md](../docs/SERVERS.md) and [docs/USER_STORIES.md](../docs/USER_STORIES.md) for the design.
 
-**Status:** linking, unlinking and the per-minute heartbeat (server details, player records) work. Store requests and config changes are not implemented yet.
+**Status:** linking, unlinking, the per-minute heartbeat (server details, player records) and store delivery work. Config changes are not implemented yet.
 
 ## Install
 
@@ -20,6 +20,24 @@ To link, register the server on the website (Admin > Servers), then a superadmin
 Superadmins get a chat notice once it's linked and once the first heartbeat is accepted; the website then shows the server as
 Online. From the server console: `garrynet_link <key>`, `garrynet_status`, `garrynet_sync`, `garrynet_unlink`.
 
+## Store
+
+Purchases from the website's store are delivered automatically: the addon checks for new ones every minute and when a
+player joins, and buyers get a chat notice. Players who are offline get their purchase the next time they join.
+
+- **Usergroups** are set with ULX when it's installed (persisted by ULib), otherwise with `SetUserGroup` and re-applied on
+  every join. Timed usergroups stack and end on time. Only players in `user` are moved into a store usergroup, so staff
+  are never demoted; edit `OverridableGroups` in `sh_config.lua` to change that. `superadmin`, `admin`, `owner` and
+  `developer` are never granted. The usergroup must exist in ULX, or the delivery fails and superadmins are told.
+- **DarkRP money** is added once the player's DarkRP data has loaded.
+- **Weapons** are permanent and given back on every spawn.
+- **Refunds** take usergroups and weapons back; money stays.
+
+Other admin mods can plug in with `GarryNet.Rewards.SetUsergroupAdapter` (see `sv_store_rewards.lua`). Console:
+`garrynet_store_sync` delivers now, `garrynet_store_grants <SteamID64>` lists a player's store usergroups and weapons.
+State is kept in `garrysmod/data/garrynet/store_grants.json` and `store_pending.json`; don't delete them while purchases
+are being delivered.
+
 ## Layout
 
 ```
@@ -33,6 +51,8 @@ lua/garrynet/
   sv_http.lua               HTTP wrapper for /gnet/server/... requests, JWT rotation
   sv_link.lua               link (access key -> JWT) and unlink
   sv_interval.lua           player sessions, per-minute heartbeat, force sync
+  sv_store_rewards.lua      store rewards: usergroup adapters (ULX/plain), timed groups, weapons, revoking
+  sv_store.lua              store delivery: fetch the queue, apply, acknowledge
   sv_net.lua                net handlers for the menu (superadmin-checked)
   sv_commands.lua           !gnet chat command, garrynet_* console commands
   cl_net.lua                client net handlers and senders
@@ -46,5 +66,7 @@ Add new files to the `FILES` list in `lua/autorun/garrynet.lua`; the prefix (`sh
 - `POST /gnet/server/link`: access key in the authorization header, returns the server id and JWT
 - `POST /gnet/server/{SERVER_ID}/heartbeat`: gamemode, map and players; may return a rotated JWT
 - `POST /gnet/server/{SERVER_ID}/unlink`: revokes the JWT
+- `GET /gnet/server/{SERVER_ID}/fulfillments`: store purchases to deliver or take back
+- `POST /gnet/server/{SERVER_ID}/fulfillments/{ID}/ack`: reports `fulfilled`, `failed` or `revoked`
 
 Payloads are documented in [docs/ADDON.md](../docs/ADDON.md#backend-routes).

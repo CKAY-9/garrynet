@@ -16,6 +16,8 @@ local FILES = {
 	"sv_http.lua",
 	"sv_link.lua",
 	"sv_interval.lua",
+	"sv_store_rewards.lua",
+	"sv_store.lua",
 	"sv_net.lua",
 	"sv_commands.lua",
 

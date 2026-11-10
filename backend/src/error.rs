@@ -6,8 +6,10 @@ pub enum ApiError {
     #[error("authentication required")]
     Unauthorized,
 
+    /// What the user lacks: the names of the missing permissions, or a role such as
+    /// "message author".
     #[error("missing permission: {0}")]
-    Forbidden(&'static str),
+    Forbidden(String),
 
     #[error("{0} not found")]
     NotFound(&'static str),
@@ -29,6 +31,19 @@ pub enum ApiError {
     #[error("steam is unavailable: {0}")]
     SteamUnavailable(String),
 
+    /// Stripe refused a request we made (e.g. an amount below its minimum). The message is
+    /// Stripe's and is safe to show.
+    #[error("payment provider rejected the request: {0}")]
+    StripeRejected(String),
+
+    /// Stripe couldn't be reached or answered unexpectedly.
+    #[error("stripe is unavailable: {0}")]
+    StripeUnavailable(String),
+
+    /// A feature that needs configuration this deployment doesn't have (e.g. Stripe keys).
+    #[error("{0} is not configured on this GarryNet")]
+    NotConfigured(&'static str),
+
     #[error(transparent)]
     Database(#[from] sqlx::Error),
 
@@ -46,7 +61,9 @@ impl ResponseError for ApiError {
             Self::Conflict(_) => StatusCode::CONFLICT,
             Self::Locked(_) => StatusCode::LOCKED,
             Self::SteamVerification(_) => StatusCode::UNAUTHORIZED,
-            Self::SteamUnavailable(_) => StatusCode::BAD_GATEWAY,
+            Self::StripeRejected(_) => StatusCode::UNPROCESSABLE_ENTITY,
+            Self::SteamUnavailable(_) | Self::StripeUnavailable(_) => StatusCode::BAD_GATEWAY,
+            Self::NotConfigured(_) => StatusCode::SERVICE_UNAVAILABLE,
             Self::Database(_) | Self::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
@@ -58,6 +75,8 @@ impl ResponseError for ApiError {
             // Don't leak internals (SQL errors etc.) to clients.
             match self {
                 Self::SteamUnavailable(_) => "steam is unavailable, try again later".to_owned(),
+                Self::StripeUnavailable(_) => "payments are unavailable, try again later".to_owned(),
+                Self::NotConfigured(_) => self.to_string(),
                 _ => "internal server error".to_owned(),
             }
         } else {

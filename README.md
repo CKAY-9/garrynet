@@ -2,7 +2,7 @@
     <img src="./assets/logo.svg" width=250 height=250 />
     </br></br>
     <h1>GarryNet</h1>
-    <p>GarryNet is an all-in-one web solution for Garry's Mod community. Everything from loading screens to server-syncing to store functionality.</p>
+    <p>GarryNet is an all-in-one web solution for Garry's Mod communities. Everything from loading screens to server-syncing to store functionality.</p>
 </div>
 
 ## Features

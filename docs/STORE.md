@@ -1,0 +1,299 @@
+# Store
+
+Part of [GarryNet Design](DESIGN.md).
+
+**GarryNet prohibits any usage of the store that involves gambling, loot boxes, or other
+similar luck-based mechanics.** Item names and descriptions must not imply random or
+chance-based rewards. Store managers are responsible for enforcing this on their items.
+
+The store page allows players to buy in-game items and rewards for specific servers.
+The store uses Stripe on the backend to handle payments and other associated services:
+GarryNet opens a hosted [Checkout Session](https://docs.stripe.com/payments/checkout) for each
+purchase and learns the outcome from Stripe's webhook.
+
+## Configuration
+
+Environment variables (set both or neither; without them the store can be browsed and managed,
+but checkout answers 503 and item pages say purchases aren't set up):
+
+- `STRIPE_SECRET_KEY`: the account's secret key (`sk_live_...`, `sk_test_...` or a restricted key).
+- `STRIPE_WEBHOOK_SECRET`: the signing secret of a webhook endpoint pointed at
+  `BACKEND_URL/stripe/webhook`. Signatures are always verified; unsigned requests are rejected.
+  Subscribe it to `checkout.session.completed`, `checkout.session.async_payment_succeeded`,
+  `checkout.session.async_payment_failed`, `checkout.session.expired`, `charge.refunded` and
+  `charge.dispute.created`. Locally, `stripe listen --forward-to localhost:8080/stripe/webhook`.
+- `STRIPE_TAX` (optional, default `false`): whether Checkout asks Stripe Tax to add tax. Whether
+  Stripe Tax is enabled is a deployment decision.
+
+No publishable key is needed: Checkout is hosted by Stripe, so no Stripe JavaScript runs on the
+frontend. Refund policy and terms of sale should be linked from each item store page (the store
+message supports plain text; put the links in the community's external links or an FAQ).
+
+## Store Page
+
+`/store` lists the servers that have an enabled item store. Logged-in users also get a
+"My purchases" tab (`/store/purchases`). Users with Store Management see links to the admin pages.
+
+## Eligibility
+
+- Logged-out users can browse stores and items, but cannot buy.
+- Buyers must be logged in with a linked Steam ID. The Steam ID is captured at purchase time.
+- Users without `Site Access` (banned) cannot buy.
+- Items that are unavailable or sold out, or that the buyer has bought `max_per_user` times
+  (paid or pending), can't be bought. The item page says why.
+
+## Item Stores
+
+Each registered Garry's Mod server can have at most one Item Store. These items can
+be bought by players to give in-game rewards.
+
+```
+id: number
+server_id: number // unique, one store per server
+enabled: boolean // if false, hidden from /store and nothing can be bought
+currency: string // ISO 4217, lowercase (e.g. "usd"); applies to every item in the store
+override_name?: string // by default item stores use the server name
+store_message?: string // shown at the top of the item store page
+grantable_usergroups: string[] // allowlist of Garry's Mod usergroups items may grant; default empty
+created_at: utc timestamp
+last_updated?: utc timestamp
+```
+
+`grantable_usergroups` can only be edited by users with `Elevated Control`. This stops a store manager
+from creating an item that grants a privileged rank such as `superadmin`.
+
+Deleting a server deletes its store, items, pending purchases and fulfillments. Receipts are kept
+(see below). Stores themselves are never deleted on their own; disable one instead.
+
+## Store Discounts
+
+Item Stores are able to have discounts across the entire store. These discounts are additive
+to pre-existing individual item discounts.
+
+```
+id: number
+store_id: number
+discount: number // 0-100 (e.g. 25 = 25% off)
+message: string
+created_at: utc timestamp
+last_updated?: utc timestamp
+starts_at?: utc timestamp
+ends_at?: utc timestamp // if left empty, it's indefinite
+active: boolean // whether now is within starts_at/ends_at; computed when read, not stored
+```
+
+**Discount calculation**
+
+1. Sum the item's `discount` and the `discount` of all active store discounts.
+2. Cap the total at 100.
+3. `final_price = round(price * (100 - total) / 100)`, rounded to the nearest minor unit.
+
+Items are returned with `total_discount` and `final_price` already computed. A total of 100% makes an
+item free, which Stripe can't process: checkout answers 400 until the discount is adjusted.
+
+## Store Item
+
+Store Items are individual items that can be bought by players.
+
+```
+id: number
+store_id: number
+name: string
+short_description: string // plain
+full_description: string // markdown; may be empty
+image_url?: string
+sort_order: number // default = 0, ascending
+created_at: utc timestamp
+last_updated?: utc timestamp
+available: boolean // if false, listed but no one can buy it
+archived: boolean // soft delete; hidden everywhere but kept for receipts and fulfillment
+price: number // integer, minor units of the store currency (e.g. cents)
+discount: number // 0-100, default 0
+starting_stock?: number // limited release items; null = unlimited
+remaining_stock?: number // excludes reserved stock
+max_per_user?: number // e.g. 1 for one-time items; counts paid and pending purchases
+all_time_purchases: number // default = 0, only incremented when a purchase is paid
+rewards: Reward[]
+```
+
+Prices are owned by GarryNet. The final price is calculated at checkout and passed to Stripe
+with inline `price_data`, so no Stripe Price needs to be created or kept in sync.
+
+Removing an item archives it. Items with receipts are never hard deleted. Changing
+`starting_stock` moves `remaining_stock` by the same amount (never below zero), so units already
+sold stay sold.
+
+### Rewards
+
+```
+{ type: "usergroup", usergroup: string, duration_seconds?: number } // must be in the store's grantable_usergroups; permanent if no duration
+{ type: "darkrp_money", amount: number }
+{ type: "weapon", class: string } // permanent weapon
+```
+
+An item must have at least one reward (at most 20). Rewards are validated when the item is saved:
+a `usergroup` must be grantable by the store, and `darkrp_money` is only valid when the server's
+reported gamemode contains "DarkRP" (a server that hasn't sent a heartbeat yet is trusted).
+
+## Purchases and Stock
+
+A Purchase is one checkout attempt.
+
+```
+id: number
+store_id: number
+item_id: number
+buyer_id: number
+steam_id: string // the buyer's SteamID64 at purchase time
+status: "PENDING" | "PAID" | "CANCELLED"
+stripe_checkout_session_id?: string // unique
+stripe_payment_intent_id?: string
+quantity: number // always 1
+list_price: number, discount_percentage: number, price: number, currency: string
+rewards: Reward[] // snapshot of the item's rewards
+stock_reserved: boolean // a unit of limited stock was taken for this purchase
+created_at: utc timestamp
+completed_at?: utc timestamp
+```
+
+1. The buyer starts checkout. GarryNet creates a `PENDING` purchase and a Stripe Checkout Session
+   (30 minutes to pay) and sends the buyer to it.
+2. If the item has limited stock, one unit is reserved while the item row is locked, so the last
+   unit can't be sold twice and `max_per_user` can't be exceeded by parallel checkouts. If none is
+   left, checkout fails. If Stripe refuses to open the session, the purchase is cancelled at once.
+3. `checkout.session.completed` (with `payment_status` paid) or `checkout.session.async_payment_succeeded`:
+   the purchase becomes `PAID`, a Receipt is written, `all_time_purchases` is incremented, and a
+   Fulfillment is created.
+4. `checkout.session.expired`, `checkout.session.async_payment_failed`, or the buyer backing out of
+   Checkout (which lands on the frontend's `/store/checkout/cancel`): the purchase becomes
+   `CANCELLED` and the reserved stock is released. Backing out also expires the Stripe session.
+5. Pending purchases older than 90 minutes are cancelled by a sweeper every 10 minutes, in case
+   Stripe's expiry webhook never arrived. A purchase that turns out to have been paid after all is
+   reinstated when its webhook comes.
+
+Webhook handling is idempotent. Events are deduplicated using the unique Stripe ids on the Receipt
+and the purchase's status, so Stripe may redeliver any event.
+
+## Item Fulfillment
+
+A player might not be in-game or in the correct server, so we need to track fulfillment.
+
+```
+id: number
+receipt_id: number
+buyer_id: number
+steam_id: string
+item_id?: number // null once the item was deleted with its server
+server_id: number
+rewards: Reward[] // snapshot at time of purchase; later item edits do not change it
+status: "PENDING" | "FULFILLED" | "FAILED" | "REVOKED"
+attempts: number // default = 0
+last_error?: string
+created_at: utc timestamp
+fulfilled_at?: utc timestamp
+revoked_at?: utc timestamp
+revocation_applied_at?: utc timestamp // when the addon confirmed it took the rewards back
+```
+
+**Delivery**
+
+- The server addon fetches its outstanding fulfillments using its rolling JWT, both when a player joins
+  (`?steam_id=`) and periodically while they are connected.
+- The addon applies the rewards, then acknowledges the fulfillment through an idempotent endpoint.
+  Acknowledging twice has no effect.
+- If applying fails, the addon reports the error. `attempts` and `last_error` are updated and the
+  fulfillment is offered again, up to 20 attempts.
+- A revoked fulfillment whose rewards were delivered is offered to the addon until it acknowledges
+  taking them back.
+- The addon's side (usergroup adapters, stacking timed usergroups, protecting staff groups, exactly-once
+  delivery) is described in [ADDON.md](ADDON.md#delivery-in-the-addon).
+
+## Receipt
+
+Receipts are financial records: they outlive their item, store and server (the names are kept).
+
+```
+id: number
+stripe_checkout_session_id: string // unique
+stripe_payment_intent_id: string // unique
+buyer_id: number
+item_id?: number // null once the item was deleted with its server
+item_name: string
+store_id?: number
+server_id?: number
+store_name: string // the store's name at purchase time
+quantity: number // default = 1
+status: "PAID" | "REFUNDED" | "DISPUTED"
+purchased_at: utc timestamp
+list_price: number // minor units, before discounts
+discount_percentage: number // total percentage applied
+price: number // minor units, amount charged (before any tax Stripe added)
+currency: string
+status_changed_at?: utc timestamp
+```
+
+## Refunds and Disputes
+
+- `charge.refunded` (for a full refund) sets the Receipt to `REFUNDED`. `charge.dispute.created` sets it to `DISPUTED`.
+- Either one sets the Fulfillment to `REVOKED`. If it was already fulfilled, the addon removes the
+  granted usergroups and weapons on its next sync. Money rewards are not clawed back.
+- Refunds are issued by users with `Store Finance` from `/admin/store/receipts`, which refunds the
+  payment through Stripe and revokes the fulfillment immediately.
+- Refunded stock is not automatically returned to `remaining_stock`.
+
+## Routes
+
+Everything is JSON; errors are `{ "error": "..." }`. "Manage" means Admin Access and Store Management;
+"Finance" means Admin Access and Store Finance.
+
+**Public**
+
+- GET `/store`: every enabled store with its `server`, `item_count` and `store_discount`
+- GET `/store/{store_id}`: an enabled store with its `server`, active `discounts` and unarchived `items` (priced); 404 if disabled
+- GET `/store/{store_id}/items/{item_id}`: `{ store, server, item, buyer }`; `buyer` (`{ purchased, can_buy, reason }`) is present when logged in
+
+**Buyers** (login required)
+
+- POST `/store/{store_id}/items/{item_id}/checkout`: starts a purchase, returns `{ purchase_id, url }` (201). Needs Site Access. 400 sold out / limit reached / free item, 423 unavailable, 422 Stripe refused, 503 Stripe not configured
+- POST `/store/purchases/{purchase_id}/cancel`: cancels the buyer's own pending purchase, returns it
+- GET `/store/purchases`: the buyer's receipts, newest first, each with `buyer` and `fulfillment`
+
+**Stripe**
+
+- POST `/stripe/webhook`: `Stripe-Signature` required; 400 if invalid or older than 5 minutes
+
+**Manage**
+
+- GET `/admin/store`: every store (Manage or Finance)
+- POST `/admin/store`: `{ server_id, enabled?, currency?, override_name?, store_message? }`; 409 if the server has a store
+- GET `/admin/store/{id}`: the store with its `server`, every `discounts` and unarchived `items`
+- PUT `/admin/store/{id}`: `{ enabled, currency, override_name, store_message }`
+- PUT `/admin/store/{id}/grantable-usergroups`: `{ grantable_usergroups }`; also needs Elevated Control
+- POST `/admin/store/{id}/items`, PUT `/admin/store/{id}/items/{item_id}`: `name`, `short_description`, `full_description`, `image_url`, `sort_order`, `available`, `price`, `discount`, `starting_stock`, `max_per_user`, `rewards`
+- DELETE `/admin/store/{id}/items/{item_id}`: archives the item (204)
+- POST `/admin/store/{id}/discounts`, PUT `/admin/store/{id}/discounts/{discount_id}`: `{ discount, message, starts_at, ends_at }`
+- DELETE `/admin/store/{id}/discounts/{discount_id}`
+
+**Finance**
+
+- GET `/admin/store/receipts?status=&store=&buyer=`: receipts, newest first (at most 500); blank filters are ignored
+- POST `/admin/store/receipts/{id}/refund`: full refund through Stripe; 400 unless the receipt is paid
+
+**Addon** (server JWT; see [ADDON.md](ADDON.md))
+
+- GET `/gnet/server/{id}/fulfillments?steam_id=`: fulfillments to deliver, retry or revoke, oldest first
+- POST `/gnet/server/{id}/fulfillments/{fulfillment_id}/ack`: `{ result: "fulfilled" | "failed" | "revoked", error? }`
+
+The admin dashboard's store statistics (`GET /admin/stats`) are `store.purchases_week` and
+`store.income_week` (per currency, excluding refunds).
+
+## Frontend
+
+- `/store`, `/store/{id}`, `/store/{id}/items/{id}`: browsing; the item page's buy button opens Stripe
+  Checkout, or explains why buying isn't possible. Stripe sends buyers back to `/store/purchases?paid=1`
+  or `/store/checkout/cancel?purchase={id}`.
+- `/store/purchases`: receipts with delivery status.
+- `/admin/store`: stores, create a store (Manage); link to receipts (Finance).
+- `/admin/store/{id}`: settings, grantable usergroups (editable with Elevated Control), items, discounts.
+- `/admin/store/{id}/items/new`, `/admin/store/{id}/items/{id}`: the item editor, including rewards, and archiving.
+- `/admin/store/receipts`: receipts with filters and refunds (Finance).

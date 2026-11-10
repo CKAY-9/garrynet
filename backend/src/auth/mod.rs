@@ -147,14 +147,19 @@ impl FromRequest for AuthUser {
 }
 
 impl AuthUser {
-    /// The user's effective permissions, or 403 unless they include every flag in
-    /// `required`.
+    /// The user's effective permissions, or 403 (naming the missing flags) unless they
+    /// include every flag in `required`.
     pub async fn require(&self, db: &PgPool, required: Permissions) -> Result<Permissions, ApiError> {
         let permissions = Usergroup::permissions_for_user(db, self.0.id).await?;
         if permissions.contains(required) {
             Ok(permissions)
         } else {
-            Err(ApiError::Forbidden(required.name()))
+            let missing: Vec<&str> = Permissions::FLAGS
+                .iter()
+                .filter(|(flag, _)| required.contains(*flag) && !permissions.contains(*flag))
+                .map(|(_, name)| *name)
+                .collect();
+            Err(ApiError::Forbidden(missing.join(", ")))
         }
     }
 }

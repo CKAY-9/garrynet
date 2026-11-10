@@ -26,9 +26,14 @@ impl Permissions {
     pub const COMMUNITY_MANAGEMENT: Self = Self(0x800);
     /// Can see and respond to every support ticket, and manage FAQs.
     pub const SUPPORT_TEAM: Self = Self(0x1000);
+    /// Manages item stores, their items and discounts (not a store's grantable
+    /// usergroups, which need Elevated Control).
+    pub const STORE_MANAGEMENT: Self = Self(0x2000);
+    /// Sees receipts and revenue, and issues refunds.
+    pub const STORE_FINANCE: Self = Self(0x4000);
 
     /// Every permission bit, with its display name.
-    pub const FLAGS: [(Self, &'static str); 13] = [
+    pub const FLAGS: [(Self, &'static str); 15] = [
         (Self::SITE_ACCESS, "Site Access"),
         (Self::USER_POSTS, "User Posts"),
         (Self::THREAD_MANAGEMENT, "Thread Management"),
@@ -42,6 +47,8 @@ impl Permissions {
         (Self::SERVER_MANAGEMENT, "Server Management"),
         (Self::COMMUNITY_MANAGEMENT, "Community Management"),
         (Self::SUPPORT_TEAM, "Support Team"),
+        (Self::STORE_MANAGEMENT, "Store Management"),
+        (Self::STORE_FINANCE, "Store Finance"),
     ];
 
     pub const ALL: Self = {
@@ -114,7 +121,7 @@ mod tests {
 
     #[test]
     fn all_covers_every_documented_bit() {
-        assert_eq!(Permissions::ALL.0, 0x1FFF);
+        assert_eq!(Permissions::ALL.0, 0x7FFF);
     }
 
     #[test]

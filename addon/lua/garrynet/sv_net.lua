@@ -57,16 +57,26 @@ function GarryNet.SendResult(ply, success, message)
 	net.Send(ply)
 end
 
+local function SendNotice(recipients, message, success)
+	net.Start(GarryNet.Net.Notify)
+	net.WriteString(message)
+	net.WriteBool(success ~= nil)
+	net.WriteBool(success == true)
+	net.Send(recipients)
+end
+
 -- A chat notice for every superadmin. `success` picks the color: true (green), false (red),
 -- nil (neutral).
 function GarryNet.NotifyAdmins(message, success)
 	local admins = Superadmins()
 	if #admins == 0 then return end
-	net.Start(GarryNet.Net.Notify)
-	net.WriteString(message)
-	net.WriteBool(success ~= nil)
-	net.WriteBool(success == true)
-	net.Send(admins)
+	SendNotice(admins, message, success)
+end
+
+-- A chat notice for one player (e.g. their store purchase arrived). Same colors.
+function GarryNet.NotifyPlayer(ply, message, success)
+	if not IsValid(ply) then return end
+	SendNotice(ply, message, success)
 end
 
 -- Open the menu on a client.

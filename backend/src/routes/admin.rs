@@ -4,7 +4,11 @@ use serde::Serialize;
 use crate::{
     auth::AuthUser,
     error::ApiError,
-    models::{Permissions, User, forum::ForumStats},
+    models::{
+        Permissions, User,
+        forum::ForumStats,
+        store::{Income, Receipt},
+    },
     state::AppState,
 };
 
@@ -17,7 +21,15 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
 struct Stats {
     users: UserStats,
     forum: ForumActivity,
-    // TODO: store activity (purchases and income over the past week) once the store exists.
+    store: StoreActivity,
+}
+
+#[derive(Serialize)]
+struct StoreActivity {
+    /// Paid purchases in the past 7 days.
+    purchases_week: i64,
+    /// Revenue in the past 7 days, per currency (stores can differ), excluding refunds.
+    income_week: Vec<Income>,
 }
 
 #[derive(Serialize)]
@@ -37,13 +49,16 @@ struct ForumActivity {
 #[get("/admin/stats")]
 async fn stats(state: web::Data<AppState>, user: AuthUser) -> Result<HttpResponse, ApiError> {
     user.require(&state.db, Permissions::ADMIN_ACCESS).await?;
-    let (registered, active, posts_week) = tokio::try_join!(
+    let (registered, active, posts_week, purchases_week, income_week) = tokio::try_join!(
         User::count(&state.db),
         User::count_online(&state.db),
         ForumStats::posts_since_days(&state.db, 7),
+        Receipt::count_since_days(&state.db, 7),
+        Receipt::income_since_days(&state.db, 7),
     )?;
     Ok(HttpResponse::Ok().json(Stats {
         users: UserStats { registered, active },
         forum: ForumActivity { posts_week },
+        store: StoreActivity { purchases_week, income_week },
     }))
 }

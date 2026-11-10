@@ -31,6 +31,12 @@ export type AdminStats = {
     /** Posts made in the past 7 days. */
     posts_week: number;
   };
+  store: {
+    /** Paid purchases in the past 7 days. */
+    purchases_week: number;
+    /** Revenue in the past 7 days per currency (minor units), excluding refunds. */
+    income_week: { currency: string; amount: number }[];
+  };
 };
 
 export type UsergroupEffect = "halo" | "rainbow" | "flash" | "none";
@@ -401,3 +407,240 @@ export type FaqWithPeople = Faq & {
 
 /** Sent to `POST /support/faqs` and `PUT /support/faqs/{id}`. */
 export type FaqDetails = Pick<Faq, "title" | "subject" | "category" | "description">;
+
+// Store (docs/STORE.md)
+
+/** What an item gives the buyer in-game. */
+export type Reward =
+  | {
+      type: "usergroup";
+      /** Must be one of the store's `grantable_usergroups`. */
+      usergroup: string;
+      /** Permanent when absent. */
+      duration_seconds?: number | null;
+    }
+  | { type: "darkrp_money"; amount: number }
+  | { type: "weapon"; class: string };
+
+export type RewardType = Reward["type"];
+
+/** A server's store. Named after the server unless `override_name` is set. */
+export type ItemStore = {
+  id: number;
+  server_id: number;
+  /** Hidden from `/store` and nothing can be bought while false. */
+  enabled: boolean;
+  /** ISO 4217, lowercase, e.g. `usd`. Applies to every item. */
+  currency: string;
+  override_name: string | null;
+  /** Shown at the top of the store page. */
+  store_message: string | null;
+  /** Garry's Mod usergroups items may grant. Only Elevated Control changes it. */
+  grantable_usergroups: string[];
+  created_at: string;
+  last_updated: string | null;
+};
+
+/** A store as listed, with what's in it and the store-wide discount in force. */
+export type StoreSummary = ItemStore & {
+  /** Items that aren't archived. */
+  item_count: number;
+  /** Sum of the active store-wide discounts, 0 to 100. */
+  store_discount: number;
+};
+
+export type StoreWithServer = StoreSummary & { server: Server };
+
+export type StoreDiscount = {
+  id: number;
+  store_id: number;
+  /** Percent off, added to each item's own discount. */
+  discount: number;
+  message: string;
+  created_at: string;
+  last_updated: string | null;
+  starts_at: string | null;
+  /** Indefinite when `null`. */
+  ends_at: string | null;
+  /** Whether now is within `starts_at`/`ends_at`. */
+  active: boolean;
+};
+
+export type StoreItem = {
+  id: number;
+  store_id: number;
+  name: string;
+  /** Plain text. */
+  short_description: string;
+  /** Markdown. */
+  full_description: string;
+  image_url: string | null;
+  /** Ascending. */
+  sort_order: number;
+  created_at: string;
+  last_updated: string | null;
+  /** Listed but not buyable while false. */
+  available: boolean;
+  archived: boolean;
+  /** Minor units of the store's currency (e.g. cents). */
+  price: number;
+  /** Percent off, before store-wide discounts. */
+  discount: number;
+  /** Limited releases; `null` is unlimited. */
+  starting_stock: number | null;
+  /** Excludes stock reserved by pending purchases. */
+  remaining_stock: number | null;
+  /** Purchases one user may make; `null` is unlimited. */
+  max_per_user: number | null;
+  all_time_purchases: number;
+  rewards: Reward[];
+};
+
+/** An item with its price after every discount. */
+export type PricedItem = StoreItem & {
+  /** The item's discount plus the store's, capped at 100. */
+  total_discount: number;
+  /** Minor units, after `total_discount`. */
+  final_price: number;
+};
+
+/** A store page, from `GET /store/{id}`. Only active discounts; items in display order. */
+export type StorePage = StoreWithServer & {
+  discounts: StoreDiscount[];
+  items: PricedItem[];
+};
+
+/** Whether the current user may buy an item, from `GET /store/{id}/items/{id}`. */
+export type Eligibility = {
+  /** Paid and pending purchases of this item by the user. */
+  purchased: number;
+  can_buy: boolean;
+  /** Why not, when `can_buy` is false. */
+  reason: string | null;
+};
+
+export type ItemPage = {
+  store: StoreSummary;
+  server: Server;
+  item: PricedItem;
+  /** `null` when logged out. */
+  buyer: Eligibility | null;
+};
+
+export type PurchaseStatus = "PENDING" | "PAID" | "CANCELLED";
+
+/** A checkout attempt, from `POST /store/purchases/{id}/cancel`. */
+export type Purchase = {
+  id: number;
+  store_id: number;
+  item_id: number;
+  buyer_id: number;
+  steam_id: string;
+  status: PurchaseStatus;
+  stripe_checkout_session_id: string | null;
+  stripe_payment_intent_id: string | null;
+  quantity: number;
+  list_price: number;
+  discount_percentage: number;
+  price: number;
+  currency: string;
+  rewards: Reward[];
+  stock_reserved: boolean;
+  created_at: string;
+  completed_at: string | null;
+};
+
+/** The answer to `POST /store/{id}/items/{id}/checkout`. */
+export type Checkout = {
+  purchase_id: number;
+  /** The Stripe Checkout page to send the buyer to. */
+  url: string;
+};
+
+export type ReceiptStatus = "PAID" | "REFUNDED" | "DISPUTED";
+
+export type FulfillmentStatus = "PENDING" | "FULFILLED" | "FAILED" | "REVOKED";
+
+export type Receipt = {
+  id: number;
+  stripe_checkout_session_id: string;
+  stripe_payment_intent_id: string;
+  buyer_id: number;
+  /** `null` once the item was deleted along with its server. */
+  item_id: number | null;
+  item_name: string;
+  store_id: number | null;
+  server_id: number | null;
+  store_name: string;
+  quantity: number;
+  status: ReceiptStatus;
+  purchased_at: string;
+  /** Minor units, before discounts. */
+  list_price: number;
+  discount_percentage: number;
+  /** Minor units, what was charged (before any tax). */
+  price: number;
+  currency: string;
+  status_changed_at: string | null;
+};
+
+/** Delivery of a receipt's rewards in-game, done by the server's addon. */
+export type Fulfillment = {
+  id: number;
+  receipt_id: number;
+  buyer_id: number;
+  steam_id: string;
+  item_id: number | null;
+  server_id: number;
+  rewards: Reward[];
+  status: FulfillmentStatus;
+  attempts: number;
+  last_error: string | null;
+  created_at: string;
+  fulfilled_at: string | null;
+  revoked_at: string | null;
+  revocation_applied_at: string | null;
+};
+
+/** A receipt with its buyer and delivery, from `GET /store/purchases` and `GET /admin/store/receipts`. */
+export type ReceiptView = Receipt & {
+  buyer: UserRef;
+  fulfillment: Fulfillment | null;
+};
+
+/** Filters for `GET /admin/store/receipts`. Blank values are ignored. */
+export type ReceiptFilters = {
+  status?: ReceiptStatus | "";
+  /** Store id. */
+  store?: string;
+  /** Buyer's user id. */
+  buyer?: string;
+};
+
+/** A store's management page, from `GET /admin/store/{id}`: every discount and unarchived item. */
+export type AdminStorePage = StoreWithServer & {
+  discounts: StoreDiscount[];
+  items: PricedItem[];
+};
+
+/** Sent to `POST /admin/store` (with `server_id`) and `PUT /admin/store/{id}`. */
+export type StoreDetails = Pick<ItemStore, "enabled" | "currency" | "override_name" | "store_message">;
+
+/** Sent to `POST /admin/store/{id}/items` and `PUT /admin/store/{id}/items/{id}`. */
+export type ItemDetails = Pick<
+  StoreItem,
+  | "name"
+  | "short_description"
+  | "full_description"
+  | "image_url"
+  | "sort_order"
+  | "available"
+  | "price"
+  | "discount"
+  | "starting_stock"
+  | "max_per_user"
+  | "rewards"
+>;
+
+/** Sent to `POST /admin/store/{id}/discounts` and `PUT /admin/store/{id}/discounts/{id}`. */
+export type DiscountDetails = Pick<StoreDiscount, "discount" | "message" | "starts_at" | "ends_at">;
