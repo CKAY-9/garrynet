@@ -70,3 +70,50 @@ Part of [GarryNet Design](DESIGN.md).
 1. As a general user, I want to see all my previous and current tickets listed, so that I can view them in more detail
 2. I do this by going to `/support` and viewing the list of tickets
 3. I can sort and filter them
+
+## Store
+
+**Buying an Item**
+1. As a logged in user, I want to buy an item from a store, so that I can receive in-game rewards.
+2. I do this by going to `/store` and viewing the list of server stores (referred to as Item Stores)
+3. Going into a store lists items and details like discount
+4. Selecting an item lists all its description and rewards
+5. Purchasing it goes through Stripe, which then hooks into GarryNet
+6. GarryNet tracks and fulfills the purchase
+7. If I am logged out or banned, I can browse but not buy.
+
+**Cancelled or Failed Payment**
+1. As a buyer, if I cancel or abandon payment, I want to return to the store with nothing charged.
+2. Any stock reserved for me is released.
+
+**Buying while Offline**
+1. As a buyer, I want to buy an item while not in the server, so that I still get the reward.
+2. The purchase is stored as a pending fulfillment.
+3. The reward is delivered the next time I join that server.
+
+**Viewing Purchase History**
+1. As a logged in user, I want to see my past purchases and whether they were delivered.
+2. I do this by going to `/store/purchases`, which lists receipts and fulfillment status.
+
+**Creating an Item Store**
+1. As a user with `Store Management`, I want to create a store for a registered server, so that I can create store items
+2. I do this by going to `/admin/store`, navigable by admin dashboard
+3. I select a server that doesn't have a store
+4. This prompts for some optional information like message or override name
+
+**Adding an Item**
+1. As a user with `Store Management`, I want to create a item in a server store, so that players can purchase in-game rewards
+2. I do this by selecting a item store in `/admin/store`
+3. I input all necessary details and create it
+
+**Editing, Disabling, and Archiving an Item**
+1. As a user with `Store Management`, I want to edit an item, mark it unavailable, or archive it.
+2. Archived items are hidden from players but kept for receipts and fulfillment history.
+
+**Managing Store Discounts**
+1. As a user with `Store Management`, I want to create a store-wide discount with an optional start and end time.
+2. It is applied additively to individual item discounts and is capped at 100% total.
+
+**Refunding a Purchase**
+1. As a user with `Store Finance`, I want to view receipts and refund a purchase.
+2. The refund revokes the associated fulfillment, removing granted usergroups and weapons.

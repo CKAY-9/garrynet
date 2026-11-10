@@ -312,7 +312,7 @@ async fn update_thread(
     let thread = find_thread(&state, id.into_inner()).await?;
     let role = manager(&state, &user, thread.author_id, &thread).await?;
     if role == Manager::Author && (changes.locked.is_some() || changes.sticky.is_some()) {
-        return Err(ApiError::Forbidden(Permissions::THREAD_MANAGEMENT.name()));
+        return Err(ApiError::Forbidden(Permissions::THREAD_MANAGEMENT.name().to_owned()));
     }
     let updated = thread.update(&state.db, &changes).await?;
     log::info!("user {} updated forum thread {} ({changes:?})", user.0.id, thread.id);
@@ -399,11 +399,11 @@ async fn manager(
         return Ok(Manager::Moderator);
     }
     if author_id != user.0.id {
-        return Err(ApiError::Forbidden(Permissions::THREAD_MANAGEMENT.name()));
+        return Err(ApiError::Forbidden(Permissions::THREAD_MANAGEMENT.name().to_owned()));
     }
     for flag in [Permissions::SITE_ACCESS, Permissions::USER_POSTS] {
         if !permissions.contains(flag) {
-            return Err(ApiError::Forbidden(flag.name()));
+            return Err(ApiError::Forbidden(flag.name().to_owned()));
         }
     }
     if thread.locked {

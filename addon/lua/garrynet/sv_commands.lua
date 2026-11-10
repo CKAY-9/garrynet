@@ -47,6 +47,12 @@ Command("garrynet_status", "Show whether this server is linked to GarryNet.", fu
 	else
 		reply("No sync yet.")
 	end
+
+	local store = GarryNet.Store.GetLastSync()
+	if store then
+		reply(string.format("Last store sync %ds ago: %s", os.time() - store.time, store.message))
+	end
+	reply("Usergroups are managed with " .. GarryNet.Rewards.Adapter().name .. ".")
 end)
 
 -- Reply with the outcome and refresh any open menus.
@@ -70,4 +76,33 @@ end)
 
 Command("garrynet_sync", "Send a heartbeat to GarryNet now.", function(reply)
 	GarryNet.Interval.Run(Done(reply))
+end)
+
+Command("garrynet_store_sync", "Fetch and deliver store purchases now.", function(reply)
+	GarryNet.Store.Sync(nil, function(_, message) reply(message) end)
+end)
+
+Command("garrynet_store_grants", "Show a player's store usergroups and weapons: garrynet_store_grants <SteamID64>", function(reply, args)
+	if not string.match(args, "^%d+$") then
+		reply("Usage: garrynet_store_grants <SteamID64>")
+		return
+	end
+	local grants, applied = GarryNet.Rewards.GetGrants(args)
+	if #grants == 0 and not applied then
+		reply("No store usergroups or weapons for " .. args .. ".")
+		return
+	end
+	local group, expires = GarryNet.Rewards.GroupExpiry(args)
+	if group then
+		reply(string.format("Usergroup %s, %s.", group, expires == math.huge and "permanent"
+			or ("until " .. os.date("!%Y-%m-%d %H:%M UTC", expires))))
+	end
+	for _, g in ipairs(grants) do
+		if g.kind == "usergroup" then
+			reply(string.format("  purchase #%d: %s for %s", g.fulfillment_id, g.usergroup,
+				g.duration and (g.duration .. "s") or "ever"))
+		else
+			reply(string.format("  purchase #%d: weapon %s", g.fulfillment_id, g.class))
+		end
+	end
 end)

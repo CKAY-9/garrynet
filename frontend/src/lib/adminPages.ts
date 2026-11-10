@@ -16,4 +16,10 @@ export const adminPages: { href: string; label: string; permission: number; any?
     permission: Permission.SectionManagement | Permission.CategoryManagement,
     any: true,
   },
+  {
+    href: "/admin/store",
+    label: "Store",
+    permission: Permission.StoreManagement | Permission.StoreFinance,
+    any: true,
+  },
 ];

@@ -4,7 +4,7 @@ Part of [GarryNet Design](DESIGN.md). Servers and access keys are defined in [SE
 
 The GarryNet Garry's Mod addon is responsible for communicating with GarryNet. It will update player data, fetch unrealized store requests, config changes, etc.
 
-**Status:** linking, unlinking and the per-minute heartbeat (server details and player records) work. Store requests and config changes are not implemented yet.
+**Status:** linking, unlinking, the per-minute heartbeat (server details and player records) and store delivery work. Config changes are not implemented yet.
 
 ## Installation and Configuration
 
@@ -31,6 +31,8 @@ Files live in `addon/lua/garrynet/`, and are loaded in order by `addon/lua/autor
 | `sv_http.lua` | HTTP wrapper for `/gnet/server/...` requests, JWT rotation |
 | `sv_link.lua` | Link (access key to JWT), unlink, out-of-sync handling |
 | `sv_interval.lua` | Player session tracking, per-minute heartbeat, force sync |
+| `sv_store_rewards.lua` | Store rewards: usergroup adapters, timed usergroups, weapons, revoking |
+| `sv_store.lua` | Store delivery: fetch the fulfillment queue, apply, acknowledge |
 | `sv_net.lua` | Net handlers for the menu; every one checks for superadmin |
 | `sv_commands.lua` | `!gnet` chat command, `garrynet_*` console commands |
 | `cl_net.lua` | Client net handlers and senders, chat notices |
@@ -58,6 +60,8 @@ These run from the server console, or from a superadmin's own console:
 - `garrynet_link <access key>`: link without the menu
 - `garrynet_unlink`
 - `garrynet_sync`: send a heartbeat now
+- `garrynet_store_sync`: fetch and deliver store purchases now
+- `garrynet_store_grants <SteamID64>`: a player's store usergroups and weapons
 
 ## Intervals
 
@@ -105,4 +109,55 @@ All under `/gnet/server`. Errors are `{ "error": "..." }`.
 
 **POST `/gnet/server/{SERVER_ID}/unlink`**: `Authorization: Bearer <JWT>`. Unlinks the server and revokes its token and any access key. Returns 204.
 
-Pending store requests and config changes are still to be defined.
+### Store fulfillments
+
+See [STORE.md](STORE.md) for the model. The addon should fetch work when a player joins (with their
+`steam_id`) and on its interval, apply each fulfillment's `rewards` and report back.
+
+**GET `/gnet/server/{SERVER_ID}/fulfillments?steam_id=`**: `Authorization: Bearer <JWT>`. Fulfillments the
+server has to act on, oldest first: `PENDING` and retryable `FAILED` ones to deliver, and `REVOKED` ones
+whose rewards were delivered (`fulfilled_at` set, `revocation_applied_at` null) to take back (usergroups and
+weapons; not money). `steam_id` narrows it to one player.
+
+```json
+[
+  {
+    "id": 1, "receipt_id": 1, "buyer_id": 2, "steam_id": "76561197960287931", "item_id": 2, "server_id": 1,
+    "rewards": [
+      { "type": "usergroup", "usergroup": "vip", "duration_seconds": 2592000 },
+      { "type": "darkrp_money", "amount": 5000 },
+      { "type": "weapon", "class": "weapon_crowbar" }
+    ],
+    "status": "PENDING", "attempts": 0, "last_error": null,
+    "created_at": "...", "fulfilled_at": null, "revoked_at": null, "revocation_applied_at": null
+  }
+]
+```
+
+**POST `/gnet/server/{SERVER_ID}/fulfillments/{FULFILLMENT_ID}/ack`**: `Authorization: Bearer <JWT>`. Body
+`{ "result": "fulfilled" }`, `{ "result": "failed", "error": "player not in game" }` or `{ "result": "revoked" }`.
+Idempotent: repeating a report changes nothing. Returns the fulfillment as it stands; 404 if it isn't this server's.
+
+### Delivery in the addon
+
+- **When:** every minute (`Store.PollSeconds`), and `Store.JoinDelay` (10) seconds after a player joins, filtered to them.
+  Only players who are online get their purchase; revocations are applied whether or not the player is online.
+- **All or nothing:** every reward is validated before any is applied (the usergroup exists in the admin mod and isn't
+  protected, the server runs DarkRP for money, the weapon class is known). A failure is acknowledged as `failed` with the
+  reason, superadmins and the buyer get a chat notice, and it's retried with backoff (1, 2, 4... minutes, at most 60), so
+  fixing the server gives it a chance before GarryNet stops offering it after 20 attempts. DarkRP money waits, without
+  failing, until DarkRP has loaded the player's data.
+- **Exactly once:** an applied fulfillment is written to `data/garrynet/store_pending.json` before it's acknowledged and
+  only forgotten once GarryNet confirms. If the acknowledgement is lost, the next fetch re-acknowledges instead of applying
+  again. A Lua error part-way through applying is reported as `failed` and never retried automatically.
+- **Usergroups:** set through an adapter: ULX (ULib, persistent, works for offline players) when installed, else
+  `Player:SetUserGroup`, which GarryNet re-applies on every join. `GarryNet.Rewards.SetUsergroupAdapter` plugs in other admin
+  mods. Purchases of the same group stack (each duration starts when the previous one ends); with several store groups the
+  most recently bought one wins. A store group only replaces a group in `Store.OverridableGroups` (default `user`) or one
+  the store set itself, so staff are never demoted; their grant still counts if they later return to `user`. When the
+  last store group ends or is revoked, the player goes back to `Store.DefaultGroup`. `Store.ProtectedGroups` are never granted.
+- **Weapons** are recorded and given back on every spawn (1 second after, skipped while DarkRP-arrested).
+- Grants are kept in `data/garrynet/store_grants.json`, per player and per fulfillment, so a revocation removes exactly that
+  purchase's usergroups and weapons.
+
+Config changes are still to be defined.

@@ -16,6 +16,34 @@ GarryNet.Config = {
 	-- Server access keys look like "gnet_" followed by 64 hex characters (docs/SERVERS.md).
 	AccessKeyPattern = "^gnet_%x+$",
 	AccessKeyLength = 69,
+
+	-- Store delivery (docs/STORE.md). Server-side only.
+	Store = {
+		-- Played to the buyer when a purchase is delivered (a path under garrysmod/sound; "" for none).
+		RewardSound = "garrysmod/content_downloaded.wav",
+
+		-- Seconds between fetches of the delivery queue.
+		PollSeconds = 60,
+
+		-- Seconds after a player joins before their purchases are delivered, so the gamemode
+		-- (e.g. DarkRP's money) and the admin mod have loaded them.
+		JoinDelay = 10,
+
+		-- Seconds between checks for expired timed usergroups.
+		ReconcileSeconds = 60,
+
+		-- Where players go when their store usergroup ends.
+		DefaultGroup = "user",
+
+		-- Usergroups a store usergroup may replace. Anyone in another group (staff) keeps it.
+		OverridableGroups = { "user" },
+
+		-- Never granted by the store, whatever GarryNet says (lowercase).
+		ProtectedGroups = { "superadmin", "admin", "owner", "developer" },
+
+		-- Longest wait between retries of a purchase that failed to deliver.
+		MaxRetryMinutes = 60,
+	},
 }
 
 -- Backend base URL: wherever the GarryNet backend is reachable, e.g. "https://api.example.com".
@@ -32,5 +60,6 @@ GarryNet.Net = {
 	Unlink = "GarryNet.Unlink", -- client -> server: unlink requested
 	ForceSync = "GarryNet.ForceSync", -- client -> server: force an interval update
 	Result = "GarryNet.Result", -- server -> client: result of Link/Unlink/ForceSync (success, message)
-	Notify = "GarryNet.Notify", -- server -> client: chat notice for superadmins (linked, out of sync, ...)
+	RewardSound = "GarryNet.RewardSound", -- server -> client: play the reward sound
+	Notify = "GarryNet.Notify", -- server -> client: chat notice (superadmins: linked, out of sync; buyers: purchase delivered)
 }

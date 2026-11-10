@@ -2,22 +2,34 @@
     <img src="./assets/logo.svg" width=250 height=250 />
     </br></br>
     <h1>GarryNet</h1>
-    <p>GarryNet is an all-in-one web solution for Garry's Mod community. Everything from loading screens to server-syncing to store functionality.</p>
+    <p>GarryNet is an all-in-one web solution for Garry's Mod communities. Everything from loading screens to server-syncing to store functionality.</p>
 </div>
 
 ## Features
 
-### Community Unificaiton
+### Community Unification
+
+One deployment per community. A homepage with your name, logo, splash image, external links and key figures, plus a loading screen for your Garry's Mod servers with a server select. All editable from the admin dashboard.
 
 ### Forums
 
+Sections, categories and threads with markdown posts, likes/dislikes and user reputation. Includes a support system with tickets and an FAQ.
+
 ### Store
+
+Sell in-game rewards (usergroups, weapons, DarkRP money) per server. Payments go through Stripe Checkout, with discounts, receipts and refunds. Purchases are delivered in-game automatically by the addon.
 
 ### User Management
 
+Steam login, profiles, online status, and usergroups with permission bits and custom colors, icons and effects.
+
 ### Server Management
 
+Register servers on the website, link them with a one-time access key, and see their status, gamemode and map.
+
 ### Player Management
+
+Per-server player records (playtime and last seen) synced from the addon every minute.
 
 ## Deployment
 
@@ -36,9 +48,18 @@ Configure your enviornment variables according to the provided `.env.example` sa
 
 ### Manually
 
-#### Frontend
+Requires PostgreSQL, Rust, and Node.js. The backend and frontend are separate; start the backend first.
 
 #### Backend
+
+1. Create a PostgreSQL database and copy `backend/.env.example` to `backend/.env`
+2. Set `DATABASE_URL`, `JWT_SECRET` and `STEAM_API_KEY`. Stripe keys are optional (store checkout is disabled without them)
+3. Run `cargo run --release` in `backend/`. Migrations are applied on startup
+
+#### Frontend
+
+1. Copy `frontend/.env.example` to `frontend/.env` and point `API_URL` and `NEXT_PUBLIC_API_URL` at the backend
+2. Run `npm install && npm run build && npm start` in `frontend/`
 
 ### Addon
 

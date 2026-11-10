@@ -187,7 +187,7 @@ async fn create_message(
         ticket.reply_as_support(&state.db, user.0.id, &content, body.is_internal).await?
     } else {
         if body.is_internal {
-            return Err(ApiError::Forbidden(SUPPORT_TEAM.name()));
+            return Err(ApiError::Forbidden(SUPPORT_TEAM.name().to_owned()));
         }
         if ticket.status.is_done() {
             return Err(ApiError::Locked("ticket"));
@@ -245,7 +245,7 @@ async fn edit_message(
         .await?
         .ok_or(ApiError::NotFound("message"))?;
     if message.author_id != user.0.id {
-        return Err(ApiError::Forbidden("message author"));
+        return Err(ApiError::Forbidden("message author".to_owned()));
     }
     if message.previous_content.is_some() {
         return Err(bad("messages can only be edited once".to_owned()));

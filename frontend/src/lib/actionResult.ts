@@ -19,8 +19,12 @@ export async function runAction<T>(
     const status = axios.isAxiosError(err) ? err.response?.status : undefined;
     const error = axios.isAxiosError(err) ? err.response?.data?.error : undefined;
     if (status !== undefined && messages[status]) return { ok: false, message: messages[status] };
-    if (status === 400) {
+    // 422: the payment provider refused (e.g. an amount below Stripe's minimum); its message is safe to show.
+    if (status === 400 || status === 422) {
       return { ok: false, message: typeof error === "string" ? capitalize(error) + "." : "Check the details and try again." };
+    }
+    if (status === 503) {
+      return { ok: false, message: typeof error === "string" ? capitalize(error) + "." : `This isn't set up yet, so you can't ${what}.` };
     }
     if (status === 401) return { ok: false, message: `Your session has expired. Log in again to ${what}.` };
     if (status === 403) return { ok: false, message: `You don't have permission to ${what}.` };

@@ -3,6 +3,7 @@ import { StatCard, StatCardSkeleton } from "@/components/StatCard";
 import { getAdminStats } from "@/lib/admin";
 import { requirePermission } from "@/lib/auth";
 import { Permission } from "@/lib/permissions";
+import { formatMoney } from "@/lib/storeEnums";
 import styles from "./admin.module.scss";
 
 export default function AdminDashboard() {
@@ -44,9 +45,16 @@ async function Dashboard() {
           Store
         </h2>
         <dl className={styles.stats}>
-          {/* TODO: real data once the store exists (purchases and income over the past week). */}
-          <StatCard label="Purchases" detail="Past 7 days" todo />
-          <StatCard label="Income" detail="Past 7 days" todo />
+          <StatCard label="Purchases" value={stats.store.purchases_week} detail="Past 7 days" />
+          <StatCard
+            label="Income"
+            value={
+              stats.store.income_week.length === 0
+                ? formatMoney(0, "usd")
+                : stats.store.income_week.map(({ currency, amount }) => formatMoney(amount, currency)).join(" + ")
+            }
+            detail="Past 7 days, excluding refunds"
+          />
         </dl>
       </section>
     </>

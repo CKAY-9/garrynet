@@ -16,6 +16,7 @@ There should be a navigation bar within the dashboard where they can navigate to
 - `/admin/loading-screen`
 - `/admin/community`
 - `/admin/forum`
+- `/admin/store`
 
 They must have the correct permission to view/access the page.
 
@@ -57,3 +58,13 @@ Requires: Section Management or Category Management. Each form only shows with i
 - Lists every section with its categories, positions and activity.
 - New section: name, accent color, description, icon URL, position.
 - New category: section, name, description, position, locked.
+
+## /admin/store
+
+Admins can manage item stores (see [STORE.md](STORE.md)).
+Requires: Store Management or Store Finance. Management forms only show with Store Management; the receipts link only with Store Finance.
+
+- Lists every store (enabled or not) with its server, currency, grantable usergroups and item count; creating one picks a server without a store.
+- `/admin/store/{id}`: the store's settings (name, currency, message, enabled), its grantable usergroups (editable with Elevated Control), its items and its store-wide discounts.
+- `/admin/store/{id}/items/new` and `/admin/store/{id}/items/{id}`: the item editor (details, pricing, stock, limits, rewards) and archiving.
+- `/admin/store/receipts`: every receipt with buyer, item, price, status and delivery, filterable by status, store and buyer, with full refunds. Requires Store Finance.
