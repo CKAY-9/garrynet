@@ -69,3 +69,16 @@ export async function getAdminUsergroups(): Promise<Usergroup[]> {
   const { data } = await backend.get<Usergroup[]>("/admin/usergroups", { headers: await authHeaders() });
   return data;
 }
+
+/** One usergroup in full, or `null` if there is no such group. Same requirements as `getAdminUsergroups`. */
+export async function getAdminUsergroup(id: string): Promise<Usergroup | null> {
+  if (!/^\d+$/.test(id)) return null;
+  await connection();
+  try {
+    const { data } = await backend.get<Usergroup>(`/admin/usergroups/${id}`, { headers: await authHeaders() });
+    return data;
+  } catch (err) {
+    if (axios.isAxiosError(err) && err.response?.status === 404) return null;
+    throw err;
+  }
+}

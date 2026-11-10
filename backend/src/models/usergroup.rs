@@ -1,10 +1,10 @@
 use chrono::{DateTime, Utc};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sqlx::{PgConnection, PgPool};
 
 use super::Permissions;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, sqlx::Type)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
 #[sqlx(type_name = "usergroup_effect", rename_all = "lowercase")]
 #[serde(rename_all = "lowercase")]
 pub enum UsergroupEffect {
@@ -59,6 +59,53 @@ pub struct MemberBadge {
     pub badge: UsergroupBadge,
 }
 
+/// A usergroup's editable fields, validated by the route.
+#[derive(Clone, Debug)]
+pub struct UsergroupDetails {
+    pub name: String,
+    pub effect: UsergroupEffect,
+    pub color: String,
+    pub permissions: Permissions,
+    pub icon_url: Option<String>,
+}
+
+/// Who is changing a usergroup, for the checks in [`Usergroup::create`],
+/// [`Usergroup::update`] and [`Usergroup::delete`].
+#[derive(Clone, Copy, Debug)]
+pub struct Editor {
+    pub user_id: i64,
+    /// The editor's effective permissions before the change. They can only grant or revoke
+    /// permissions they hold.
+    pub permissions: Permissions,
+    /// Permissions the editor must still have after the change, so they can't lock
+    /// themselves out of usergroup management.
+    pub must_keep: Permissions,
+}
+
+/// Why a usergroup change was refused. Nothing is changed when one is returned.
+#[derive(Debug)]
+pub enum EditError {
+    NotFound,
+    /// Another group already has this name (case-insensitively).
+    NameTaken,
+    /// The default groups can't be deleted or renamed.
+    DefaultGroup,
+    /// The change grants or revokes permissions the editor doesn't hold.
+    NotHeld(Permissions),
+    /// The change would take [`Editor::must_keep`] permissions away from the editor.
+    LocksOut,
+    Database(sqlx::Error),
+}
+
+impl From<sqlx::Error> for EditError {
+    fn from(e: sqlx::Error) -> Self {
+        match &e {
+            sqlx::Error::Database(db) if db.is_unique_violation() => Self::NameTaken,
+            _ => Self::Database(e),
+        }
+    }
+}
+
 /// Name of the group every new user joins on their first login.
 pub const DEFAULT_GROUP: &str = "user";
 
@@ -67,6 +114,11 @@ struct DefaultGroup {
     effect: UsergroupEffect,
     color: &'static str,
     permissions: Permissions,
+}
+
+/// True for the default `user` and `admin` groups (matched by name, case-insensitively).
+pub fn is_default_group(name: &str) -> bool {
+    DEFAULT_GROUPS.iter().any(|g| g.name.eq_ignore_ascii_case(name))
 }
 
 const DEFAULT_GROUPS: [DefaultGroup; 2] = [
@@ -252,6 +304,81 @@ impl Usergroup {
         Ok(removed)
     }
 
+    /// Creates a group. Fails if the name is taken or `details.permissions` includes
+    /// permissions the editor doesn't hold.
+    pub async fn create(db: &PgPool, details: &UsergroupDetails, editor: Editor) -> Result<Usergroup, EditError> {
+        check_held(editor, details.permissions)?;
+        let mut tx = db.begin().await?;
+        let id: i64 = sqlx::query_scalar(
+            "INSERT INTO usergroups (name, effect, color, permissions, icon_url)
+             VALUES ($1, $2, $3, $4, $5)
+             RETURNING id",
+        )
+        .bind(&details.name)
+        .bind(details.effect)
+        .bind(&details.color)
+        .bind(details.permissions)
+        .bind(&details.icon_url)
+        .fetch_one(&mut *tx)
+        .await?;
+        let group = fetch(&mut tx, id).await?;
+        tx.commit().await?;
+        Ok(group)
+    }
+
+    /// Replaces a group's details. Default groups keep their name (case may change).
+    /// Permissions added or removed must be ones the editor holds, and the editor must keep
+    /// [`Editor::must_keep`] afterwards.
+    pub async fn update(
+        db: &PgPool,
+        id: i64,
+        details: &UsergroupDetails,
+        editor: Editor,
+    ) -> Result<Usergroup, EditError> {
+        let mut tx = db.begin().await?;
+        let (name, permissions) = lock(&mut tx, id).await?;
+        if is_default_group(&name) && !name.eq_ignore_ascii_case(&details.name) {
+            return Err(EditError::DefaultGroup);
+        }
+        check_held(editor, permissions.symmetric_difference(details.permissions))?;
+        sqlx::query(
+            "UPDATE usergroups
+             SET name = $2, effect = $3, color = $4, permissions = $5, icon_url = $6,
+                 last_updated = now()
+             WHERE id = $1",
+        )
+        .bind(id)
+        .bind(&details.name)
+        .bind(details.effect)
+        .bind(&details.color)
+        .bind(details.permissions)
+        .bind(&details.icon_url)
+        .execute(&mut *tx)
+        .await?;
+        check_kept(&mut tx, editor).await?;
+        let group = fetch(&mut tx, id).await?;
+        tx.commit().await?;
+        Ok(group)
+    }
+
+    /// Deletes a group, removing its members from it. Returns the deleted group's name.
+    /// Default groups can't be deleted, nor can a group whose removal would take
+    /// [`Editor::must_keep`] away from the editor.
+    pub async fn delete(db: &PgPool, id: i64, editor: Editor) -> Result<String, EditError> {
+        let mut tx = db.begin().await?;
+        let (name, _) = lock(&mut tx, id).await?;
+        if is_default_group(&name) {
+            return Err(EditError::DefaultGroup);
+        }
+        sqlx::query("DELETE FROM usergroups WHERE id = $1")
+            .bind(id)
+            .execute(&mut *tx)
+            .await?;
+        check_kept(&mut tx, editor).await?;
+        tx.commit().await?;
+        Ok(name)
+    }
+
     /// Adds a brand-new user to the default group, if it exists. Runs inside the
     /// transaction that creates the user.
     pub async fn join_default(conn: &mut PgConnection, user_id: i64) -> sqlx::Result<()> {
@@ -265,6 +392,46 @@ impl Usergroup {
         .execute(conn)
         .await?;
         Ok(())
+    }
+}
+
+/// Locks the group's row for the rest of the transaction; returns its name and permissions.
+async fn lock(conn: &mut PgConnection, id: i64) -> Result<(String, Permissions), EditError> {
+    sqlx::query_as("SELECT name, permissions FROM usergroups WHERE id = $1 FOR UPDATE")
+        .bind(id)
+        .fetch_optional(conn)
+        .await?
+        .ok_or(EditError::NotFound)
+}
+
+async fn fetch(conn: &mut PgConnection, id: i64) -> sqlx::Result<Usergroup> {
+    sqlx::query_as(select_usergroup!("WHERE g.id = $1"))
+        .bind(id)
+        .fetch_one(conn)
+        .await
+}
+
+/// `changed` must only contain permissions the editor holds.
+fn check_held(editor: Editor, changed: Permissions) -> Result<(), EditError> {
+    let not_held = changed.difference(editor.permissions);
+    if not_held.is_empty() { Ok(()) } else { Err(EditError::NotHeld(not_held)) }
+}
+
+/// The editor must still hold [`Editor::must_keep`] after the transaction's changes.
+async fn check_kept(conn: &mut PgConnection, editor: Editor) -> Result<(), EditError> {
+    let bits: i64 = sqlx::query_scalar(
+        "SELECT COALESCE(bit_or(g.permissions), 0)
+         FROM usergroups g
+         JOIN usergroup_members um ON um.usergroup_id = g.id
+         WHERE um.user_id = $1",
+    )
+    .bind(editor.user_id)
+    .fetch_one(conn)
+    .await?;
+    if Permissions::from_bits(bits).contains(editor.must_keep) {
+        Ok(())
+    } else {
+        Err(EditError::LocksOut)
     }
 }
 

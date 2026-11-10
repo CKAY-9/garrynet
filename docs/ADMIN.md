@@ -42,8 +42,13 @@ Requires: Server Management
 
 ## /admin/usergroups
 
-Admins can create, edit, remove usergroups.
-Requires: Usergroup Management
+Admins can create, edit, remove usergroups (see [PERMISSIONS.md](PERMISSIONS.md)).
+Requires: Admin Access and Usergroup Management
+
+- Lists every usergroup with its members count and permissions; creating one takes a name, color, effect, icon and permissions, then opens its page.
+- `/admin/usergroups/{id}` edits the group (with a live chip preview) and deletes it (after typing its name).
+- Only permissions the editor holds can be toggled. The default `user` and `admin` groups can't be renamed or deleted.
+- Adding and removing members is done from the backend shell for now.
 
 ## /admin/community
 

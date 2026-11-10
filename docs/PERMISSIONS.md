@@ -30,7 +30,24 @@ To remove: `usergroup remove [USER_ID] [GROUP_NAME/ID]`
 
 The same commands can be run one-shot without attaching to the running server's terminal, e.g. `backend usergroup add 1 admin` (needs only `DATABASE_URL`).
 
-The default usergroups are created on startup if no group with that name exists; existing groups are never overwritten. New users join `user` on their first login.
+The default usergroups are created on startup if no group with that name exists; existing groups are never overwritten. New users join `user` on their first login. Because they're matched by name, the default groups can't be renamed (only their case can change) or deleted.
+
+## Managing Usergroups
+
+Usergroups are created, edited and deleted from `/admin/usergroups` (see [ADMIN.md](ADMIN.md)). Every endpoint below requires `Admin Access` and `Usergroup Management`.
+
+- GET `/admin/usergroups`: every usergroup in full.
+- GET `/admin/usergroups/{id}`: one usergroup in full.
+- POST `/admin/usergroups`: `{ name, effect, color, permissions, icon_url? }`; returns the new group (201). 409 if the name is taken.
+- PUT `/admin/usergroups/{id}`: same body; replaces the group's details and bumps `last_updated`.
+- DELETE `/admin/usergroups/{id}`: deletes the group; its members leave it (204).
+
+Rules:
+- `name`: 1-32 characters, unique regardless of case, not only digits (the shell takes a group id or name).
+- `color`: hex (`#rgb`, `#rrggbb` or `#rrggbbaa`). `icon_url`: an http(s) URL or blank.
+- `permissions`: only documented bits. Editors can only grant or revoke permissions they hold themselves (403 otherwise), so Usergroup Management can't be used to escalate.
+- A change that would remove the editor's own `Admin Access` or `Usergroup Management` (editing or deleting one of their groups) is refused with 400.
+- Changes are logged.
 
 ## Permission Bits
 
