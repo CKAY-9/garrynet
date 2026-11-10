@@ -84,6 +84,8 @@ Creating notifications is internal; there is no public route. Admin announcement
 - **Dropdown.** Clicking the bell opens the 5 most recent notifications, each with its type icon, title and relative time, unread ones in bold, and a "View all" link. Clicking one marks it read and goes to its `url`.
 - `/notifications`: the full list with an All / Unread toggle, a type filter, "Mark all as read" and "Delete read", and "Load more". Each row has mark read and delete buttons. Logged-out users are sent to log in.
 
+- `/forum/threads/{id}`: forum notifications link here because they only know the thread. The page redirects to `/forum/{category_id}/{thread_id}` (404 if the thread is gone).
+
 ## Not included
 
 Left out on purpose; add them only when needed:
