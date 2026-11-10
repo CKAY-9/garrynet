@@ -132,7 +132,14 @@ export function ForumCategoryPage({
           {category.description && <p>{category.description}</p>}
         </header>
         {!category.locked && access === "allowed" && (
-          <NewThreadForm categoryId={category.id} moderator={viewer.moderator} template={template} />
+          <NewThreadForm
+            // Remount on a new template: the form only reads it into state on mount, and
+            // "Use as template" is a client navigation to this same page.
+            key={template?.id ?? "new"}
+            categoryId={category.id}
+            moderator={viewer.moderator}
+            template={template}
+          />
         )}
       </div>
       {category.locked ? (

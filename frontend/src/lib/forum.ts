@@ -34,12 +34,12 @@ export async function getForumThread(id: string): Promise<ForumThreadPage | null
  * The title and first post of thread `id` to start a new thread from, or `null` if there is
  * no such thread or it doesn't allow templating.
  */
-export async function getForumTemplate(id: string | undefined): Promise<{ title: string; content: string } | null> {
+export async function getForumTemplate(id: string | undefined): Promise<{ id: number; title: string; content: string } | null> {
   if (!id) return null;
   const data = await getForumThread(id);
   if (!data?.thread.allow_template) return null;
   const first = data.posts.find((p) => p.id === data.thread.thread_post_id);
-  return first ? { title: data.thread.title, content: first.content } : null;
+  return first ? { id: data.thread.id, title: data.thread.title, content: first.content } : null;
 }
 
 async function getOrNull<T>(id: string, path: (id: string) => string): Promise<T | null> {

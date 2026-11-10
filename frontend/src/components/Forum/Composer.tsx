@@ -11,7 +11,8 @@ const MAX_TITLE = 128;
 const MAX_CONTENT = 20_000;
 
 /** A thread to copy into a new thread's form; see "Use as template". */
-export type ThreadTemplate = { title: string; content: string };
+/** `id` is the source thread; the form remounts when it changes. */
+export type ThreadTemplate = { id: number; title: string; content: string };
 
 /**
  * "New thread" button that opens a title + content form. Opens the thread once posted.
