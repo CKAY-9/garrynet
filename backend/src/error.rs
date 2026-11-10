@@ -25,6 +25,10 @@ pub enum ApiError {
     #[error("this {0} is locked")]
     Locked(&'static str),
 
+    /// Too many requests; the number is how many seconds to wait.
+    #[error("too many requests, try again in {0}s")]
+    RateLimited(u64),
+
     #[error("steam login could not be verified: {0}")]
     SteamVerification(String),
 
@@ -60,6 +64,7 @@ impl ResponseError for ApiError {
             Self::BadRequest(_) => StatusCode::BAD_REQUEST,
             Self::Conflict(_) => StatusCode::CONFLICT,
             Self::Locked(_) => StatusCode::LOCKED,
+            Self::RateLimited(_) => StatusCode::TOO_MANY_REQUESTS,
             Self::SteamVerification(_) => StatusCode::UNAUTHORIZED,
             Self::StripeRejected(_) => StatusCode::UNPROCESSABLE_ENTITY,
             Self::SteamUnavailable(_) | Self::StripeUnavailable(_) => StatusCode::BAD_GATEWAY,
@@ -83,6 +88,10 @@ impl ResponseError for ApiError {
             log::debug!("{self}");
             self.to_string()
         };
-        HttpResponse::build(status).json(json!({ "error": message }))
+        let mut response = HttpResponse::build(status);
+        if let Self::RateLimited(secs) = self {
+            response.insert_header((actix_web::http::header::RETRY_AFTER, secs.to_string()));
+        }
+        response.json(json!({ "error": message }))
     }
 }

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Avatar } from "@/components/Avatar";
 import { Markdown } from "@/components/Markdown";
 import { StatCard } from "@/components/StatCard";
+import { Attachments } from "@/components/Upload";
 import { steamLoginUrl } from "@/lib/config";
 import type { ForumViewer, PostingAccess } from "@/lib/forum";
 import { fullFormat, timeAgo } from "@/lib/time";
@@ -13,7 +14,7 @@ import type {
   ForumThread,
   ForumThreadPage as ThreadData,
 } from "@/lib/types";
-import { NewThreadForm, ReplyForm } from "./Composer";
+import { NewThreadForm, ReplyForm, type ThreadTemplate } from "./Composer";
 import { PostBody, ThreadTools } from "./Manage";
 import styles from "./Forum.module.scss";
 
@@ -107,8 +108,18 @@ export function ForumHome({ sections, stats }: HomeData) {
   );
 }
 
-/** /forum/{category_id}: the category's threads, stickies first. */
-export function ForumCategoryPage({ category, section, threads, access }: CategoryData & { access: PostingAccess }) {
+/**
+ * /forum/{category_id}: the category's threads, stickies first. With a `template`, the new
+ * thread form starts open and filled in from it.
+ */
+export function ForumCategoryPage({
+  category,
+  section,
+  threads,
+  viewer,
+  template,
+}: CategoryData & { viewer: ForumViewer; template?: ThreadTemplate }) {
+  const { access } = viewer;
   return (
     <div className={styles.page}>
       <Breadcrumbs items={[{ href: "/forum", label: "Forum" }, { label: section.name }, { label: category.name }]} />
@@ -120,7 +131,9 @@ export function ForumCategoryPage({ category, section, threads, access }: Catego
           </h1>
           {category.description && <p>{category.description}</p>}
         </header>
-        {!category.locked && access === "allowed" && <NewThreadForm categoryId={category.id} />}
+        {!category.locked && access === "allowed" && (
+          <NewThreadForm categoryId={category.id} moderator={viewer.moderator} template={template} />
+        )}
       </div>
       {category.locked ? (
         <p className={styles.notice}>This category is locked. New threads can&apos;t be created.</p>
@@ -167,6 +180,7 @@ function ThreadBadges({ thread }: { thread: ForumThread }) {
     <>
       {thread.sticky && <span className={`${styles.badge} ${styles.sticky}`}>Sticky</span>}
       {thread.locked && <span className={styles.badge}>Locked</span>}
+      {thread.allow_template && <span className={styles.badge}>Template</span>}
     </>
   );
 }
@@ -205,6 +219,11 @@ export function ForumThreadPage({ category, section, thread, posts, viewer }: Th
         canManage={canManage(viewer, thread.author_id, thread, category)}
         moderator={viewer.moderator}
       />
+      {thread.allow_template && !category.locked && viewer.access === "allowed" && (
+        <Link href={`/forum/${category.id}?template=${thread.id}`} className={`${styles.secondary} ${styles.linkButton}`}>
+          Use as template
+        </Link>
+      )}
       {posts.map((post) => (
         <article
           key={post.id}
@@ -232,6 +251,7 @@ export function ForumThreadPage({ category, section, thread, posts, viewer }: Th
               canManage={canManage(viewer, post.author_id, thread, category)}
             >
               <Markdown className={styles.content}>{post.content}</Markdown>
+              <Attachments files={post.attachments} />
             </PostBody>
             <div className={styles.reactions} aria-label="Reactions">
               <span title="Likes">👍 {post.likes.length}</span>

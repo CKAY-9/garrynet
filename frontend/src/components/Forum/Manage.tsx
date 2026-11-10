@@ -72,7 +72,7 @@ function DeleteButton({
 
 /**
  * Controls under the thread title. Authors (while the thread is unlocked) and moderators
- * can rename and delete it; only moderators can lock and sticky it.
+ * can rename it, toggle templating and delete it; only moderators can lock and sticky it.
  */
 export function ThreadTools({
   thread,
@@ -135,6 +135,14 @@ export function ThreadTools({
     <div className={styles.tools} aria-label="Thread tools">
       <button type="button" className={styles.tool} onClick={() => setRenaming(true)} disabled={pending}>
         Rename
+      </button>
+      <button
+        type="button"
+        className={styles.tool}
+        onClick={() => change({ allow_template: !thread.allow_template })}
+        disabled={pending}
+      >
+        {thread.allow_template ? "Disable template" : "Allow as template"}
       </button>
       {moderator && (
         <>

@@ -9,13 +9,14 @@ use crate::{
     auth::AuthUser,
     error::ApiError,
     models::{
-        Permissions, User, Usergroup,
+        File, Permissions, User, Usergroup,
         forum::{
             CategoryDetails, ForumCategory, ForumPost, ForumSection, ForumStats, ForumThread,
             PostWithAuthor, SectionDetails, SectionWithCategories, ThreadChanges, ThreadSummary,
         },
     },
     routes::{
+        files,
         markdown::markdown,
         validate::{bad, hex_color, optional_url, required_text, text},
     },
@@ -54,6 +55,8 @@ const MAX_NAME: usize = 64;
 const MAX_DESCRIPTION: usize = 256;
 const MAX_TITLE: usize = 128;
 const MAX_CONTENT: usize = 20_000;
+/// Files per post.
+const MAX_ATTACHMENTS: usize = 5;
 const DEFAULT_ACCENT: &str = "#3b82f6";
 
 #[derive(Serialize)]
@@ -197,10 +200,17 @@ async fn get_category(
 struct ThreadBody {
     title: String,
     content: String,
+    #[serde(default)]
+    locked: bool,
+    #[serde(default)]
+    allow_template: bool,
+    /// IDs of files of the user's to attach to the first post.
+    #[serde(default)]
+    attachments: Vec<String>,
 }
 
-/// Starts a thread with its first post. Requires Site Access and User Posts; 423 if the
-/// category is locked.
+/// Starts a thread with its first post. Requires Site Access and User Posts; starting it
+/// locked also needs Thread Management. 423 if the category is locked.
 #[post("/forum/categories/{id}/threads")]
 async fn create_thread(
     state: web::Data<AppState>,
@@ -208,7 +218,10 @@ async fn create_thread(
     id: web::Path<i64>,
     body: web::Json<ThreadBody>,
 ) -> Result<HttpResponse, ApiError> {
-    user.require(&state.db, POST).await?;
+    let permissions = user.require(&state.db, POST).await?;
+    if body.locked && !permissions.contains(MODERATE) {
+        return Err(ApiError::Forbidden(Permissions::THREAD_MANAGEMENT.name().to_owned()));
+    }
     let title = required_text("title", &body.title, MAX_TITLE)?;
     let content = markdown("content", &body.content, MAX_CONTENT)?;
     let category = ForumCategory::find_by_id(&state.db, id.into_inner())
@@ -217,7 +230,18 @@ async fn create_thread(
     if category.locked {
         return Err(ApiError::Locked("category"));
     }
-    let thread = ForumThread::create(&state.db, user.0.id, category.id, &title, &content).await?;
+    let attachments = files::attachable(&state, user.0.id, &body.attachments, MAX_ATTACHMENTS).await?;
+    let thread = ForumThread::create(
+        &state.db,
+        user.0.id,
+        category.id,
+        &title,
+        &content,
+        body.locked,
+        body.allow_template,
+        &attachments,
+    )
+    .await?;
     log::info!("user {} started forum thread {} in category {}", user.0.id, thread.id, category.id);
     Ok(HttpResponse::Created().json(thread))
 }
@@ -248,6 +272,15 @@ async fn get_thread(
 #[derive(Deserialize)]
 struct PostBody {
     content: String,
+    /// IDs of files of the user's to attach.
+    #[serde(default)]
+    attachments: Vec<String>,
+}
+
+/// Editing replaces the content only; attachments stay as they are.
+#[derive(Deserialize)]
+struct PostEditBody {
+    content: String,
 }
 
 /// Replies to a thread. Requires Site Access and User Posts; 423 if the thread or its
@@ -273,7 +306,8 @@ async fn create_post(
     if category.locked {
         return Err(ApiError::Locked("category"));
     }
-    let post = thread.reply(&state.db, user.0.id, &content).await?;
+    let attachments = files::attachable(&state, user.0.id, &body.attachments, MAX_ATTACHMENTS).await?;
+    let post = thread.reply(&state.db, user.0.id, &content, &attachments).await?;
     Ok(HttpResponse::Created().json(post))
 }
 
@@ -328,7 +362,9 @@ async fn delete_thread(
 ) -> Result<HttpResponse, ApiError> {
     let thread = find_thread(&state, id.into_inner()).await?;
     manager(&state, &user, thread.author_id, &thread).await?;
+    let attached = File::of_forum_thread(&state.db, thread.id).await?;
     thread.delete(&state.db).await?;
+    files::delete_all(&state, attached).await;
     log::info!("user {} deleted forum thread {} ({:?})", user.0.id, thread.id, thread.title);
     Ok(HttpResponse::NoContent().finish())
 }
@@ -340,7 +376,7 @@ async fn edit_post(
     state: web::Data<AppState>,
     user: AuthUser,
     id: web::Path<i64>,
-    body: web::Json<PostBody>,
+    body: web::Json<PostEditBody>,
 ) -> Result<HttpResponse, ApiError> {
     let content = markdown("content", &body.content, MAX_CONTENT)?;
     let (post, thread) = find_post(&state, id.into_inner()).await?;
@@ -363,10 +399,14 @@ async fn delete_post(
     let (post, thread) = find_post(&state, id.into_inner()).await?;
     manager(&state, &user, post.author_id, &thread).await?;
     if post.id == thread.thread_post_id {
+        let attached = File::of_forum_thread(&state.db, thread.id).await?;
         thread.delete(&state.db).await?;
+        files::delete_all(&state, attached).await;
         log::info!("user {} deleted forum thread {} with its first post", user.0.id, thread.id);
     } else {
+        let attached = File::of_forum_post(&state.db, post.id).await?;
         post.delete_reply(&state.db).await?;
+        files::delete_all(&state, attached).await;
         log::info!(
             "user {} deleted forum post {} by user {} in thread {}",
             user.0.id, post.id, post.author_id, thread.id

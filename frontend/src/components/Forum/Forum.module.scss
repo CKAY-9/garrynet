@@ -419,3 +419,23 @@ $accent: #3b82f6;
   flex-direction: column;
   gap: 0.75rem;
 }
+
+.options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.25rem;
+}
+
+.checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+/* A link styled as a secondary button, e.g. "Use as template". */
+.linkButton {
+  align-self: flex-start;
+  text-decoration: none;
+}

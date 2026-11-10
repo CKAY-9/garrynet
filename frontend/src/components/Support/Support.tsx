@@ -2,6 +2,7 @@ import Form from "next/form";
 import Link from "next/link";
 import { Avatar } from "@/components/Avatar";
 import { Markdown } from "@/components/Markdown";
+import { Attachments } from "@/components/Upload";
 import type { SupportViewer } from "@/lib/support";
 import {
   faqCategoryLabels,
@@ -395,6 +396,7 @@ function Message({
         </div>
         <MessageBody message={message} canEdit={canEdit}>
           <Markdown className={styles.content}>{message.content}</Markdown>
+          <Attachments files={message.attachments} />
           {message.previous_content !== null && (
             <details className={styles.previous}>
               <summary>Previous version</summary>

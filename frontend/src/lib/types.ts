@@ -255,6 +255,8 @@ export type ForumPost = {
   /** Ids of users who liked the post. */
   likes: number[];
   dislikes: number[];
+  /** Files attached when the post was written. */
+  attachments: Attachment[];
 };
 
 /** The author fields the forum displays next to threads and posts. */
@@ -350,6 +352,8 @@ export type SupportMessage = {
   ticket_id: number;
   /** Only the support team sees internal messages. */
   is_internal: boolean;
+  /** Files attached when the message was written. */
+  attachments: Attachment[];
 };
 
 export type SupportMessageWithAuthor = SupportMessage & { author: UserRef };
@@ -370,6 +374,8 @@ export type TicketPage = {
 export type TicketDetails = Pick<SupportTicket, "title" | "subject" | "category" | "associated_user_ids"> & {
   /** The initial message, Markdown. */
   content: string;
+  /** IDs of uploaded files to attach to the initial message. */
+  attachments: string[];
 };
 
 /** Filters for ticket lists. Blank values are ignored. */
@@ -644,3 +650,35 @@ export type ItemDetails = Pick<
 
 /** Sent to `POST /admin/store/{id}/discounts` and `PUT /admin/store/{id}/discounts/{id}`. */
 export type DiscountDetails = Pick<StoreDiscount, "discount" | "message" | "starts_at" | "ends_at">;
+
+// Storage (docs/STORAGE.md)
+
+/** A file attached to a forum post or support message. See `fileUrl` in `@/lib/files`. */
+export type Attachment = {
+  /** The user whose folder it's in, or -1 for community files. */
+  owner_id: number;
+  id: string;
+  name: string;
+  content_type: string;
+  /** Bytes. */
+  size: number;
+};
+
+/** An uploaded file, from `POST /file/upload` and `POST /file/{owner_id}/{id}/complete`. */
+export type StoredFile = Attachment & {
+  /** Where to fetch it; stable across storage providers. */
+  url: string;
+  status: "PENDING" | "READY";
+  uploaded_by: number | null;
+  created_at: string;
+  completed_at: string | null;
+};
+
+/** Where and how to send a pending file's bytes. */
+export type UploadTarget = {
+  method: "PUT";
+  url: string;
+  /** Headers the request must carry, exactly as given. */
+  headers: Record<string, string>;
+  expires_at: string;
+};

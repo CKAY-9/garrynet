@@ -18,6 +18,7 @@ use crate::{
         },
     },
     routes::{
+        files,
         markdown::markdown,
         validate::{bad, required_text},
     },
@@ -44,6 +45,8 @@ const SUPPORT_TEAM: Permissions = Permissions::SUPPORT_TEAM;
 const MAX_TITLE: usize = 128;
 const MAX_SUBJECT: usize = 256;
 const MAX_CONTENT: usize = 20_000;
+/// Files per message.
+const MAX_ATTACHMENTS: usize = 10;
 const MAX_ASSOCIATED_USERS: usize = 10;
 const MAX_FAQ_LIMIT: i64 = 100;
 
@@ -96,6 +99,9 @@ struct TicketBody {
     associated_user_ids: Vec<i64>,
     /// The initial message, Markdown.
     content: String,
+    /// IDs of files of the user's to attach to the initial message.
+    #[serde(default)]
+    attachments: Vec<String>,
 }
 
 /// Opens a ticket with its initial message. Any logged-in user; 400 once they have
@@ -106,7 +112,8 @@ async fn create_ticket(
     user: AuthUser,
     body: web::Json<TicketBody>,
 ) -> Result<HttpResponse, ApiError> {
-    let details = normalize_ticket(body.into_inner(), user.0.id)?;
+    let mut details = normalize_ticket(body.into_inner(), user.0.id)?;
+    details.attachments = files::attachable(&state, user.0.id, &details.attachments, MAX_ATTACHMENTS).await?;
     let missing = User::missing_ids(&state.db, &details.associated_user_ids).await?;
     if let Some(id) = missing.first() {
         return Err(bad(format!("associated user {id} does not exist")));
@@ -166,6 +173,9 @@ async fn get_ticket(
 #[derive(Deserialize)]
 struct MessageBody {
     content: String,
+    /// IDs of files of the user's to attach.
+    #[serde(default)]
+    attachments: Vec<String>,
     /// Support Team only: a note other team members can see but the user can't.
     #[serde(default)]
     is_internal: bool,
@@ -183,8 +193,11 @@ async fn create_message(
 ) -> Result<HttpResponse, ApiError> {
     let content = markdown("content", &body.content, MAX_CONTENT)?;
     let (ticket, support) = find_ticket(&state, &user, id.into_inner()).await?;
+    let attachments = files::attachable(&state, user.0.id, &body.attachments, MAX_ATTACHMENTS).await?;
     let message = if support {
-        ticket.reply_as_support(&state.db, user.0.id, &content, body.is_internal).await?
+        ticket
+            .reply_as_support(&state.db, user.0.id, &content, body.is_internal, &attachments)
+            .await?
     } else {
         if body.is_internal {
             return Err(ApiError::Forbidden(SUPPORT_TEAM.name().to_owned()));
@@ -192,7 +205,7 @@ async fn create_message(
         if ticket.status.is_done() {
             return Err(ApiError::Locked("ticket"));
         }
-        ticket.reply_as_user(&state.db, &content).await?
+        ticket.reply_as_user(&state.db, &content, &attachments).await?
     };
     Ok(HttpResponse::Created().json(message))
 }
@@ -432,6 +445,8 @@ fn normalize_ticket(body: TicketBody, user_id: i64) -> Result<TicketDetails, Api
         category: body.category,
         associated_user_ids,
         content: markdown("content", &body.content, MAX_CONTENT)?,
+        // Checked against the database by the route.
+        attachments: body.attachments,
     })
 }
 
@@ -456,6 +471,7 @@ mod tests {
             category: TicketCategory::UserIssue,
             associated_user_ids: vec![3, 1, 3, 7],
             content: "Details here".into(),
+            attachments: Vec::new(),
         };
         let details = normalize_ticket(body(), 7).unwrap_or_else(|_| panic!("valid body rejected"));
         assert_eq!(details.title, "Lost my item");

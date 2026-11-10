@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { Avatar } from "@/components/Avatar";
+import { ImageUrlInput } from "@/components/Upload";
 import type { ServerDetails } from "@/lib/types";
 // The same form styles as the community editor.
 import form from "../community/editor.module.scss";
@@ -69,7 +70,7 @@ export function ServerFields({
             <input className={form.input} value={draft.name} onChange={(e) => onChange({ name: e.target.value })} maxLength={MAX_NAME} required />
           </Field>
           <Field label="Icon URL" hint="Square images work best. Shown on the loading screen.">
-            <input className={form.input} type="url" value={draft.icon_url} onChange={(e) => onChange({ icon_url: e.target.value })} placeholder="https://example.com/icon.png" />
+            <ImageUrlInput className={form.input} value={draft.icon_url} onChange={(url) => onChange({ icon_url: url })} placeholder="https://example.com/icon.png" />
           </Field>
         </div>
       </div>
@@ -117,7 +118,7 @@ export function ServerFields({
       </div>
 
       <Field label="Splash image URL" hint="A wide image shown on the website (not on the loading screen).">
-        <input className={form.input} type="url" value={draft.splash_url} onChange={(e) => onChange({ splash_url: e.target.value })} placeholder="https://example.com/splash.jpg" />
+        <ImageUrlInput className={form.input} value={draft.splash_url} onChange={(url) => onChange({ splash_url: url })} placeholder="https://example.com/splash.jpg" />
       </Field>
       {draft.splash_url.trim() && (
         <div

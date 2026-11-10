@@ -5,6 +5,8 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::{PgConnection, PgPool, Postgres, QueryBuilder, types::Json};
 
+use super::file::{AttachTo, Attachment, File, attachments_json};
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
 #[sqlx(type_name = "ticket_category", rename_all = "SCREAMING_SNAKE_CASE")]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
@@ -87,6 +89,8 @@ pub struct SupportMessage {
     pub ticket_id: i64,
     /// Only the support team can see internal messages.
     pub is_internal: bool,
+    /// Files attached when the message was written.
+    pub attachments: Json<Vec<Attachment>>,
 }
 
 #[derive(Clone, Debug, Serialize, sqlx::FromRow)]
@@ -148,6 +152,8 @@ pub struct TicketDetails {
     pub category: TicketCategory,
     pub associated_user_ids: Vec<i64>,
     pub content: String,
+    /// Files of the user's to attach to the initial message.
+    pub attachments: Vec<String>,
 }
 
 /// Already validated (see `routes::support`).
@@ -215,7 +221,8 @@ macro_rules! message_columns {
     ($m:literal) => {
         concat!(
             $m, ".id, ", $m, ".author_id, ", $m, ".created_at, ", $m, ".last_updated, ",
-            $m, ".content, ", $m, ".previous_content, ", $m, ".ticket_id, ", $m, ".is_internal"
+            $m, ".content, ", $m, ".previous_content, ", $m, ".ticket_id, ", $m, ".is_internal, ",
+            attachments_json!("support_message_id", concat!($m, ".id")), " AS attachments"
         )
     };
 }
@@ -344,6 +351,7 @@ impl SupportTicket {
         .bind(ticket.created_at)
         .execute(&mut *tx)
         .await?;
+        File::attach(&mut tx, AttachTo::SupportMessage(message_id), user_id, &details.attachments).await?;
         tx.commit().await?;
         Ok(ticket)
     }
@@ -363,9 +371,14 @@ impl SupportTicket {
     }
 
     /// Adds a message from the ticket's owner and moves the ticket to `AWAITING_ADMIN`.
-    pub async fn reply_as_user(&self, db: &PgPool, content: &str) -> sqlx::Result<SupportMessage> {
+    pub async fn reply_as_user(
+        &self,
+        db: &PgPool,
+        content: &str,
+        attachments: &[String],
+    ) -> sqlx::Result<SupportMessage> {
         let mut tx = db.begin().await?;
-        let message = insert_message(&mut tx, self.id, self.user_id, content, false).await?;
+        let message = insert_message(&mut tx, self.id, self.user_id, content, false, attachments).await?;
         sqlx::query(
             "UPDATE support_tickets SET status = 'AWAITING_ADMIN', last_updated = $2 WHERE id = $1",
         )
@@ -386,9 +399,10 @@ impl SupportTicket {
         author_id: i64,
         content: &str,
         is_internal: bool,
+        attachments: &[String],
     ) -> sqlx::Result<SupportMessage> {
         let mut tx = db.begin().await?;
-        let message = insert_message(&mut tx, self.id, author_id, content, is_internal).await?;
+        let message = insert_message(&mut tx, self.id, author_id, content, is_internal, attachments).await?;
         if is_internal {
             add_responder(&mut tx, self.id, author_id).await?;
         } else {
@@ -457,8 +471,9 @@ async fn insert_message(
     author_id: i64,
     content: &str,
     is_internal: bool,
+    attachments: &[String],
 ) -> sqlx::Result<SupportMessage> {
-    sqlx::query_as(concat!(
+    let mut message: SupportMessage = sqlx::query_as(concat!(
         "INSERT INTO support_messages (author_id, ticket_id, content, is_internal)
          VALUES ($1, $2, $3, $4)
          RETURNING ", message_columns!("support_messages")
@@ -467,8 +482,11 @@ async fn insert_message(
     .bind(ticket_id)
     .bind(content)
     .bind(is_internal)
-    .fetch_one(conn)
-    .await
+    .fetch_one(&mut *conn)
+    .await?;
+    message.attachments =
+        Json(File::attach(conn, AttachTo::SupportMessage(message.id), author_id, attachments).await?);
+    Ok(message)
 }
 
 async fn add_responder(conn: &mut PgConnection, ticket_id: i64, user_id: i64) -> sqlx::Result<()> {

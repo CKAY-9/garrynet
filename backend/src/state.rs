@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use sqlx::PgPool;
 
-use crate::{auth::jwt::JwtKeys, config::Config, stripe::Stripe};
+use crate::{auth::jwt::JwtKeys, config::Config, storage::Storage, stripe::Stripe};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -12,6 +12,8 @@ pub struct AppState {
     pub jwt: JwtKeys,
     /// `None` until Stripe is configured (docs/STORE.md); nothing can be bought then.
     pub stripe: Option<Stripe>,
+    /// File storage (docs/STORAGE.md).
+    pub storage: Storage,
 }
 
 impl AppState {

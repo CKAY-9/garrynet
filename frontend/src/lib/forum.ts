@@ -30,6 +30,18 @@ export async function getForumThread(id: string): Promise<ForumThreadPage | null
   return getOrNull<ForumThreadPage>(id, (n) => `/forum/threads/${n}`);
 }
 
+/**
+ * The title and first post of thread `id` to start a new thread from, or `null` if there is
+ * no such thread or it doesn't allow templating.
+ */
+export async function getForumTemplate(id: string | undefined): Promise<{ title: string; content: string } | null> {
+  if (!id) return null;
+  const data = await getForumThread(id);
+  if (!data?.thread.allow_template) return null;
+  const first = data.posts.find((p) => p.id === data.thread.thread_post_id);
+  return first ? { title: data.thread.title, content: first.content } : null;
+}
+
 async function getOrNull<T>(id: string, path: (id: string) => string): Promise<T | null> {
   if (!/^\d+$/.test(id)) return null;
   await connection();
@@ -44,11 +56,6 @@ async function getOrNull<T>(id: string, path: (id: string) => string): Promise<T
 
 /** Whether the current user may post: logged out, logged in without permission, or allowed. */
 export type PostingAccess = "guest" | "forbidden" | "allowed";
-
-/** Reads the session cookie; see `getCurrentUser`. */
-export async function getPostingAccess(): Promise<PostingAccess> {
-  return (await getForumViewer()).access;
-}
 
 /** What the current user can do on the forum. */
 export type ForumViewer = {
