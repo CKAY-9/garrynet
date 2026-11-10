@@ -19,6 +19,54 @@ Environment variables (see `backend/.env.example`):
 
 Each file records the provider it was uploaded to, so switching `STORAGE_PROVIDER` only affects new uploads. Old files keep resolving as long as their provider stays configured. The local provider stays available while its directory exists.
 
+## Testing with a local S3 (Garage)
+
+To test the S3 provider without an AWS account, run [Garage](https://garagehq.deuxfleurs.fr/), a self-hosted S3-compatible store, in Docker. From the repo root, using [garage.toml](../garage.toml):
+
+```sh
+docker run -d --name garage-container \
+  -p 127.0.0.1:3900:3900 -p 127.0.0.1:3901:3901 -p 127.0.0.1:3902:3902 -p 127.0.0.1:3903:3903 \
+  -v "$(pwd)/garage.toml:/etc/garage.toml" \
+  -v garage-meta:/var/lib/garage/meta -v garage-data:/var/lib/garage/data \
+  -e GARAGE_DEFAULT_ACCESS_KEY=GK0123456789abcdef01234567 \
+  -e GARAGE_DEFAULT_SECRET_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef \
+  -e GARAGE_DEFAULT_BUCKET=garrynet \
+  dxflrs/garage:v2.5.0 /garage server --single-node --default-bucket
+```
+
+`--single-node` sets up the cluster layout itself and `--default-bucket` creates the bucket and key from the `GARAGE_DEFAULT_*` variables. Garage requires the access key to be `GK` plus 24 hex characters and the secret to be 64 hex characters. These credentials are for local testing only.
+
+Then set these in `backend/.env`:
+
+```
+STORAGE_PROVIDER=s3
+S3_BUCKET=garrynet
+S3_ENDPOINT=http://localhost:3900
+S3_REGION=garage
+S3_ACCESS_KEY_ID=GK0123456789abcdef01234567
+S3_SECRET_ACCESS_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+```
+
+Manage the container with `docker stop garage-container` and `docker start garage-container`. Data persists in the `garage-meta` and `garage-data` volumes; remove them with `docker rm garage-container && docker volume rm garage-meta garage-data` to start fresh. Browser uploads need a CORS rule on the bucket allowing `PUT` from `FRONTEND_URL`. Garage sets it through the S3 `PutBucketCors` call, not `garage.toml`, and it persists in the volumes. With a `cors.xml` like the one below, apply it with curl (no AWS CLI needed):
+
+```xml
+<CORSConfiguration><CORSRule>
+  <AllowedOrigin>http://localhost:3000</AllowedOrigin>
+  <AllowedMethod>PUT</AllowedMethod><AllowedMethod>GET</AllowedMethod><AllowedMethod>HEAD</AllowedMethod>
+  <AllowedHeader>*</AllowedHeader>
+  <ExposeHeader>ETag</ExposeHeader>
+  <MaxAgeSeconds>3000</MaxAgeSeconds>
+</CORSRule></CORSConfiguration>
+```
+
+```sh
+curl -X PUT --aws-sigv4 "aws:amz:garage:s3" \
+  --user "GK0123456789abcdef01234567:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" \
+  -H "Content-Type: application/xml" --data-binary @cors.xml "http://localhost:3900/garrynet?cors"
+```
+
+A `NetworkError when attempting to fetch resource` in the browser after `POST /file/upload` returns 201 usually means this rule is missing.
+
 ## File
 
 ```
