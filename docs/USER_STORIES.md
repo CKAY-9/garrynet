@@ -117,3 +117,17 @@ Part of [GarryNet Design](DESIGN.md).
 **Refunding a Purchase**
 1. As a user with `Store Finance`, I want to view receipts and refund a purchase.
 2. The refund revokes the associated fulfillment, removing granted usergroups and weapons.
+
+## Forums
+
+**Enable Templating**
+1. As a user with post permissions, I want to toggle my thread to be a template, so that other
+users can copy it
+2. When enabled, other users can click use as template
+3. I can do this at time of post creation or afterwards via editing
+
+**Using Templates**
+1. As a user with post permissions, I want to use a thread as a template, so that I can
+follow it's structure
+2. Clicking a post with templating enabled should redirect to a new thread form, with
+title and content filled in. I can edit content and title, then post.

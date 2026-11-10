@@ -9,6 +9,7 @@ GarryNet is a community platform (forum, store, Garry's Mod server integration) 
 - [FORUM.md](FORUM.md): sections, categories, threads, posts
 - [SUPPORT.MD](SUPPORT.MD): support tickets, messages, FAQs
 - [STORE.md](STORE.md): item stores, items, purchases, receipts, fulfillment
+- [STORAGE.md](STORAGE.md): file uploads, local and S3-compatible storage
 - [SERVERS.md](SERVERS.md): Garry's Mod servers and the loading screen
 - [ADDON.md](ADDON.md): the Garry's Mod addon
 - [AUTH.md](AUTH.md): authentication and banned users

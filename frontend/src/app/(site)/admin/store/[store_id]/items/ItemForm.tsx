@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition, type FormEvent } from "react";
+import { ImageUrlInput } from "@/components/Upload";
 import {
   MAX_FULL_DESCRIPTION,
   MAX_NAME,
@@ -169,7 +170,7 @@ export function ItemForm({ store, server, item }: { store: ItemStore; server: Se
         </Field>
         <div className={styles.grid}>
           <Field label="Image URL" hint="Optional. Wide images work best.">
-            <input className={form.input} type="url" value={draft.image_url} onChange={(e) => patch({ image_url: e.target.value })} placeholder="https://example.com/vip.png" />
+            <ImageUrlInput className={form.input} value={draft.image_url} onChange={(url) => patch({ image_url: url })} placeholder="https://example.com/vip.png" />
           </Field>
           <Field label="Sort order" hint="Lower comes first.">
             <input className={form.input} type="number" step={1} value={draft.sort_order} onChange={(e) => patch({ sort_order: e.target.value })} required />

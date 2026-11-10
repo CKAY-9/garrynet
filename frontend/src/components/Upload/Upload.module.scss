@@ -1,0 +1,159 @@
+$border: 1px solid rgb(127 127 127 / 0.2);
+
+.hiddenInput {
+  display: none;
+}
+
+.button {
+  flex: none;
+  padding: 0.5rem 0.9rem;
+  border: $border;
+  border-radius: 0.4rem;
+  background: none;
+  color: inherit;
+  font: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    background: rgb(127 127 127 / 0.12);
+  }
+
+  &:disabled {
+    cursor: default;
+    opacity: 0.45;
+  }
+}
+
+.hint {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 0.8rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.65;
+}
+
+.error {
+  margin: 0;
+  color: #e5484d;
+  font-size: 0.85rem;
+}
+
+// Link input with an Upload button.
+.urlInput {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.urlRow {
+  display: flex;
+  gap: 0.5rem;
+
+  > input[type="url"] {
+    flex: 1;
+    min-width: 0;
+  }
+}
+
+// Attaching files to a post being written.
+.picker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.pickerRow {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.picked,
+.fileList,
+.thumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pickedFile,
+.fileLink {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  max-width: 100%;
+  padding: 0.3rem 0.65rem;
+  border: $border;
+  border-radius: 0.4rem;
+  font-size: 0.85rem;
+}
+
+.pickedFile button {
+  padding: 0 0.15rem;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.65;
+
+  &:hover:not(:disabled) {
+    opacity: 1;
+  }
+}
+
+.fileName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fileSize {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.6;
+}
+
+// Files attached to a posted post or message.
+.attachments {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.thumbs {
+  a {
+    display: block;
+    overflow: hidden;
+    border: $border;
+    border-radius: 0.4rem;
+
+    &:hover {
+      border-color: rgb(127 127 127 / 0.5);
+    }
+  }
+
+  img {
+    display: block;
+    width: 10rem;
+    max-width: 100%;
+    height: 7.5rem;
+    object-fit: cover;
+  }
+}
+
+.fileLink {
+  color: inherit;
+  text-decoration: none;
+
+  &:hover {
+    background: rgb(127 127 127 / 0.1);
+  }
+}

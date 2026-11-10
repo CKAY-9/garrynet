@@ -16,6 +16,7 @@ pub struct Config {
     /// `None` until Stripe is configured; the store can be browsed and managed but nothing
     /// can be bought.
     pub stripe: Option<StripeConfig>,
+    pub storage: StorageConfig,
 }
 
 /// Stripe settings (docs/STORE.md). All or nothing: setting some of the variables but not
@@ -56,6 +57,7 @@ impl Config {
             cookie_domain: optional("COOKIE_DOMAIN"),
             cookie_secure,
             stripe: stripe_from_env()?,
+            storage: storage_from_env()?,
         })
     }
 
@@ -84,6 +86,81 @@ fn stripe_from_env() -> Result<Option<StripeConfig>, String> {
         }
         _ => Err("STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET must be set together".into()),
     }
+}
+
+/// Which storage provider new uploads go to (docs/STORAGE.md).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StorageProvider {
+    Local,
+    S3,
+}
+
+/// File storage settings (docs/STORAGE.md).
+#[derive(Clone, Debug)]
+pub struct StorageConfig {
+    /// Where new uploads go. Files keep the provider they were uploaded to.
+    pub provider: StorageProvider,
+    /// Root directory of the local provider.
+    pub local_path: String,
+    /// `None` unless `S3_BUCKET` is set.
+    pub s3: Option<S3Config>,
+    /// Largest upload accepted, in bytes.
+    pub max_file_size: u64,
+    /// Minimum time between two uploads by the same user.
+    pub rate_limit_secs: u64,
+}
+
+/// An S3-compatible bucket: AWS S3, Cloudflare R2, MinIO, ...
+#[derive(Clone, Debug)]
+pub struct S3Config {
+    pub bucket: String,
+    pub region: String,
+    /// Custom endpoint, e.g. `https://<account>.r2.cloudflarestorage.com`. `None` for AWS.
+    pub endpoint: Option<String>,
+    pub access_key_id: String,
+    pub secret_access_key: String,
+    /// Public base URL of the bucket (custom domain or CDN), without a trailing slash. When
+    /// set, files are read from `{public_url}/{key}` instead of short-lived presigned URLs.
+    pub public_url: Option<String>,
+}
+
+fn storage_from_env() -> Result<StorageConfig, String> {
+    let provider = match optional("STORAGE_PROVIDER").as_deref() {
+        None | Some("local") => StorageProvider::Local,
+        Some("s3") => StorageProvider::S3,
+        Some(other) => return Err(format!("STORAGE_PROVIDER must be `local` or `s3`, got {other:?}")),
+    };
+    let s3 = match optional("S3_BUCKET") {
+        None => None,
+        Some(bucket) => Some(S3Config {
+            bucket,
+            // R2 ignores the region but the signature needs one; it accepts `auto`.
+            region: optional("S3_REGION").unwrap_or_else(|| "us-east-1".into()),
+            endpoint: optional("S3_ENDPOINT").map(|v| v.trim_end_matches('/').to_owned()),
+            access_key_id: required("S3_ACCESS_KEY_ID")?,
+            secret_access_key: required("S3_SECRET_ACCESS_KEY")?,
+            public_url: optional("S3_PUBLIC_URL").map(|v| v.trim_end_matches('/').to_owned()),
+        }),
+    };
+    if provider == StorageProvider::S3 && s3.is_none() {
+        return Err("STORAGE_PROVIDER=s3 needs S3_BUCKET, S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY".into());
+    }
+    let number = |key: &str, default: u64| -> Result<u64, String> {
+        optional(key).map_or(Ok(default), |v| {
+            v.parse().map_err(|_| format!("{key} must be a whole number, got {v:?}"))
+        })
+    };
+    let max_file_size = number("STORAGE_MAX_FILE_SIZE", 2 * 1024 * 1024)?;
+    if max_file_size == 0 {
+        return Err("STORAGE_MAX_FILE_SIZE must be greater than 0".into());
+    }
+    Ok(StorageConfig {
+        provider,
+        local_path: optional("STORAGE_LOCAL_PATH").unwrap_or_else(|| "./storage".into()),
+        s3,
+        max_file_size,
+        rate_limit_secs: number("STORAGE_RATE_LIMIT", 3)?,
+    })
 }
 
 fn required(key: &str) -> Result<String, String> {

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition, type FormEvent, type ReactNode } from "react";
+import { ImageUrlInput } from "@/components/Upload";
 import type { ForumSection } from "@/lib/types";
 // The same form styles as the other admin editors.
 import form from "../community/editor.module.scss";
@@ -104,7 +105,7 @@ export function CreateSectionForm() {
       </Field>
       <div className={styles.grid}>
         <Field label="Icon URL" hint="Optional.">
-          <input className={form.input} type="url" value={iconUrl} onChange={(e) => setIconUrl(e.target.value)} placeholder="https://example.com/icon.png" />
+          <ImageUrlInput className={form.input} value={iconUrl} onChange={setIconUrl} placeholder="https://example.com/icon.png" />
         </Field>
         <Field label="Position" hint={POSITION_HINT}>
           <input className={form.input} type="number" min={-1} step={1} value={position} onChange={(e) => setPosition(e.target.value)} required />

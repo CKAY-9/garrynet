@@ -1,4 +1,5 @@
 pub mod community;
+pub mod file;
 pub mod forum;
 pub mod loading_screen;
 pub mod permissions;
@@ -10,6 +11,7 @@ pub mod user;
 pub mod usergroup;
 
 pub use community::Community;
+pub use file::File;
 pub use loading_screen::LoadingScreenConfig;
 pub use permissions::Permissions;
 pub use player::UserPlayer;

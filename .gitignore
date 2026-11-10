@@ -5,6 +5,8 @@
 
 # Rust backend
 /backend/target/
+# Local file storage (STORAGE_LOCAL_PATH default)
+/backend/storage/
 **/*.rs.bk
 *.pdb
 

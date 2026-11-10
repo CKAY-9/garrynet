@@ -26,18 +26,22 @@ export async function createTicket(details: TicketDetails): Promise<ActionResult
   redirect(`/support/ticket/${result.data.id}`);
 }
 
-/** Adds a message (or, for the Support Team, an internal note) and refreshes the page. */
+/**
+ * Adds a message (or, for the Support Team, an internal note) with the uploaded files
+ * `attachments`, and refreshes the page.
+ */
 export async function replyToTicket(
   ticketId: number,
   content: string,
   isInternal = false,
+  attachments: string[] = [],
 ): Promise<ActionResult<SupportMessage>> {
   return runAction(
     "send the message",
     async () => {
       const { data } = await backend.post<SupportMessage>(
         `/support/tickets/${ticketId}/messages`,
-        { content, is_internal: isInternal },
+        { content, is_internal: isInternal, attachments },
         { headers: await authHeaders() },
       );
       refresh();

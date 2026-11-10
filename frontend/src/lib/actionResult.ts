@@ -26,6 +26,7 @@ export async function runAction<T>(
     if (status === 503) {
       return { ok: false, message: typeof error === "string" ? capitalize(error) + "." : `This isn't set up yet, so you can't ${what}.` };
     }
+    if (status === 429) return { ok: false, message: `You're doing that too fast. Wait a moment, then try to ${what} again.` };
     if (status === 401) return { ok: false, message: `Your session has expired. Log in again to ${what}.` };
     if (status === 403) return { ok: false, message: `You don't have permission to ${what}.` };
     if (status === 404 || status === 423) {

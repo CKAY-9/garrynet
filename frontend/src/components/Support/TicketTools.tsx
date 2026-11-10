@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, useTransition, type FormEvent, type ReactNode } from "react";
+import { AttachmentPicker, useAttachments } from "@/components/Upload";
 import type { ActionResult } from "@/lib/actionResult";
+import { MAX_MESSAGE_ATTACHMENTS } from "@/lib/files";
 import { isDone, MAX_CONTENT } from "@/lib/supportEnums";
 import type { SupportMessage, SupportStatus, SupportTicket } from "@/lib/types";
 import { editMessage, replyToTicket, setTicketStatus } from "./actions";
@@ -39,12 +41,16 @@ export function ReplyForm({ ticketId, support }: { ticketId: number; support: bo
   const [content, setContent] = useState("");
   const [internal, setInternal] = useState(false);
   const { error, pending, run } = useAction();
+  const attachments = useAttachments(MAX_MESSAGE_ATTACHMENTS);
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     run(
-      () => replyToTicket(ticketId, content.trim(), support && internal),
-      () => setContent(""),
+      () => replyToTicket(ticketId, content.trim(), support && internal, attachments.ids),
+      () => {
+        setContent("");
+        attachments.clear();
+      },
     );
   }
 
@@ -60,8 +66,9 @@ export function ReplyForm({ ticketId, support }: { ticketId: number; support: bo
         aria-label="Reply"
         required
       />
+      <AttachmentPicker {...attachments.picker} disabled={pending} />
       <div className={styles.composerActions}>
-        <button type="submit" className={styles.primary} disabled={pending || !content.trim()}>
+        <button type="submit" className={styles.primary} disabled={pending || attachments.busy || !content.trim()}>
           {pending ? "Sending..." : internal ? "Add note" : "Reply"}
         </button>
         {support && (

@@ -3,6 +3,7 @@
 import { useState, useTransition, type FormEvent, type ReactNode } from "react";
 import Link from "next/link";
 import { Avatar } from "@/components/Avatar";
+import { ImageUrlInput } from "@/components/Upload";
 import { defaultCommunityLogo } from "@/lib/config";
 import type { Community, CommunityDetails, KeyFigure } from "@/lib/types";
 import { saveCommunity } from "./actions";
@@ -137,12 +138,11 @@ export function CommunityEditor({ community }: { community: Community }) {
                 required
               />
             </Field>
-            <Field label="Logo URL" hint="Square images work best. Leave empty to use the default GarryNet logo.">
-              <input
+            <Field label="Logo URL" hint="Paste a link or upload an image. Square images work best. Leave empty to use the default GarryNet logo.">
+              <ImageUrlInput
                 className={styles.input}
-                type="url"
                 value={draft.logo_url}
-                onChange={(e) => update({ logo_url: e.target.value })}
+                onChange={(url) => update({ logo_url: url })}
                 placeholder="https://example.com/logo.png"
               />
             </Field>
@@ -159,12 +159,11 @@ export function CommunityEditor({ community }: { community: Community }) {
           />
         </Field>
 
-        <Field label="Splash background URL" hint="A wide image shown behind the homepage header.">
-          <input
+        <Field label="Splash background URL" hint="A wide image shown behind the homepage header. Paste a link or upload one.">
+          <ImageUrlInput
             className={styles.input}
-            type="url"
             value={draft.splash_background}
-            onChange={(e) => update({ splash_background: e.target.value })}
+            onChange={(url) => update({ splash_background: url })}
             placeholder="https://example.com/banner.jpg"
           />
         </Field>
@@ -228,8 +227,8 @@ export function CommunityEditor({ community }: { community: Community }) {
               <Field label="Role">
                 <input className={styles.input} value={figure.role} onChange={(e) => setFigure(figure.key, { role: e.target.value })} maxLength={MAX_ROLE} placeholder="Owner" />
               </Field>
-              <Field label="Picture URL">
-                <input className={styles.input} type="url" value={figure.profile_picture} onChange={(e) => setFigure(figure.key, { profile_picture: e.target.value })} placeholder="https://..." />
+              <Field label="Picture" hint="Paste a link or upload an image.">
+                <ImageUrlInput className={styles.input} value={figure.profile_picture} onChange={(url) => setFigure(figure.key, { profile_picture: url })} placeholder="https://..." />
               </Field>
               <Field label="GarryNet user ID" hint="Optional. Links to their profile.">
                 <input className={styles.input} type="number" min={1} step={1} value={figure.user_id} onChange={(e) => setFigure(figure.key, { user_id: e.target.value })} />

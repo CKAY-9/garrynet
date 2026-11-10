@@ -19,7 +19,7 @@ joined: utc timestamp
 last_seen: utc timestamp // updated when they access a route/resource
 ```
 
-Profile details (username, avatar) can be re-synced with Steam when the user clicks a "Sync with Steam" button, which will fetch their latest information and update their entry.
+Profile details (username, avatar) can be re-synced with Steam when the user clicks a "Sync with Steam" button, which will fetch their latest information and update their entry. Avatars always come from Steam; users can't upload their own.
 
 ## User Status
 

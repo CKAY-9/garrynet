@@ -2,6 +2,8 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 import { Avatar } from "@/components/Avatar";
+import { AttachmentPicker, useAttachments } from "@/components/Upload";
+import { MAX_MESSAGE_ATTACHMENTS } from "@/lib/files";
 import {
   MAX_ASSOCIATED_USERS,
   MAX_CONTENT,
@@ -23,6 +25,7 @@ export function NewTicketForm() {
   const [associated, setAssociated] = useState<UserRef[]>([]);
   const [content, setContent] = useState("");
   const { error, pending, run } = useAction();
+  const attachments = useAttachments(MAX_MESSAGE_ATTACHMENTS);
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -34,6 +37,7 @@ export function NewTicketForm() {
         category,
         associated_user_ids: associated.map((u) => u.id),
         content: content.trim(),
+        attachments: attachments.ids,
       }),
     );
   }
@@ -88,11 +92,12 @@ export function NewTicketForm() {
           required
         />
       </label>
+      <AttachmentPicker {...attachments.picker} disabled={pending} />
       <div className={styles.composerActions}>
         <button
           type="submit"
           className={styles.primary}
-          disabled={pending || !title.trim() || !subject.trim() || !content.trim()}
+          disabled={pending || attachments.busy || !title.trim() || !subject.trim() || !content.trim()}
         >
           {pending ? "Opening..." : "Open ticket"}
         </button>

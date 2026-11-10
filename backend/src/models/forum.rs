@@ -5,6 +5,8 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, types::Json};
 
+use super::file::{AttachTo, Attachment, File, attachments_json};
+
 #[derive(Clone, Debug, Serialize, sqlx::FromRow)]
 pub struct ForumSection {
     pub id: i64,
@@ -56,6 +58,8 @@ pub struct ForumPost {
     pub edited: Option<DateTime<Utc>>,
     pub likes: Vec<i64>,
     pub dislikes: Vec<i64>,
+    /// Files attached when the post was written.
+    pub attachments: Json<Vec<Attachment>>,
 }
 
 /// The parts of a user the forum displays next to their threads and posts.
@@ -172,10 +176,16 @@ macro_rules! thread_columns {
 
 macro_rules! post_columns {
     () => {
-        "id, author_id, thread_id, content, created_at, edited, likes, dislikes"
+        concat!(
+            "id, author_id, thread_id, content, created_at, edited, likes, dislikes, ",
+            attachments_json!("forum_post_id", "forum_posts.id"), " AS attachments"
+        )
     };
     (p) => {
-        "p.id, p.author_id, p.thread_id, p.content, p.created_at, p.edited, p.likes, p.dislikes"
+        concat!(
+            "p.id, p.author_id, p.thread_id, p.content, p.created_at, p.edited, p.likes, p.dislikes, ",
+            attachments_json!("forum_post_id", "p.id"), " AS attachments"
+        )
     };
 }
 
@@ -311,12 +321,16 @@ impl ForumThread {
     }
 
     /// Creates a thread and its first post together.
+    #[allow(clippy::too_many_arguments)]
     pub async fn create(
         db: &PgPool,
         author_id: i64,
         category_id: i64,
         title: &str,
         content: &str,
+        locked: bool,
+        allow_template: bool,
+        attachments: &[String],
     ) -> sqlx::Result<Self> {
         let mut tx = db.begin().await?;
         // The thread references its first post (a deferred foreign key), so reserve the
@@ -326,14 +340,16 @@ impl ForumThread {
                 .fetch_one(&mut *tx)
                 .await?;
         let thread: Self = sqlx::query_as(concat!(
-            "INSERT INTO forum_threads (author_id, category_id, title, thread_post_id)
-             VALUES ($1, $2, $3, $4)
+            "INSERT INTO forum_threads (author_id, category_id, title, thread_post_id, locked, allow_template)
+             VALUES ($1, $2, $3, $4, $5, $6)
              RETURNING ", thread_columns!()
         ))
         .bind(author_id)
         .bind(category_id)
         .bind(title)
         .bind(post_id)
+        .bind(locked)
+        .bind(allow_template)
         .fetch_one(&mut *tx)
         .await?;
         sqlx::query(
@@ -347,6 +363,7 @@ impl ForumThread {
         .bind(thread.created_at)
         .execute(&mut *tx)
         .await?;
+        File::attach(&mut tx, AttachTo::ForumPost(post_id), author_id, attachments).await?;
         tx.commit().await?;
         Ok(thread)
     }
@@ -365,10 +382,17 @@ impl ForumThread {
         .await
     }
 
-    /// Adds a reply and bumps the thread's last activity.
-    pub async fn reply(&self, db: &PgPool, author_id: i64, content: &str) -> sqlx::Result<ForumPost> {
+    /// Adds a reply with its attachments (files of the author's; see `File::attach`) and
+    /// bumps the thread's last activity.
+    pub async fn reply(
+        &self,
+        db: &PgPool,
+        author_id: i64,
+        content: &str,
+        attachments: &[String],
+    ) -> sqlx::Result<ForumPost> {
         let mut tx = db.begin().await?;
-        let post: ForumPost = sqlx::query_as(concat!(
+        let mut post: ForumPost = sqlx::query_as(concat!(
             "INSERT INTO forum_posts (author_id, thread_id, content)
              VALUES ($1, $2, $3)
              RETURNING ", post_columns!()
@@ -378,6 +402,7 @@ impl ForumThread {
         .bind(content)
         .fetch_one(&mut *tx)
         .await?;
+        post.attachments = Json(File::attach(&mut tx, AttachTo::ForumPost(post.id), author_id, attachments).await?);
         sqlx::query("UPDATE forum_threads SET last_activity = $2 WHERE id = $1")
             .bind(self.id)
             .bind(post.created_at)
