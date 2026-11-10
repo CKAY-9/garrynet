@@ -999,15 +999,15 @@ impl Fulfillment {
 
     /// Records the addon's report. Idempotent: a repeated or stale report changes nothing.
     /// Rewards delivered after a revocation are still recorded as delivered, so the
-    /// revocation gets applied on the next sync. `None` if the server has no such
-    /// fulfillment.
+    /// revocation gets applied on the next sync. Returns the fulfillment as it stands and
+    /// whether this report changed it; `None` if the server has no such fulfillment.
     pub async fn acknowledge(
         db: &PgPool,
         server_id: i64,
         id: i64,
         result: AckResult,
         error: Option<&str>,
-    ) -> sqlx::Result<Option<Fulfillment>> {
+    ) -> sqlx::Result<Option<(Fulfillment, bool)>> {
         let sql = match result {
             AckResult::Fulfilled => {
                 "UPDATE store_fulfillments
@@ -1028,13 +1028,15 @@ impl Fulfillment {
                   WHERE id = $1 AND server_id = $2 AND status = 'REVOKED' AND $3::TEXT IS NULL"
             }
         };
-        sqlx::query(sql)
+        let changed = sqlx::query(sql)
             .bind(id)
             .bind(server_id)
             .bind(if result == AckResult::Failed { error } else { None })
             .execute(db)
-            .await?;
-        Self::find_for_server(db, server_id, id).await
+            .await?
+            .rows_affected()
+            > 0;
+        Ok(Self::find_for_server(db, server_id, id).await?.map(|f| (f, changed)))
     }
 }
 

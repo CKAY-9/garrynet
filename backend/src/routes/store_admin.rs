@@ -16,6 +16,7 @@ use crate::{
             ReceiptView, Reward, StoreDetails, StoreDiscount, StoreItem, StoreSummary,
         },
     },
+    notify,
     routes::{
         markdown::markdown,
         store::with_servers,
@@ -352,8 +353,11 @@ async fn refund(
     let refund = stripe
         .refund(&receipt.stripe_payment_intent_id, &format!("refund-receipt-{}", receipt.id))
         .await?;
-    // The `charge.refunded` webhook does the same later; it finds nothing left to change.
-    Receipt::set_status(&state.db, receipt.id, ReceiptStatus::Refunded).await?;
+    // The `charge.refunded` webhook does the same later; it finds nothing left to change
+    // (or, if it got here first, we don't), so the buyer is notified once.
+    if let Some((refunded, _)) = Receipt::set_status(&state.db, receipt.id, ReceiptStatus::Refunded).await? {
+        notify::purchase_refunded(&state.db, &refunded, Some(user.0.id)).await;
+    }
     log::info!(
         "user {} refunded receipt {} ({} {}) for user {}: stripe refund {} ({})",
         user.0.id, receipt.id, receipt.price, receipt.currency, receipt.buyer_id, refund.id,

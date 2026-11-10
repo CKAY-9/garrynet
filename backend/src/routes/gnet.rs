@@ -11,8 +11,9 @@ use crate::{
     models::{
         Server, UserPlayer,
         player::PlayerSession,
-        store::{AckResult, Fulfillment},
+        store::{AckResult, Fulfillment, FulfillmentStatus, MAX_ATTEMPTS},
     },
+    notify,
     routes::validate::{bad, text},
     state::AppState,
 };
@@ -207,7 +208,7 @@ async fn acknowledge_fulfillment(
     let body = body.into_inner();
     let error = truncate(&body.error, MAX_ERROR);
     let error = (body.result == AckResult::Failed).then_some(if error.is_empty() { "unknown error" } else { error.as_str() });
-    let fulfillment = Fulfillment::acknowledge(&state.db, auth.id, fulfillment_id, body.result, error)
+    let (fulfillment, changed) = Fulfillment::acknowledge(&state.db, auth.id, fulfillment_id, body.result, error)
         .await?
         .ok_or(ApiError::NotFound("fulfillment"))?;
     match body.result {
@@ -217,6 +218,20 @@ async fn acknowledge_fulfillment(
             auth.id, fulfillment.attempts, fulfillment.last_error.as_deref().unwrap_or("")
         ),
         AckResult::Revoked => log::info!("server {} revoked the rewards of store purchase {fulfillment_id}", auth.id),
+    }
+    // A repeated report changes nothing, so it doesn't notify again.
+    if changed {
+        match body.result {
+            // Rewards delivered after a revocation are about to be taken back.
+            AckResult::Fulfilled if fulfillment.status == FulfillmentStatus::Fulfilled => {
+                notify::fulfillment_delivered(&state.db, &fulfillment).await;
+            }
+            // The addon isn't offered the fulfillment again after this attempt.
+            AckResult::Failed if fulfillment.attempts == MAX_ATTEMPTS => {
+                notify::fulfillment_failed(&state.db, &fulfillment).await;
+            }
+            _ => {}
+        }
     }
     Ok(HttpResponse::Ok().json(fulfillment))
 }

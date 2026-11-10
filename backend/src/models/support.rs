@@ -450,18 +450,18 @@ impl SupportTicket {
     }
 
     /// Closes every ticket that has waited on its user for [`AUTO_CLOSE_AFTER_DAYS`].
-    /// Returns how many were closed.
-    pub async fn auto_close(db: &PgPool) -> sqlx::Result<u64> {
-        let result = sqlx::query(
+    /// Returns the tickets it closed.
+    pub async fn auto_close(db: &PgPool) -> sqlx::Result<Vec<Self>> {
+        sqlx::query_as(concat!(
             "UPDATE support_tickets
                 SET status = 'CLOSED', closed_at = now(), last_updated = now()
               WHERE status = 'AWAITING_USER'
-                AND last_updated < now() - make_interval(days => $1)",
-        )
+                AND last_updated < now() - make_interval(days => $1)
+              RETURNING ", ticket_columns!("support_tickets")
+        ))
         .bind(AUTO_CLOSE_AFTER_DAYS)
-        .execute(db)
-        .await?;
-        Ok(result.rows_affected())
+        .fetch_all(db)
+        .await
     }
 }
 

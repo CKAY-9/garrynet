@@ -6,6 +6,7 @@ pub mod forum;
 pub mod gnet;
 pub mod loading_screen;
 pub mod markdown;
+pub mod notifications;
 pub mod servers;
 pub mod store;
 pub mod store_admin;
@@ -24,6 +25,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .configure(forum::configure)
         .configure(gnet::configure)
         .configure(loading_screen::configure)
+        .configure(notifications::configure)
         .configure(servers::configure)
         .configure(store::configure)
         .configure(store_admin::configure)

@@ -2,6 +2,7 @@ pub mod community;
 pub mod file;
 pub mod forum;
 pub mod loading_screen;
+pub mod notification;
 pub mod permissions;
 pub mod player;
 pub mod server;

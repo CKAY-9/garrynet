@@ -15,6 +15,7 @@ use crate::{
             PostWithAuthor, SectionDetails, SectionWithCategories, ThreadChanges, ThreadSummary,
         },
     },
+    notify,
     routes::{
         files,
         markdown::markdown,
@@ -308,6 +309,7 @@ async fn create_post(
     }
     let attachments = files::attachable(&state, user.0.id, &body.attachments, MAX_ATTACHMENTS).await?;
     let post = thread.reply(&state.db, user.0.id, &content, &attachments).await?;
+    notify::thread_reply(&state.db, &thread, &user.0).await;
     Ok(HttpResponse::Created().json(post))
 }
 
@@ -350,6 +352,9 @@ async fn update_thread(
     }
     let updated = thread.update(&state.db, &changes).await?;
     log::info!("user {} updated forum thread {} ({changes:?})", user.0.id, thread.id);
+    if role == Manager::Moderator && updated.locked && !thread.locked {
+        notify::thread_locked(&state.db, &updated, user.0.id).await;
+    }
     Ok(HttpResponse::Ok().json(updated))
 }
 
@@ -361,11 +366,14 @@ async fn delete_thread(
     id: web::Path<i64>,
 ) -> Result<HttpResponse, ApiError> {
     let thread = find_thread(&state, id.into_inner()).await?;
-    manager(&state, &user, thread.author_id, &thread).await?;
+    let role = manager(&state, &user, thread.author_id, &thread).await?;
     let attached = File::of_forum_thread(&state.db, thread.id).await?;
     thread.delete(&state.db).await?;
     files::delete_all(&state, attached).await;
     log::info!("user {} deleted forum thread {} ({:?})", user.0.id, thread.id, thread.title);
+    if role == Manager::Moderator {
+        notify::thread_deleted(&state.db, &thread, user.0.id).await;
+    }
     Ok(HttpResponse::NoContent().finish())
 }
 
@@ -397,12 +405,15 @@ async fn delete_post(
     id: web::Path<i64>,
 ) -> Result<HttpResponse, ApiError> {
     let (post, thread) = find_post(&state, id.into_inner()).await?;
-    manager(&state, &user, post.author_id, &thread).await?;
+    let role = manager(&state, &user, post.author_id, &thread).await?;
     if post.id == thread.thread_post_id {
         let attached = File::of_forum_thread(&state.db, thread.id).await?;
         thread.delete(&state.db).await?;
         files::delete_all(&state, attached).await;
         log::info!("user {} deleted forum thread {} with its first post", user.0.id, thread.id);
+        if role == Manager::Moderator {
+            notify::thread_deleted(&state.db, &thread, user.0.id).await;
+        }
     } else {
         let attached = File::of_forum_post(&state.db, post.id).await?;
         post.delete_reply(&state.db).await?;
@@ -411,6 +422,9 @@ async fn delete_post(
             "user {} deleted forum post {} by user {} in thread {}",
             user.0.id, post.id, post.author_id, thread.id
         );
+        if role == Manager::Moderator {
+            notify::post_deleted(&state.db, &post, &thread, user.0.id).await;
+        }
     }
     Ok(HttpResponse::NoContent().finish())
 }

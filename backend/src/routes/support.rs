@@ -17,10 +17,11 @@ use crate::{
             TicketFilter, TicketSort, UserRef,
         },
     },
+    notify,
     routes::{
         files,
         markdown::markdown,
-        validate::{bad, required_text},
+        validate::{bad, parse_enum, present, required_text},
     },
     state::AppState,
 };
@@ -195,9 +196,13 @@ async fn create_message(
     let (ticket, support) = find_ticket(&state, &user, id.into_inner()).await?;
     let attachments = files::attachable(&state, user.0.id, &body.attachments, MAX_ATTACHMENTS).await?;
     let message = if support {
-        ticket
+        let message = ticket
             .reply_as_support(&state.db, user.0.id, &content, body.is_internal, &attachments)
-            .await?
+            .await?;
+        if !body.is_internal {
+            notify::ticket_reply(&state.db, &ticket, &user.0).await;
+        }
+        message
     } else {
         if body.is_internal {
             return Err(ApiError::Forbidden(SUPPORT_TEAM.name().to_owned()));
@@ -205,7 +210,9 @@ async fn create_message(
         if ticket.status.is_done() {
             return Err(ApiError::Locked("ticket"));
         }
-        ticket.reply_as_user(&state.db, &content, &attachments).await?
+        let message = ticket.reply_as_user(&state.db, &content, &attachments).await?;
+        notify::ticket_owner_reply(&state.db, &ticket, &user.0).await;
+        message
     };
     Ok(HttpResponse::Created().json(message))
 }
@@ -236,6 +243,7 @@ async fn set_status(
         "user {} set support ticket {} to {:?} (was {:?})",
         user.0.id, ticket.id, updated.status, ticket.status
     );
+    notify::ticket_status(&state.db, &updated, ticket.status, user.0.id).await;
     Ok(HttpResponse::Ok().json(updated))
 }
 
@@ -382,19 +390,6 @@ async fn find_faq(state: &AppState, id: i64) -> Result<FaqWithPeople, ApiError> 
     Faq::find_by_id(&state.db, id)
         .await?
         .ok_or(ApiError::NotFound("FAQ"))
-}
-
-/// `None` for a missing or blank value, else the trimmed value.
-fn present(value: Option<String>) -> Option<String> {
-    value
-        .map(|v| v.trim().to_owned())
-        .filter(|v| !v.is_empty())
-}
-
-/// Parses an enum from its SCREAMING_SNAKE_CASE name (case-insensitively), as serde would.
-fn parse_enum<T: serde::de::DeserializeOwned>(field: &str, value: &str) -> Result<T, ApiError> {
-    serde_json::from_value(serde_json::Value::String(value.to_ascii_uppercase()))
-        .map_err(|_| bad(format!("{field} is not a known {field}: {value:?}")))
 }
 
 fn parse_filter(query: TicketQuery) -> Result<TicketFilter, ApiError> {

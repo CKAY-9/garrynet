@@ -8,6 +8,7 @@ use crate::{
         Permissions, Usergroup,
         usergroup::{EditError, Editor, UsergroupDetails, UsergroupEffect},
     },
+    notify,
     routes::validate::{bad, hex_color, optional_url, required_text},
     state::AppState,
 };
@@ -162,6 +163,7 @@ async fn add_member(
         user.0.id,
         Usergroup::permissions_for_user(&state.db, user_id).await?
     );
+    notify::usergroup_membership(&state.db, group_id, user_id, true, Some(user.0.id)).await;
     Ok(HttpResponse::Created().json(member))
 }
 
@@ -186,6 +188,7 @@ async fn remove_member(
     if !permissions.contains(Permissions::SITE_ACCESS) {
         log::warn!("user {user_id} no longer has Site Access and can only use support pages");
     }
+    notify::usergroup_membership(&state.db, group_id, user_id, false, Some(user.0.id)).await;
     Ok(HttpResponse::NoContent().finish())
 }
 
