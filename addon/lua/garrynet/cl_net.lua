@@ -47,6 +47,11 @@ net.Receive(GarryNet.Net.Notify, function()
 	ChatNotice(message, color)
 end)
 
+net.Receive(GarryNet.Net.RewardSound, function()
+	local path = GarryNet.Config.Store.RewardSound
+	if path ~= "" then surface.PlaySound(path) end
+end)
+
 -- Requests to the server. The server re-checks superadmin on every one.
 function GarryNet.SendLink(access_key)
 	net.Start(GarryNet.Net.Link)

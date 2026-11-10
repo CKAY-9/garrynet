@@ -73,6 +73,13 @@ function GarryNet.NotifyAdmins(message, success)
 	SendNotice(admins, message, success)
 end
 
+-- Play the store reward sound on one player's client.
+function GarryNet.PlayRewardSound(ply)
+	if not IsValid(ply) or GarryNet.Config.Store.RewardSound == "" then return end
+	net.Start(GarryNet.Net.RewardSound)
+	net.Send(ply)
+end
+
 -- A chat notice for one player (e.g. their store purchase arrived). Same colors.
 function GarryNet.NotifyPlayer(ply, message, success)
 	if not IsValid(ply) then return end

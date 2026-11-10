@@ -19,6 +19,9 @@ GarryNet.Config = {
 
 	-- Store delivery (docs/STORE.md). Server-side only.
 	Store = {
+		-- Played to the buyer when a purchase is delivered (a path under garrysmod/sound; "" for none).
+		RewardSound = "garrysmod/content_downloaded.wav",
+
 		-- Seconds between fetches of the delivery queue.
 		PollSeconds = 60,
 
@@ -57,5 +60,6 @@ GarryNet.Net = {
 	Unlink = "GarryNet.Unlink", -- client -> server: unlink requested
 	ForceSync = "GarryNet.ForceSync", -- client -> server: force an interval update
 	Result = "GarryNet.Result", -- server -> client: result of Link/Unlink/ForceSync (success, message)
+	RewardSound = "GarryNet.RewardSound", -- server -> client: play the reward sound
 	Notify = "GarryNet.Notify", -- server -> client: chat notice (superadmins: linked, out of sync; buyers: purchase delivered)
 }

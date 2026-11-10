@@ -180,6 +180,7 @@ local function Handle(f)
 	LastFailure[id] = nil
 	GarryNet.Util.Log(string.format("Store: delivered purchase #%d to %s (%s)", id, ply:Nick(), f.steam_id))
 	GarryNet.NotifyPlayer(ply, "Thanks for your purchase! You received: " .. DescribeAll(f.rewards) .. ".", true)
+	GarryNet.PlayRewardSound(ply)
 	Ack(id, "fulfilled")
 	return "delivered"
 end

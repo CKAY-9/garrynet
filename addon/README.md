@@ -31,6 +31,7 @@ player joins, and buyers get a chat notice. Players who are offline get their pu
   `developer` are never granted. The usergroup must exist in ULX, or the delivery fails and superadmins are told.
 - **DarkRP money** is added once the player's DarkRP data has loaded.
 - **Weapons** are permanent and given back on every spawn.
+- A short sound plays for the buyer on delivery (`Store.RewardSound` in `sh_config.lua`, `""` to disable).
 - **Refunds** take usergroups and weapons back; money stays.
 
 Other admin mods can plug in with `GarryNet.Rewards.SetUsergroupAdapter` (see `sv_store_rewards.lua`). Console:
