@@ -242,6 +242,10 @@ revocation_applied_at?: utc timestamp // when the addon confirmed it took the re
   reports after the 20th are ignored.
 - Once a fulfillment has used up its attempts, a user with `Store Finance` can reset it from
   `/admin/store/receipts` ("Retry delivery") after fixing whatever made it fail.
+- If Stripe reports charging a different pre-tax amount or currency than the purchase recorded
+  (the webhook's `amount_subtotal`), the payment is still recorded, but the fulfillment is created
+  held: failed, with no attempts left and a `last_error` explaining why. Nothing is delivered until a
+  user with `Store Finance` has checked the payment in Stripe and retries it (or refunds it).
 - A revoked fulfillment whose rewards were delivered is offered to the addon until it acknowledges
   taking them back.
 - The addon's side (usergroup adapters, stacking timed usergroups, protecting staff groups, exactly-once

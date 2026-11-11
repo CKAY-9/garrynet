@@ -486,7 +486,8 @@ async fn handle_event(state: &AppState, event: &Event) -> Result<(), ApiError> {
 
 /// Turns the paid Checkout Session `session` into a receipt and fulfillment (see
 /// [`Purchase::mark_paid`]) and tells the buyer. `charged` is the pre-tax amount and
-/// currency Stripe reports, if known; a mismatch with the purchase is logged for staff.
+/// currency Stripe reports, if known; on a mismatch with the purchase the delivery is held
+/// for staff to check.
 /// `source` (the webhook event, or the sweeper) is for the logs.
 async fn record_paid(
     state: &AppState,
@@ -496,7 +497,8 @@ async fn record_paid(
     charged: Option<(i64, String)>,
     source: &str,
 ) -> Result<(), ApiError> {
-    match Purchase::mark_paid(&state.db, session, purchase_id, payment_intent).await? {
+    let charged_ref = charged.as_ref().map(|(amount, currency)| (*amount, currency.as_str()));
+    match Purchase::mark_paid(&state.db, session, purchase_id, payment_intent, charged_ref).await? {
         MarkPaid::Paid(receipt, fulfillment) => {
             log::info!(
                 "purchase paid: receipt {} for user {} ({} {}), fulfillment {} for server {} ({source})",
@@ -506,8 +508,8 @@ async fn record_paid(
                 && (amount != receipt.price || !currency.eq_ignore_ascii_case(&receipt.currency))
             {
                 log::error!(
-                    "checkout session {session} charged {amount} {currency} but receipt {} records {} {} ({source})",
-                    receipt.id, receipt.price, receipt.currency
+                    "checkout session {session} charged {amount} {currency} but receipt {} records {} {}; delivery {} is held until staff retry it ({source})",
+                    receipt.id, receipt.price, receipt.currency, fulfillment.id
                 );
             }
             notify::purchase_paid(&state.db, &receipt).await;

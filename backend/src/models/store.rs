@@ -886,11 +886,17 @@ impl Purchase {
     /// session's metadata) if its session was never recorded, e.g. because the database
     /// failed right after Stripe created the session. A purchase cancelled for staleness that
     /// turns out to have been paid is reinstated (and its stock taken again, down to zero).
+    ///
+    /// `charged` is the pre-tax amount and currency Stripe reports, if known. If it differs
+    /// from what the purchase recorded, the payment is still recorded but its delivery is
+    /// held (created failed, with no attempts left) until staff have checked the payment in
+    /// Stripe and retry it.
     pub async fn mark_paid(
         db: &PgPool,
         session_id: &str,
         purchase_id: Option<i64>,
         payment_intent: &str,
+        charged: Option<(i64, &str)>,
     ) -> sqlx::Result<MarkPaid> {
         let mut tx = db.begin().await?;
         let before: Option<Purchase> = sqlx::query_as(
@@ -956,9 +962,22 @@ impl Purchase {
         .bind(purchase.id)
         .fetch_one(&mut *tx)
         .await?;
+        let held = charged
+            .filter(|(amount, currency)| *amount != purchase.price || !currency.eq_ignore_ascii_case(&purchase.currency))
+            .map(|(amount, currency)| {
+                format!(
+                    "held: Stripe charged {amount} {currency} but the purchase was for {} {}; check the payment in Stripe, then retry the delivery",
+                    purchase.price, purchase.currency
+                )
+            });
+        let (status, attempts) = match held {
+            Some(_) => (FulfillmentStatus::Failed, MAX_ATTEMPTS),
+            None => (FulfillmentStatus::Pending, 0),
+        };
         let fulfillment: Fulfillment = sqlx::query_as(
-            "INSERT INTO store_fulfillments (receipt_id, buyer_id, steam_id, item_id, server_id, rewards)
-             SELECT $1, $2, $3, $4, s.server_id, $5 FROM item_stores s WHERE s.id = $6
+            "INSERT INTO store_fulfillments
+                (receipt_id, buyer_id, steam_id, item_id, server_id, rewards, status, attempts, last_error)
+             SELECT $1, $2, $3, $4, s.server_id, $5, $7, $8, $9 FROM item_stores s WHERE s.id = $6
              RETURNING *",
         )
         .bind(receipt.id)
@@ -967,6 +986,9 @@ impl Purchase {
         .bind(purchase.item_id)
         .bind(&purchase.rewards)
         .bind(purchase.store_id)
+        .bind(status)
+        .bind(attempts)
+        .bind(held)
         .fetch_one(&mut *tx)
         .await?;
         tx.commit().await?;
