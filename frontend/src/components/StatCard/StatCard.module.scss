@@ -1,3 +1,5 @@
+@use "../../styles/theme";
+
 .card {
   display: flex;
   flex-direction: column;
@@ -46,8 +48,8 @@
   letter-spacing: 0.04em;
 }
 
-@media (prefers-color-scheme: dark) {
-  .badge {
+.badge {
+  @include theme.dark {
     color: #f5a524;
   }
 }

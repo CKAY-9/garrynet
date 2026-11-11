@@ -1,0 +1,18 @@
+// Dark-theme overrides for a component. They apply when the user picked dark, or hasn't picked
+// and their system is dark. `data-theme` is set on <html> by `src/lib/theme.ts`.
+//
+//   .badge {
+//     color: #c47f00;
+//     @include theme.dark { color: #f5a524; }
+//   }
+@mixin dark {
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) & {
+      @content;
+    }
+  }
+
+  :root[data-theme="dark"] & {
+    @content;
+  }
+}

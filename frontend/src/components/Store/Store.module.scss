@@ -1,3 +1,5 @@
+@use "../../styles/theme";
+
 $border: 1px solid rgb(127 127 127 / 0.2);
 $accent: #3b82f6;
 $danger: #e5484d;
@@ -200,8 +202,8 @@ $danger: #e5484d;
   background: rgb(59 130 246 / 0.22);
 }
 
-@media (prefers-color-scheme: dark) {
-  .discount {
+.discount {
+  @include theme.dark {
     color: #4ade80;
   }
 }
