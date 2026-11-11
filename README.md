@@ -5,14 +5,9 @@
     <p>An all-in-one, self-hosted website for Garry's Mod communities: forums, a store, support tickets, loading screens and live server sync, all in one deployment.</p>
 </div>
 
-<!--
-Screenshots: add a few once the repo is public, e.g.
 <p align="center">
-    <img src="./assets/screenshots/home.png" alt="Community homepage" width="32%" />
-    <img src="./assets/screenshots/loading-screen.png" alt="Loading screen" width="32%" />
-    <img src="./assets/screenshots/store.png" alt="Store" width="32%" />
+    <img src="./assets/showcase/home.png" alt="Community homepage" width="672" height="400" />
 </p>
--->
 
 > [!NOTE]
 > GarryNet is under active development. The features below work, but expect breaking changes between versions.
@@ -28,9 +23,17 @@ One deployment per community. A homepage with your name, logo, splash image, ext
 
 A loading screen for your Garry's Mod servers, in two styles (Aero and Sleek). It greets each player by name and avatar, shows their first join and last visit on that server, and follows Garry's Mod's download progress.
 
+<p align="center">
+    <img src="./assets/showcase/loading-screen.png" alt="Loading screen" width="672" height="400" />
+</p>
+
 ### Forums
 
 Sections, categories and threads with Markdown posts, attachments, likes/dislikes and user reputation. Moderators can lock, sticky, edit and delete.
+
+<p align="center">
+    <img src="./assets/showcase/forums.png" alt="Forums" width="672" height="400" />
+</p>
 
 ### Support
 
@@ -40,9 +43,17 @@ Support tickets with categories, internal staff notes and attachments, plus an F
 
 Sell in-game rewards per server: usergroups (permanent or timed), weapons and DarkRP money. Payments go through Stripe Checkout, with discounts, stock limits, receipts and refunds. The addon delivers purchases in-game automatically, and refunds take usergroups and weapons back.
 
+<p align="center">
+    <img src="./assets/showcase/store.png" alt="Store" width="672" height="400" />
+</p>
+
 ### Users and Permissions
 
 Steam login, profiles, online status and user search. Usergroups have permission bits and custom colors, icons and effects.
+
+<p align="center">
+    <img src="./assets/showcase/admin-usergroups.png" alt="Admin usergroups" width="672" height="400" />
+</p>
 
 ### Servers and Players
 
