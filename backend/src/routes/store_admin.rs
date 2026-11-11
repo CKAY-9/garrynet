@@ -165,6 +165,7 @@ struct GrantableBody {
 }
 
 /// Replaces the usergroups a store's items may grant. Requires Elevated Control as well.
+/// Items that grant a usergroup no longer allowed are made unavailable.
 #[put("/admin/store/{store_id}/grantable-usergroups")]
 async fn set_grantable_usergroups(
     state: web::Data<AppState>,
@@ -174,10 +175,13 @@ async fn set_grantable_usergroups(
 ) -> Result<HttpResponse, ApiError> {
     user.require(&state.db, GRANTABLE).await?;
     let groups = normalize_usergroups(body.into_inner().grantable_usergroups)?;
-    let store = ItemStore::set_grantable_usergroups(&state.db, store_id.into_inner(), &groups)
+    let (store, disabled) = ItemStore::set_grantable_usergroups(&state.db, store_id.into_inner(), &groups)
         .await?
         .ok_or(ApiError::NotFound("store"))?;
-    log::info!("user {} set the grantable usergroups of store {} to {:?}", user.0.id, store.id, groups);
+    log::info!(
+        "user {} set the grantable usergroups of store {} to {:?}; {disabled} item(s) made unavailable",
+        user.0.id, store.id, groups
+    );
     Ok(HttpResponse::Ok().json(store))
 }
 
@@ -350,6 +354,13 @@ async fn refund(
     if receipt.status != ReceiptStatus::Paid {
         return Err(bad(format!("receipt is already {}", format!("{:?}", receipt.status).to_lowercase())));
     }
+    // Sessions that needed no payment are recorded with a placeholder instead of a
+    // PaymentIntent; there's nothing to refund through Stripe.
+    if receipt.stripe_payment_intent_id.starts_with("session:") {
+        return Err(bad("this receipt has no payment to refund".to_owned()));
+    }
+    // `None` if it was already refunded in full (e.g. from the Stripe dashboard, with the
+    // webhook not yet arrived); the receipt is still marked refunded below.
     let refund = stripe
         .refund(&receipt.stripe_payment_intent_id, &format!("refund-receipt-{}", receipt.id))
         .await?;
@@ -360,8 +371,9 @@ async fn refund(
     }
     log::info!(
         "user {} refunded receipt {} ({} {}) for user {}: stripe refund {} ({})",
-        user.0.id, receipt.id, receipt.price, receipt.currency, receipt.buyer_id, refund.id,
-        refund.status.as_deref().unwrap_or("unknown")
+        user.0.id, receipt.id, receipt.price, receipt.currency, receipt.buyer_id,
+        refund.as_ref().map_or("none", |r| r.id.as_str()),
+        refund.as_ref().and_then(|r| r.status.as_deref()).unwrap_or("already refunded")
     );
     let updated = Receipt::find_by_id(&state.db, receipt.id)
         .await?

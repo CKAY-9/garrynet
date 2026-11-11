@@ -28,6 +28,9 @@ pub struct CheckoutSession {
     pub id: String,
     /// Where to send the buyer. `None` once the session is no longer open.
     pub url: Option<String>,
+    /// `open`, `complete` or `expired`.
+    #[serde(default)]
+    pub status: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -78,6 +81,26 @@ struct ErrorBody {
 struct StripeError {
     #[serde(default)]
     message: String,
+    /// e.g. `charge_already_refunded`.
+    #[serde(default)]
+    code: Option<String>,
+}
+
+/// Why a request to Stripe failed.
+enum Failure {
+    /// Stripe refused the request (a 4xx other than 429).
+    Rejected { code: Option<String>, message: String },
+    /// Stripe couldn't be reached or failed.
+    Unavailable(String),
+}
+
+impl From<Failure> for ApiError {
+    fn from(failure: Failure) -> Self {
+        match failure {
+            Failure::Rejected { message, .. } => ApiError::StripeRejected(message),
+            Failure::Unavailable(message) => ApiError::StripeUnavailable(message),
+        }
+    }
 }
 
 impl Stripe {
@@ -112,20 +135,30 @@ impl Stripe {
         if self.config.tax {
             form.push(("automatic_tax[enabled]", "true".into()));
         }
-        self.post("/checkout/sessions", &form, Some(&format!("purchase-{}", p.purchase_id)))
-            .await
+        Ok(self.post("/checkout/sessions", &form, Some(&format!("purchase-{}", p.purchase_id))).await?)
     }
 
     /// Closes an open Checkout Session so it can't be paid any more. Stripe answers 400 if
     /// the session has already completed or expired; that's reported as `StripeRejected`.
     pub async fn expire_checkout_session(&self, id: &str) -> Result<CheckoutSession, ApiError> {
-        self.post(&format!("/checkout/sessions/{id}/expire"), &[], None).await
+        Ok(self.post(&format!("/checkout/sessions/{id}/expire"), &[], None).await?)
     }
 
-    /// Refunds a payment in full. Idempotent per `idempotency_key`.
-    pub async fn refund(&self, payment_intent: &str, idempotency_key: &str) -> Result<Refund, ApiError> {
+    /// The Checkout Session as Stripe has it now.
+    pub async fn retrieve_checkout_session(&self, id: &str) -> Result<CheckoutSession, ApiError> {
+        let req = self.http.get(format!("{API}/checkout/sessions/{id}"));
+        Ok(self.send(req).await?)
+    }
+
+    /// Refunds a payment in full. Idempotent per `idempotency_key`. `None` if the payment
+    /// had already been refunded in full (e.g. from the Stripe dashboard).
+    pub async fn refund(&self, payment_intent: &str, idempotency_key: &str) -> Result<Option<Refund>, ApiError> {
         let form = [("payment_intent", payment_intent.to_owned())];
-        self.post("/refunds", &form, Some(idempotency_key)).await
+        match self.post("/refunds", &form, Some(idempotency_key)).await {
+            Ok(refund) => Ok(Some(refund)),
+            Err(Failure::Rejected { code: Some(code), .. }) if code == "charge_already_refunded" => Ok(None),
+            Err(failure) => Err(failure.into()),
+        }
     }
 
     async fn post<T: DeserializeOwned>(
@@ -133,35 +166,34 @@ impl Stripe {
         path: &str,
         form: &[(&str, String)],
         idempotency_key: Option<&str>,
-    ) -> Result<T, ApiError> {
-        let mut req = self
-            .http
-            .post(format!("{API}{path}"))
-            .bearer_auth(&self.config.secret_key)
-            .form(form);
+    ) -> Result<T, Failure> {
+        let mut req = self.http.post(format!("{API}{path}")).form(form);
         if let Some(key) = idempotency_key {
             req = req.header("Idempotency-Key", key);
         }
+        self.send(req).await
+    }
+
+    async fn send<T: DeserializeOwned>(&self, req: reqwest::RequestBuilder) -> Result<T, Failure> {
         let res = req
+            .bearer_auth(&self.config.secret_key)
             .send()
             .await
-            .map_err(|e| ApiError::StripeUnavailable(e.to_string()))?;
+            .map_err(|e| Failure::Unavailable(e.to_string()))?;
         let status = res.status();
-        let body = res
-            .bytes()
-            .await
-            .map_err(|e| ApiError::StripeUnavailable(e.to_string()))?;
+        let body = res.bytes().await.map_err(|e| Failure::Unavailable(e.to_string()))?;
         if status.is_success() {
             return serde_json::from_slice(&body)
-                .map_err(|e| ApiError::StripeUnavailable(format!("unexpected response: {e}")));
+                .map_err(|e| Failure::Unavailable(format!("unexpected response: {e}")));
         }
-        let message = serde_json::from_slice::<ErrorBody>(&body)
-            .map(|b| b.error.message)
-            .unwrap_or_else(|_| format!("HTTP {status}"));
+        let (message, code) = match serde_json::from_slice::<ErrorBody>(&body) {
+            Ok(b) => (b.error.message, b.error.code),
+            Err(_) => (format!("HTTP {status}"), None),
+        };
         if status.is_client_error() && status.as_u16() != 429 {
-            Err(ApiError::StripeRejected(message))
+            Err(Failure::Rejected { code, message })
         } else {
-            Err(ApiError::StripeUnavailable(format!("{status}: {message}")))
+            Err(Failure::Unavailable(format!("{status}: {message}")))
         }
     }
 

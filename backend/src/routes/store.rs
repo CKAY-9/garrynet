@@ -13,8 +13,9 @@ use crate::{
     models::{
         Permissions, Server, Usergroup,
         store::{
-            Begin, CHECKOUT_TTL_MINUTES, ItemStore, PricedItem, Purchase, Receipt, ReceiptStatus,
-            ReceiptView, StoreDiscount, StoreItem, StoreSummary,
+            Begin, CHECKOUT_TTL_MINUTES, ItemStore, MarkPaid, PricedItem, Purchase, PurchaseStatus,
+            Receipt, ReceiptStatus, ReceiptView, StoreDiscount, StoreItem, StoreSummary,
+            ungrantable_usergroup,
         },
     },
     notify,
@@ -48,7 +49,14 @@ pub struct StoreWithServer {
 #[get("/store")]
 async fn list_stores(state: web::Data<AppState>) -> Result<HttpResponse, ApiError> {
     let (stores, servers) = tokio::try_join!(ItemStore::list_enabled(&state.db), Server::list(&state.db))?;
+    let stores = stores.into_iter().map(public).collect();
     Ok(HttpResponse::Ok().json(with_servers(stores, servers)))
+}
+
+/// A store as the public sees it: which usergroups items may grant is for managers only.
+fn public(mut store: StoreSummary) -> StoreSummary {
+    store.store.grantable_usergroups.clear();
+    store
 }
 
 /// Pairs each store with its server. Stores whose server is gone (can't happen: the store
@@ -83,7 +91,7 @@ async fn get_store(state: web::Data<AppState>, store_id: web::Path<i64>) -> Resu
         StoreItem::list(&state.db, store.store.id),
     )?;
     let items = items.into_iter().map(|i| PricedItem::new(i, store.store_discount)).collect();
-    Ok(HttpResponse::Ok().json(StorePage { store, server, discounts, items }))
+    Ok(HttpResponse::Ok().json(StorePage { store: public(store), server, discounts, items }))
 }
 
 /// Whether the requester may buy an item, and why not.
@@ -117,19 +125,23 @@ async fn get_item(
     let item = StoreItem::find(&state.db, store.store.id, item_id)
         .await?
         .ok_or(ApiError::NotFound("item"))?;
+    let item = PricedItem::new(item, store.store_discount);
     let buyer = match user {
-        Some(user) => Some(eligibility(&state, &user, &item).await?),
+        Some(user) => Some(eligibility(&state, &user, &store, &item).await?),
         None => None,
     };
-    Ok(HttpResponse::Ok().json(ItemPage {
-        item: PricedItem::new(item, store.store_discount),
-        store,
-        server,
-        buyer,
-    }))
+    Ok(HttpResponse::Ok().json(ItemPage { item, store: public(store), server, buyer }))
 }
 
-async fn eligibility(state: &AppState, user: &AuthUser, item: &StoreItem) -> Result<Eligibility, ApiError> {
+/// Mirrors the checks of `Purchase::begin`, so the page doesn't offer a purchase that
+/// checkout would refuse.
+async fn eligibility(
+    state: &AppState,
+    user: &AuthUser,
+    store: &StoreSummary,
+    priced: &PricedItem,
+) -> Result<Eligibility, ApiError> {
+    let item = &priced.item;
     let (permissions, purchased) = tokio::try_join!(
         Usergroup::permissions_for_user(&state.db, user.0.id),
         Purchase::count_for_buyer(&state.db, user.0.id, item.id),
@@ -138,6 +150,10 @@ async fn eligibility(state: &AppState, user: &AuthUser, item: &StoreItem) -> Res
         Some("your account can't make purchases".to_owned())
     } else if !item.available {
         Some("this item isn't available right now".to_owned())
+    } else if ungrantable_usergroup(&item.rewards, &store.store.grantable_usergroups).is_some() {
+        Some(NOT_GRANTABLE.to_owned())
+    } else if priced.final_price <= 0 {
+        Some(FREE_ITEM.to_owned())
     } else if item.remaining_stock == Some(0) {
         Some("this item is sold out".to_owned())
     } else if item.max_per_user.is_some_and(|max| purchased >= i64::from(max)) {
@@ -169,31 +185,24 @@ async fn checkout(
     user.require(&state.db, BUY).await?;
     let (store_id, item_id) = path.into_inner();
     let (store, _) = find_enabled_store(&state, store_id).await?;
-    let item = StoreItem::find(&state.db, store.store.id, item_id)
+    // Only checks that the item belongs to the store; `begin` reads it again under a lock.
+    StoreItem::find(&state.db, store.store.id, item_id)
         .await?
         .ok_or(ApiError::NotFound("item"))?;
-    let priced = PricedItem::new(item, store.store_discount);
-    if priced.final_price <= 0 {
-        return Err(ApiError::BadRequest(
-            "this item is currently free, which the payment provider can't process; ask a store manager to adjust the discount".to_owned(),
-        ));
-    }
 
-    let purchase = match Purchase::begin(
-        &state.db,
-        priced.item.id,
-        user.0.id,
-        &user.0.steam_id,
-        priced.total_discount,
-        priced.final_price,
-    )
-    .await?
-    {
-        Begin::Started(purchase) => purchase,
+    // The price and currency charged are the ones `begin` recorded on the purchase, read
+    // under its locks, so an edit made meanwhile can't make the two disagree.
+    let (purchase, item) = match Purchase::begin(&state.db, item_id, user.0.id, &user.0.steam_id).await? {
+        Begin::Started { purchase, item } => (purchase, item),
         Begin::Unavailable => return Err(ApiError::Locked("item")),
         Begin::SoldOut => return Err(ApiError::BadRequest("this item is sold out".to_owned())),
         Begin::LimitReached => {
             return Err(ApiError::BadRequest("you've already bought this item as many times as allowed".to_owned()));
+        }
+        Begin::Free => return Err(ApiError::BadRequest(FREE_ITEM.to_owned())),
+        Begin::NotGrantable(group) => {
+            log::warn!("item {item_id} grants usergroup {group:?}, which its store no longer allows");
+            return Err(ApiError::BadRequest(NOT_GRANTABLE.to_owned()));
         }
     };
 
@@ -201,12 +210,12 @@ async fn checkout(
     let params = CheckoutParams {
         purchase_id: purchase.id,
         buyer_id: user.0.id,
-        item_id: priced.item.id,
-        currency: &store.store.currency,
-        unit_amount: priced.final_price,
-        name: &priced.item.name,
-        description: &priced.item.short_description,
-        image_url: priced.item.image_url.as_deref(),
+        item_id: item.id,
+        currency: &purchase.currency,
+        unit_amount: purchase.price,
+        name: &item.name,
+        description: &item.short_description,
+        image_url: item.image_url.as_deref(),
         success_url: &format!("{frontend}/store/purchases?paid=1"),
         cancel_url: &format!("{frontend}/store/checkout/cancel?purchase={}", purchase.id),
         expires_at: (Utc::now() + Duration::minutes(CHECKOUT_TTL_MINUTES)).timestamp(),
@@ -215,23 +224,58 @@ async fn checkout(
         Ok(session) => session,
         Err(e) => {
             // Give the stock back; the buyer never got a payment page.
-            if let Err(cancel) = Purchase::cancel(&state.db, purchase.id).await {
-                log::error!("failed to cancel purchase {} after Stripe error: {cancel}", purchase.id);
-            }
+            abandon_checkout(&state, purchase.id, None).await;
             return Err(e);
         }
     };
-    let url = session.url.clone().ok_or_else(|| ApiError::StripeUnavailable("checkout session has no URL".into()))?;
-    Purchase::attach_session(&state.db, purchase.id, &session.id).await?;
+    let Some(url) = session.url.clone() else {
+        abandon_checkout(&state, purchase.id, Some(&session.id)).await;
+        return Err(ApiError::StripeUnavailable("checkout session has no URL".into()));
+    };
+    match Purchase::attach_session(&state.db, purchase.id, &session.id).await {
+        Ok(Some(_)) => {}
+        // Cancelled while the session was being created: don't hand out a payable session.
+        Ok(None) => {
+            abandon_checkout(&state, purchase.id, Some(&session.id)).await;
+            return Err(ApiError::BadRequest("this purchase was cancelled".to_owned()));
+        }
+        // If the session is paid anyway, the webhook finds the purchase by the id in the
+        // session's metadata.
+        Err(e) => {
+            abandon_checkout(&state, purchase.id, Some(&session.id)).await;
+            return Err(e.into());
+        }
+    }
     log::info!(
         "user {} started purchase {} of item {} for {} {}",
-        user.0.id, purchase.id, priced.item.id, priced.final_price, store.store.currency
+        user.0.id, purchase.id, item.id, purchase.price, purchase.currency
     );
     Ok(HttpResponse::Created().json(Checkout { purchase_id: purchase.id, url }))
 }
 
+const FREE_ITEM: &str =
+    "this item is currently free, which the payment provider can't process; ask a store manager to adjust the discount";
+const NOT_GRANTABLE: &str =
+    "this item can't be bought right now: it grants a usergroup its store no longer allows";
+
+/// Best-effort cleanup of a checkout that failed after its purchase was started: expires
+/// the Stripe session, if one was opened, then cancels the purchase, returning its stock.
+/// Failures are logged; the stale-purchase sweeper and the webhook settle what's left.
+async fn abandon_checkout(state: &AppState, purchase_id: i64, session_id: Option<&str>) {
+    if let (Some(stripe), Some(session)) = (&state.stripe, session_id)
+        && let Err(e) = stripe.expire_checkout_session(session).await
+    {
+        log::error!("failed to expire checkout session {session} of abandoned purchase {purchase_id}: {e}");
+    }
+    if let Err(e) = Purchase::cancel(&state.db, purchase_id).await {
+        log::error!("failed to cancel abandoned purchase {purchase_id}: {e}");
+    }
+}
+
 /// Cancels the buyer's own pending purchase (they backed out of Checkout), returning its
 /// stock and closing the Stripe session. Returns the purchase; 404 for other people's.
+/// A session that turns out to have been completed is left for the webhook to settle, so
+/// a paid purchase is never cancelled here.
 #[post("/store/purchases/{purchase_id}/cancel")]
 async fn cancel_purchase(
     state: web::Data<AppState>,
@@ -242,13 +286,22 @@ async fn cancel_purchase(
         .await?
         .filter(|p| p.buyer_id == user.0.id)
         .ok_or(ApiError::NotFound("purchase"))?;
+    if purchase.status != PurchaseStatus::Pending {
+        return Ok(HttpResponse::Ok().json(purchase));
+    }
     if let (Some(stripe), Some(session)) = (&state.stripe, &purchase.stripe_checkout_session_id) {
-        // Already completed or expired sessions can't be expired; the webhook settles those.
-        if let Err(e) = stripe.expire_checkout_session(session).await {
-            log::debug!("couldn't expire checkout session {session}: {e}");
-            if matches!(e, ApiError::StripeUnavailable(_)) {
-                return Err(e);
+        match stripe.expire_checkout_session(session).await {
+            Ok(_) => {}
+            // Already completed or expired. Only an expired one is ours to cancel.
+            Err(ApiError::StripeRejected(e)) => {
+                log::debug!("couldn't expire checkout session {session}: {e}");
+                let current = stripe.retrieve_checkout_session(session).await?;
+                if current.status.as_deref() == Some("complete") {
+                    log::info!("purchase {} not cancelled: its checkout session {session} completed", purchase.id);
+                    return Ok(HttpResponse::Ok().json(purchase));
+                }
             }
+            Err(e) => return Err(e),
         }
     }
     let purchase = Purchase::cancel(&state.db, purchase.id).await?.unwrap_or(purchase);
@@ -258,7 +311,13 @@ async fn cancel_purchase(
 /// The buyer's receipts with their delivery status, newest first.
 #[get("/store/purchases")]
 async fn my_purchases(state: web::Data<AppState>, user: AuthUser) -> Result<HttpResponse, ApiError> {
-    let receipts: Vec<ReceiptView> = Receipt::list_for_buyer(&state.db, user.0.id).await?;
+    let mut receipts: Vec<ReceiptView> = Receipt::list_for_buyer(&state.db, user.0.id).await?;
+    // The addon's error text is for staff; buyers see the status.
+    for receipt in &mut receipts {
+        if let Some(fulfillment) = &mut receipt.fulfillment {
+            fulfillment.last_error = None;
+        }
+    }
     Ok(HttpResponse::Ok().json(receipts))
 }
 
@@ -291,15 +350,31 @@ async fn handle_event(state: &AppState, event: &Event) -> Result<(), ApiError> {
                 return Ok(());
             }
             let payment_intent = str_field("payment_intent").unwrap_or_else(|| format!("session:{session}"));
-            match Purchase::mark_paid(&state.db, &session, &payment_intent).await? {
-                Some((receipt, fulfillment)) => {
+            // Sessions are opened with the purchase id in their metadata (and as the client
+            // reference), which finds a purchase whose session id was never recorded.
+            let purchase_id = object
+                .get("metadata")
+                .and_then(|m| m.get("purchase_id"))
+                .and_then(|v| v.as_str())
+                .or_else(|| object.get("client_reference_id").and_then(|v| v.as_str()))
+                .and_then(|id| id.parse::<i64>().ok());
+            match Purchase::mark_paid(&state.db, &session, purchase_id, &payment_intent).await? {
+                MarkPaid::Paid(receipt, fulfillment) => {
                     log::info!(
                         "purchase paid: receipt {} for user {} ({} {}), fulfillment {} for server {}",
                         receipt.id, receipt.buyer_id, receipt.price, receipt.currency, fulfillment.id, fulfillment.server_id
                     );
                     notify::purchase_paid(&state.db, &receipt).await;
                 }
-                None => log::debug!("checkout session {session} already handled or unknown ({})", event.id),
+                MarkPaid::AlreadyPaid => log::debug!("checkout session {session} already handled ({})", event.id),
+                // Ours, but the purchase is gone (its server was deleted): the buyer paid
+                // for nothing. Retrying wouldn't bring it back, so this is for staff.
+                MarkPaid::Unknown if purchase_id.is_some() => log::error!(
+                    "checkout session {session} was paid ({payment_intent}) but purchase {} no longer exists; refund it from the Stripe dashboard ({})",
+                    purchase_id.unwrap_or_default(), event.id
+                ),
+                // Not a GarryNet session (e.g. `stripe trigger`, or another integration).
+                MarkPaid::Unknown => log::debug!("ignoring checkout session {session} without a purchase ({})", event.id),
             }
         }
         "checkout.session.expired" | "checkout.session.async_payment_failed" => {
@@ -318,6 +393,16 @@ async fn handle_event(state: &AppState, event: &Event) -> Result<(), ApiError> {
         }
         "charge.dispute.created" => {
             settle(state, str_field("payment_intent"), ReceiptStatus::Disputed, &event.kind).await?;
+        }
+        // A disputed receipt stays DISPUTED and its rewards revoked even if the dispute is
+        // won: whether to deliver them again is left to staff.
+        "charge.dispute.closed" if str_field("status").as_deref() == Some("won") => {
+            log::warn!(
+                "dispute {} on payment {} was won; its receipt stays disputed and its rewards revoked until staff act ({})",
+                str_field("id").unwrap_or_default(),
+                str_field("payment_intent").unwrap_or_default(),
+                event.id
+            );
         }
         other => log::debug!("ignoring stripe event {} ({other})", event.id),
     }
