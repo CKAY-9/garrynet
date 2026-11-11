@@ -36,8 +36,10 @@ impl UserPlayer {
     }
 
     /// Records players reported by the server's addon in a heartbeat. Creates the record on
-    /// a first visit, links it to the player's GarryNet account if they have one, and adds
-    /// the reported playtime.
+    /// a first visit, links it to the player's GarryNet account if they have one, adds the
+    /// reported playtime, and merges the gamemode stats: reported values replace the stored
+    /// ones, counters are added to them (a stored value that isn't a number counts as 0).
+    /// Stats the heartbeat doesn't mention are kept.
     pub async fn record_sessions(
         db: &mut PgConnection,
         server_id: i64,
@@ -47,14 +49,25 @@ impl UserPlayer {
             sqlx::query(
                 "INSERT INTO user_players
                      (server_id, steam_id, user_id, ingame_name, ingame_usergroup,
-                      last_logon, first_joined, time_played)
-                 VALUES ($1, $2, (SELECT id FROM users WHERE steam_id = $2), $3, $4, $5, $5, $6)
+                      last_logon, first_joined, time_played, stats)
+                 VALUES ($1, $2, (SELECT id FROM users WHERE steam_id = $2), $3, $4, $5, $5, $6,
+                         $7::jsonb || $8::jsonb)
                  ON CONFLICT (server_id, steam_id) DO UPDATE SET
                      user_id = COALESCE(EXCLUDED.user_id, user_players.user_id),
                      ingame_name = EXCLUDED.ingame_name,
                      ingame_usergroup = EXCLUDED.ingame_usergroup,
                      last_logon = GREATEST(user_players.last_logon, EXCLUDED.last_logon),
-                     time_played = user_players.time_played + EXCLUDED.time_played",
+                     time_played = user_players.time_played + EXCLUDED.time_played,
+                     stats = user_players.stats || $7::jsonb || COALESCE((
+                         SELECT jsonb_object_agg(
+                             c.key,
+                             c.value::numeric + CASE
+                                 WHEN jsonb_typeof(user_players.stats -> c.key) = 'number'
+                                 THEN (user_players.stats ->> c.key)::numeric
+                                 ELSE 0
+                             END)
+                         FROM jsonb_each_text($8::jsonb) c
+                     ), '{}'::jsonb)",
             )
             .bind(server_id)
             .bind(&session.steam_id)
@@ -62,6 +75,8 @@ impl UserPlayer {
             .bind(&session.usergroup)
             .bind(session.connected_at)
             .bind(session.minutes)
+            .bind(&session.stats)
+            .bind(&session.counters)
             .execute(&mut *db)
             .await?;
         }
@@ -80,4 +95,10 @@ pub struct PlayerSession {
     pub connected_at: DateTime<Utc>,
     /// Playtime not reported in an earlier heartbeat.
     pub minutes: i32,
+    /// Latest gamemode stats (e.g. `darkrp_money`), replacing the stored values. Numbers,
+    /// strings or booleans.
+    pub stats: serde_json::Value,
+    /// Gamemode counters not reported before (e.g. `sandbox_props_spawned`), added to the
+    /// stored values. Positive integers.
+    pub counters: serde_json::Value,
 }

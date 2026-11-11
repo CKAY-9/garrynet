@@ -4,6 +4,7 @@
 use actix_web::{HttpRequest, HttpResponse, get, post, web};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
 
 use crate::{
     auth::{AuthServer, authorization},
@@ -64,6 +65,12 @@ const MAX_USERGROUP: usize = 64;
 /// Playtime piles up on the addon while GarryNet is unreachable; cap what one heartbeat can
 /// add at a week.
 const MAX_MINUTES: i32 = 7 * 24 * 60;
+/// Gamemode stats per player per heartbeat, of each kind (values and counters).
+const MAX_STATS: usize = 32;
+const MAX_STAT_KEY: usize = 64;
+const MAX_STAT_TEXT: usize = 128;
+/// Most a counter can grow by in one heartbeat.
+const MAX_COUNTER: f64 = 1_000_000.0;
 
 #[derive(Deserialize)]
 struct HeartbeatBody {
@@ -88,6 +95,14 @@ struct PlayerBody {
     /// Playtime since the last heartbeat that reported this player.
     #[serde(default)]
     minutes: f64,
+    /// Latest gamemode stats, e.g. `{"darkrp_money": 5000}`. Any JSON, since GMod encodes
+    /// an empty table as `[]`; see `stat_values`.
+    #[serde(default)]
+    stats: Value,
+    /// Gamemode counters since the last heartbeat that reported this player, e.g.
+    /// `{"sandbox_props_spawned": 3}`; see `stat_counters`.
+    #[serde(default)]
+    counters: Value,
 }
 
 #[derive(Serialize)]
@@ -152,6 +167,8 @@ fn sessions(players: Vec<PlayerBody>, now: DateTime<Utc>) -> Result<Vec<PlayerSe
                 },
                 connected_at,
                 minutes: (p.minutes as i32).clamp(0, MAX_MINUTES),
+                stats: Value::Object(stat_values(p.stats)),
+                counters: Value::Object(stat_counters(p.counters)),
             })
         })
         .collect()
@@ -159,6 +176,64 @@ fn sessions(players: Vec<PlayerBody>, now: DateTime<Utc>) -> Result<Vec<PlayerSe
 
 fn truncate(value: &str, max: usize) -> String {
     value.trim().chars().take(max).collect()
+}
+
+/// Stat keys are lowercase `gamemode_name` identifiers, e.g. `darkrp_money`.
+fn stat_key(key: &str) -> bool {
+    (1..=MAX_STAT_KEY).contains(&key.len())
+        && key
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
+}
+
+/// The first `MAX_STATS` valid entries of a stats object; anything else (including a
+/// non-object) is dropped rather than failing the heartbeat, since a value can come from a
+/// player (a custom job title).
+fn stat_entries(value: Value) -> impl Iterator<Item = (String, Value)> {
+    let map = match value {
+        Value::Object(map) => map,
+        _ => Map::new(),
+    };
+    map.into_iter().filter(|(k, _)| stat_key(k)).take(MAX_STATS)
+}
+
+/// Integral floats become integers: GMod's JSON encoder may write `5000` as `5000.0`.
+fn number(n: f64) -> Option<Value> {
+    if !n.is_finite() {
+        None
+    } else if n.fract() == 0.0 && n.abs() < 9e15 {
+        Some((n as i64).into())
+    } else {
+        serde_json::Number::from_f64(n).map(Value::Number)
+    }
+}
+
+/// Reported stat values: numbers, booleans, and strings (trimmed, truncated; empty dropped).
+fn stat_values(value: Value) -> Map<String, Value> {
+    stat_entries(value)
+        .filter_map(|(k, v)| {
+            let v = match v {
+                Value::Number(n) => number(n.as_f64()?)?,
+                Value::Bool(b) => Value::Bool(b),
+                Value::String(s) => match truncate(&s, MAX_STAT_TEXT) {
+                    s if s.is_empty() => return None,
+                    s => Value::String(s),
+                },
+                _ => return None,
+            };
+            Some((k, v))
+        })
+        .collect()
+}
+
+/// Reported counter increments: whole, positive, at most `MAX_COUNTER`.
+fn stat_counters(value: Value) -> Map<String, Value> {
+    stat_entries(value)
+        .filter_map(|(k, v)| {
+            let n = v.as_f64()?.floor();
+            (n.is_finite() && n >= 1.0).then(|| (k, (n.min(MAX_COUNTER) as i64).into()))
+        })
+        .collect()
 }
 
 #[derive(Deserialize)]
@@ -260,6 +335,8 @@ mod tests {
             usergroup: String::new(),
             connected_at: Some(0.0),
             minutes: 2.0,
+            stats: Value::Array(vec![]),
+            counters: Value::Null,
         }
     }
 
@@ -277,6 +354,52 @@ mod tests {
         assert_eq!(s[0].minutes, 2);
         assert_eq!(s[1].connected_at, now);
         assert_eq!(s[1].minutes, MAX_MINUTES);
+    }
+
+    #[test]
+    fn normalizes_stats() {
+        let mut p = player("76561197960287930");
+        p.stats = serde_json::json!({
+            "darkrp_money": 5000.0,
+            "darkrp_rate": 1.5,
+            "darkrp_job": "  Gun Dealer  ",
+            "darkrp_wanted": false,
+            "darkrp_empty": " ",
+            "darkrp_nested": { "a": 1 },
+            "darkrp_null": null,
+            "Bad Key": 1,
+        });
+        p.counters = serde_json::json!({
+            "sandbox_props_spawned": 3.0,
+            "sandbox_tools_used": 2.7,
+            "sandbox_zero": 0,
+            "sandbox_negative": -5,
+            "sandbox_text": "7",
+            "sandbox_huge": 1e300,
+        });
+        let s = sessions(vec![p], Utc::now()).unwrap_or_else(|_| panic!("valid player rejected"));
+        assert_eq!(
+            s[0].stats,
+            serde_json::json!({
+                "darkrp_money": 5000,
+                "darkrp_rate": 1.5,
+                "darkrp_job": "Gun Dealer",
+                "darkrp_wanted": false,
+            })
+        );
+        assert_eq!(
+            s[0].counters,
+            serde_json::json!({
+                "sandbox_props_spawned": 3,
+                "sandbox_tools_used": 2,
+                "sandbox_huge": MAX_COUNTER as i64,
+            })
+        );
+        // GMod's empty table (`[]`) and a missing field are both no stats.
+        let s = sessions(vec![player("76561197960287930")], Utc::now())
+            .unwrap_or_else(|_| panic!("valid player rejected"));
+        assert_eq!(s[0].stats, serde_json::json!({}));
+        assert_eq!(s[0].counters, serde_json::json!({}));
     }
 
     #[test]

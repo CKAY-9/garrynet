@@ -4,7 +4,7 @@ Part of [GarryNet Design](DESIGN.md). Servers and access keys are defined in [SE
 
 The GarryNet Garry's Mod addon is responsible for communicating with GarryNet. It will update player data, fetch unrealized store requests, config changes, etc.
 
-**Status:** linking, unlinking, the per-minute heartbeat (server details and player records) and store delivery work. Config changes are not implemented yet.
+**Status:** linking, unlinking, the per-minute heartbeat (server details, player records and gamemode stats) and store delivery work. Config changes are not implemented yet.
 
 ## Installation and Configuration
 
@@ -31,6 +31,7 @@ Files live in `addon/lua/garrynet/`, and are loaded in order by `addon/lua/autor
 | `sv_http.lua` | HTTP wrapper for `/gnet/server/...` requests, JWT rotation |
 | `sv_link.lua` | Link (access key to JWT), unlink, out-of-sync handling |
 | `sv_interval.lua` | Player session tracking, per-minute heartbeat, force sync |
+| `sv_stats.lua` | Gamemode stats: providers, sampling, counters |
 | `sv_store_rewards.lua` | Store rewards: usergroup adapters, timed usergroups, weapons, revoking |
 | `sv_store.lua` | Store delivery: fetch the fulfillment queue, apply, acknowledge |
 | `sv_net.lua` | Net handlers for the menu; every one checks for superadmin |
@@ -71,6 +72,35 @@ The first successful sync after linking is the server's first heartbeat, from wh
 
 The addon tracks each human player's session (bots are skipped) and reports playtime in whole minutes, keeping the remainder for the next heartbeat. Unreported playtime survives failed heartbeats, so nothing is lost while GarryNet is unreachable. A disconnected player is reported once more, then dropped.
 
+### Gamemode Stats
+
+GNet records gamemode-specific stats per server for every player, sent with each player in the heartbeat and stored in
+their UserPlayer's `stats` (see [USERS.md](USERS.md)). Keys are lowercase and prefixed with the gamemode's name, so the
+website can label `darkrp_money` as "Money".
+
+| Gamemode | Key | Kind | What |
+| --- | --- | --- | --- |
+| DarkRP | `darkrp_money` | value | Money (sent once DarkRP has loaded it) |
+| DarkRP | `darkrp_job` | value | Current job; the last one once the player leaves |
+| Sandbox | `sandbox_props_spawned` | counter | Props spawned |
+| Sandbox | `sandbox_tools_used` | counter | Tool gun clicks (left, right, reload) that reach `CanTool` |
+
+- **Values** are sampled every heartbeat and when the player leaves, and replace what GarryNet has. A value the gamemode
+  doesn't have at the moment keeps its last known value.
+- **Counters** are counted as events happen and only the increase since the last accepted heartbeat is sent; GarryNet
+  adds it to the stored total. Like playtime, unreported counts survive failed heartbeats.
+- Sandbox stats are only collected on Sandbox itself, not on gamemodes derived from it such as DarkRP.
+
+Other addons can add stats for their gamemode:
+
+```lua
+GarryNet.Stats.Register("murder", {
+    active = function() return engine.ActiveGamemode() == "murder" end,
+    sample = function(ply) return { murder_wins = ply:GetNWInt("Wins") } end, -- values; optional
+})
+GarryNet.Stats.Count(ply, "murder_rounds_played") -- counters, e.g. from a round hook
+```
+
 ## Server Tokens
 
 The JWT is valid for 30 days and is rolling: once it is an hour old, the next heartbeat response carries a replacement, which the addon stores. Tokens carry the server's `token_version`, which the backend bumps when the server links, unlinks or gets a new access key. That revokes every earlier token. A server offline for longer than 30 days must be linked again.
@@ -99,13 +129,19 @@ All under `/gnet/server`. Errors are `{ "error": "..." }`.
       "name": "Garry",
       "usergroup": "superadmin",
       "connected_at": 1762700000,
-      "minutes": 1
+      "minutes": 1,
+      "stats": { "darkrp_money": 5000, "darkrp_job": "Citizen" },
+      "counters": { "sandbox_props_spawned": 3 }
     }
   ]
 }
 ```
 
-`connected_at` (unix seconds) is when the session began and becomes the player's `last_logon`. `minutes` is playtime not reported before, added to `time_played`. A player's record is created on their first visit and linked to their GarryNet account if they have one. At most 256 players per heartbeat. Returns `{ "server": {...} }`, plus `"token"` when the JWT was rotated.
+`connected_at` (unix seconds) is when the session began and becomes the player's `last_logon`. `minutes` is playtime not reported before, added to `time_played`. `stats` (optional) replaces those keys of the
+player's `stats`: numbers, booleans, or strings (truncated to 128 characters). `counters` (optional) are whole numbers
+added to those keys (a stored value that isn't a number counts as 0), at most 1,000,000 per heartbeat. Stats not mentioned
+are kept. Keys must match `[a-z0-9_]{1,64}`, and up to 32 of each are taken; invalid entries are dropped rather than
+failing the heartbeat. A player's record is created on their first visit and linked to their GarryNet account if they have one. At most 256 players per heartbeat. Returns `{ "server": {...} }`, plus `"token"` when the JWT was rotated.
 
 **POST `/gnet/server/{SERVER_ID}/unlink`**: `Authorization: Bearer <JWT>`. Unlinks the server and revokes its token and any access key. Returns 204.
 
