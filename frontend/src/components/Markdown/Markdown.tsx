@@ -17,9 +17,10 @@ const components: Components = {
   },
   img({ node, alt, ...props }) {
     void node;
-    // User images come from arbitrary hosts, so next/image's optimizer can't be used.
+    // User images come from arbitrary hosts, so next/image's optimizer can't be used. Those
+    // hosts aren't told which page showed them (support tickets only allow our own files).
     // eslint-disable-next-line @next/next/no-img-element
-    return <img alt={alt ?? ""} loading="lazy" {...props} />;
+    return <img alt={alt ?? ""} loading="lazy" referrerPolicy="no-referrer" {...props} />;
   },
 };
 
