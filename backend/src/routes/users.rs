@@ -8,7 +8,8 @@ use crate::{
     auth::AuthUser,
     error::ApiError,
     models::{
-        Permissions, User, Usergroup,
+        Permissions, Punishment, User, Usergroup,
+        punishment::PunishmentKind,
         user::{LastActivity, UserSearch, UserSort, UserStatus},
         usergroup::UsergroupBadge,
     },
@@ -39,7 +40,17 @@ async fn me(
     Ok(HttpResponse::Ok().json(Me { user, permissions }))
 }
 
-/// A user's public profile: everything but their email, plus the groups they belong to.
+/// A ban in effect, as shown to everyone on the profile. Who issued it stays private.
+#[derive(Serialize)]
+struct PublicBan {
+    reason: String,
+    created_at: DateTime<Utc>,
+    /// `None` for permanent.
+    ends: Option<DateTime<Utc>>,
+}
+
+/// A user's public profile: everything but their email, plus the groups they belong to and
+/// their ban, if they're banned.
 #[derive(Serialize)]
 struct Profile {
     id: i64,
@@ -52,9 +63,11 @@ struct Profile {
     joined: DateTime<Utc>,
     last_seen: DateTime<Utc>,
     usergroups: Vec<UsergroupBadge>,
+    ban: Option<PublicBan>,
 }
 
-/// Public profile of the user with the given GarryNet id. No login required.
+/// Public profile of the user with the given GarryNet id, including a ban in effect (reason,
+/// date and end, not who issued it). No login required.
 #[get("/users/{id}")]
 async fn profile(
     state: web::Data<AppState>,
@@ -69,6 +82,15 @@ async fn profile(
         .into_iter()
         .map(UsergroupBadge::from)
         .collect();
+    let ban = Punishment::in_effect_for(&state.db, id)
+        .await?
+        .into_iter()
+        .find(|p| p.kind == PunishmentKind::Ban)
+        .map(|p| PublicBan {
+            reason: p.reason,
+            created_at: p.created_at,
+            ends: p.ends,
+        });
 
     Ok(HttpResponse::Ok().json(Profile {
         status: user.current_status(),
@@ -81,6 +103,7 @@ async fn profile(
         joined: user.joined,
         last_seen: user.last_seen,
         usergroups,
+        ban,
     }))
 }
 

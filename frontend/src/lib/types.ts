@@ -79,6 +79,29 @@ export type UsergroupDetails = Pick<Usergroup, "name" | "effect" | "color" | "pe
  */
 export type UserProfile = Omit<User, "email"> & {
   usergroups: UsergroupBadge[];
+  /** The ban in effect, if any; public, but without who issued it. */
+  ban: Pick<Punishment, "reason" | "created_at" | "ends"> | null;
+};
+
+/** BAN: everything but support is off-limits. SUSPEND: temporary; no posting or messaging. */
+export type PunishmentKind = "BAN" | "SUSPEND";
+
+/** A ban or suspension, from `GET /users/{id}/punishments` (docs/USERS.md "User Punishment"). */
+export type Punishment = {
+  id: number;
+  kind: PunishmentKind;
+  reason: string;
+  created_at: string;
+  /** `null` for a permanent ban. */
+  ends: string | null;
+  /** Enforced right now (not lifted, not ended). */
+  in_effect: boolean;
+  /** Only shown to staff; `null` for the backend shell or a deleted account. */
+  issuer: { id: number; username: string } | null;
+  /** Set when it was lifted early. */
+  lifted_at: string | null;
+  lifted_by: { id: number; username: string } | null;
+  lift_reason: string | null;
 };
 
 /** A user as listed by `GET /users/search`: public profile basics plus their post count. */
@@ -189,6 +212,8 @@ export type Community = {
   splash_background: string | null;
   external_links: string[];
   key_figures: KeyFigure[];
+  /** Whether the addon keeps users banned on GarryNet off the community's game servers. */
+  ban_from_servers: boolean;
   created_at: string;
   last_updated: string | null;
 };
@@ -196,7 +221,7 @@ export type Community = {
 /** The editable parts of the community, sent to `PUT /community`. */
 export type CommunityDetails = Pick<
   Community,
-  "name" | "description" | "logo_url" | "splash_background" | "external_links" | "key_figures"
+  "name" | "description" | "logo_url" | "splash_background" | "external_links" | "key_figures" | "ban_from_servers"
 >;
 
 /** The parts of a server admins edit, sent to `POST /servers` and `PUT /servers/{id}`. */
@@ -581,8 +606,10 @@ export type FulfillmentStatus = "PENDING" | "FULFILLED" | "FAILED" | "REVOKED";
 
 export type Receipt = {
   id: number;
-  stripe_checkout_session_id: string;
-  stripe_payment_intent_id: string;
+  /** Staff only: absent from `GET /store/purchases`. */
+  stripe_checkout_session_id?: string;
+  /** Staff only: absent from `GET /store/purchases`. */
+  stripe_payment_intent_id?: string;
   buyer_id: number;
   /** `null` once the item was deleted along with its server. */
   item_id: number | null;

@@ -34,6 +34,7 @@ end
 Command("garrynet_status", "Show whether this server is linked to GarryNet.", function(reply)
 	local status = GarryNet.GetStatus()
 	if not status.configured then reply("garrynet_api_url is not set.") end
+	if status.insecure then reply("Warning: " .. GarryNet.HTTP.InsecureWarning) end
 
 	if not status.linked then
 		reply("Not linked.")
@@ -52,6 +53,10 @@ Command("garrynet_status", "Show whether this server is linked to GarryNet.", fu
 	if store then
 		reply(string.format("Last store sync %ds ago: %s", os.time() - store.time, store.message))
 	end
+	local bans = GarryNet.Bans.GetLastSync()
+	if bans then
+		reply(string.format("Last ban list sync %ds ago: %s", os.time() - bans.time, bans.message))
+	end
 	reply("Usergroups are managed with " .. GarryNet.Rewards.Adapter().name .. ".")
 end)
 
@@ -64,6 +69,9 @@ local function Done(reply)
 end
 
 Command("garrynet_link", "Link this server to GarryNet: garrynet_link <access key>", function(reply, args)
+	-- Link() warns in the server console; a superadmin running this from their own console
+	-- needs to see it too.
+	if GarryNet.HTTP.IsInsecure() then reply("Warning: " .. GarryNet.HTTP.InsecureWarning) end
 	GarryNet.Link.Link(args, function(success, message)
 		Done(reply)(success, message)
 		if success then GarryNet.NotifyAdmins("This server was linked from the console: " .. message, true) end

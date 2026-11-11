@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import { Breadcrumbs, FaqForm } from "@/components/Support";
 import { requirePermission } from "@/lib/auth";
-import { Permission } from "@/lib/permissions";
+import { SUPPORT_TEAM } from "@/lib/support";
 import styles from "@/components/Support/Support.module.scss";
 
 export default function NewFaqPage() {
@@ -15,7 +15,7 @@ export default function NewFaqPage() {
 
 /** /support/faq/new: writes an FAQ. Support Team only. */
 async function NewFaq() {
-  await requirePermission(Permission.SupportTeam);
+  await requirePermission(SUPPORT_TEAM);
   return (
     <div className={styles.page}>
       <Breadcrumbs items={[{ href: "/support", label: "Support" }, { href: "/support/faq", label: "FAQs" }, { label: "New FAQ" }]} />

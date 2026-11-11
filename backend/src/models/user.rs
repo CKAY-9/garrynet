@@ -16,6 +16,8 @@ pub enum UserStatus {
 /// How long after their last access a user counts as idle, then offline.
 const IDLE_AFTER: TimeDelta = TimeDelta::minutes(5);
 const OFFLINE_AFTER: TimeDelta = TimeDelta::minutes(15);
+/// How stale `last_seen` may get before an access writes it again; well under [`IDLE_AFTER`].
+const TOUCH_EVERY: TimeDelta = TimeDelta::minutes(1);
 
 /// How recently a searched-for user must have been seen.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -85,6 +87,9 @@ pub struct User {
     pub status: UserStatus,
     pub joined: DateTime<Utc>,
     pub last_seen: DateTime<Utc>,
+    /// The JWT version currently accepted for this user; see [`User::revoke_tokens`].
+    #[serde(skip)]
+    pub token_version: i64,
 }
 
 impl User {
@@ -270,16 +275,42 @@ impl User {
         .await
     }
 
-    /// Records that the user accessed a route: marks them online and bumps `last_seen`.
-    /// Returns `None` if the user no longer exists.
-    pub async fn touch(db: &PgPool, id: i64) -> sqlx::Result<Option<User>> {
+    /// Records that the user accessed a route with a token of version `token_version`: marks
+    /// them online and bumps `last_seen`. Returns `None` (changing nothing) if the user no
+    /// longer exists or the token has been revoked.
+    ///
+    /// Statuses work in minutes (see [`IDLE_AFTER`]), so the row is only written when the
+    /// user isn't marked online or was last seen over [`TOUCH_EVERY`] ago; otherwise it's
+    /// just read. That spares a write on every request (the notification badge polls).
+    pub async fn touch(db: &PgPool, id: i64, token_version: i64) -> sqlx::Result<Option<User>> {
         sqlx::query_as(
-            "UPDATE users SET status = 'ONLINE', last_seen = now()
-             WHERE id = $1
-             RETURNING *",
+            "WITH touched AS (
+                 UPDATE users SET status = 'ONLINE', last_seen = now()
+                 WHERE id = $1 AND token_version = $2
+                   AND (status <> 'ONLINE' OR last_seen < now() - make_interval(secs => $3))
+                 RETURNING *
+             )
+             SELECT * FROM touched
+             UNION ALL
+             SELECT * FROM users
+             WHERE id = $1 AND token_version = $2 AND NOT EXISTS (SELECT 1 FROM touched)",
         )
         .bind(id)
+        .bind(token_version)
+        .bind(TOUCH_EVERY.num_seconds() as f64)
         .fetch_optional(db)
         .await
+    }
+
+    /// Revokes every token issued to the user so far, signing them out everywhere, and marks
+    /// them offline. Returns `false` if there is no such user.
+    pub async fn revoke_tokens(db: &PgPool, id: i64) -> sqlx::Result<bool> {
+        let result = sqlx::query(
+            "UPDATE users SET token_version = token_version + 1, status = 'OFFLINE' WHERE id = $1",
+        )
+        .bind(id)
+        .execute(db)
+        .await?;
+        Ok(result.rows_affected() > 0)
     }
 }

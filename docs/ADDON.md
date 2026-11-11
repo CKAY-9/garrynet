@@ -4,7 +4,7 @@ Part of [GarryNet Design](README.md). Servers and access keys are defined in [SE
 
 The GarryNet Garry's Mod addon is responsible for communicating with GarryNet. It will update player data, fetch unrealized store requests, config changes, etc.
 
-**Status:** linking, unlinking, the per-minute heartbeat (server details, player records and gamemode stats) and store delivery work. Config changes are not implemented yet.
+**Status:** linking, unlinking, the per-minute heartbeat (server details, player records and gamemode stats), store delivery and ban enforcement work. Config changes are not implemented yet.
 
 ## Installation and Configuration
 
@@ -14,9 +14,11 @@ Copy or symlink `addon/` to `garrysmod/addons/garrynet`. In `server.cfg`, set th
 garrynet_api_url "https://api.example.com"
 ```
 
+Use `https://`. The access key and the server's JWT travel in the `Authorization` header, so over plain HTTP anyone on the path can steal them and act as the server (report players, fetch and acknowledge store deliveries). The addon still works with `http://`, but warns about it in the server console (on startup, when the URL changes and when linking), in `garrynet_status` and in the `!gnet` menu. Loopback URLs (`localhost`, `127.x.x.x`, `[::1]`) don't trigger the warning.
+
 Garry's Mod refuses HTTP requests to local and private addresses. When the backend runs on the same machine or network (e.g. in development), start the server with `-allowlocalhttp`.
 
-Link state (server id, JWT and server name) is persisted in `garrysmod/data/garrynet/state.json`. The JWT is a secret and is never sent to clients.
+Link state (server id, JWT and server name) is persisted in `garrysmod/data/garrynet/state.json`. The JWT is a secret and is never sent to clients. The last ban list is kept in `bans.json` beside it (see [Ban Enforcement](#ban-enforcement)).
 
 ## Structure
 
@@ -34,6 +36,7 @@ Files live in `addon/lua/garrynet/`, and are loaded in order by `addon/lua/autor
 | `sv_stats.lua` | Gamemode stats: providers, sampling, counters |
 | `sv_store_rewards.lua` | Store rewards: usergroup adapters, timed usergroups, weapons, revoking |
 | `sv_store.lua` | Store delivery: fetch the fulfillment queue, apply, acknowledge |
+| `sv_bans.lua` | Ban enforcement: fetch the ban list, refuse and kick banned players |
 | `sv_net.lua` | Net handlers for the menu; every one checks for superadmin |
 | `sv_commands.lua` | `!gnet` chat command, `garrynet_*` console commands |
 | `cl_net.lua` | Client net handlers and senders, chat notices |
@@ -57,7 +60,7 @@ Every superadmin in game gets a chat notice when the server is linked, when the 
 
 These run from the server console, or from a superadmin's own console:
 
-- `garrynet_status`: link status and last sync
+- `garrynet_status`: link status, last sync, and the last store and ban list syncs
 - `garrynet_link <access key>`: link without the menu
 - `garrynet_unlink`
 - `garrynet_sync`: send a heartbeat now
@@ -104,6 +107,18 @@ GarryNet.Stats.Register("murder", {
 GarryNet.Stats.Count(ply, "murder_rounds_played") -- counters, e.g. from a round hook
 ```
 
+## Ban Enforcement
+
+When **Keep banned users off game servers** is on in [Admin > Community](ADMIN.md#admincommunity), linked servers keep out players banned on GarryNet (see [User Punishment](USERS.md#user-punishment)). It's off by default. Suspensions don't apply in-game.
+
+- **When:** the addon fetches the ban list every minute (`IntervalSeconds`), 5 seconds after the map loads, and right after linking. Garry's Mod's `CheckPassword` hook has to answer immediately, so connections are checked against this list rather than asking GarryNet each time: a new ban or unban takes up to a minute to apply.
+- **Connecting:** a banned player is refused in `CheckPassword` with a message giving the reason, when the ban ends (or that it's permanent) and where to appeal (the website's `/support`). Players who aren't banned are left to other hooks and the server password, as usual.
+- **Already playing:** after each fetch, banned players on the server are kicked with the same message. This covers bans issued while they play and turning enforcement on.
+- **Expiry:** each ban carries its end, so it stops applying on time between fetches.
+- **GarryNet unreachable:** the last list keeps being enforced, including across restarts (it's saved in `data/garrynet/bans.json`). Failures are logged once, like heartbeats.
+- **Unlinking** (or a 401) forgets the list, so an unlinked server doesn't enforce stale bans.
+- Refusals and kicks are logged in the server console. Bans are matched by the connecting account's SteamID64 only; Steam Family Sharing borrowers aren't matched to the lender.
+
 ## Server Tokens
 
 The JWT is valid for 30 days and is rolling: once it is an hour old, the next heartbeat response carries a replacement, which the addon stores. Tokens carry the server's `token_version`, which the backend bumps when the server links, unlinks or gets a new access key. That revokes every earlier token. A server offline for longer than 30 days must be linked again.
@@ -147,6 +162,16 @@ are kept. Keys must match `[a-z0-9_]{1,64}`, and up to 32 of each are taken; inv
 failing the heartbeat. A player's record is created on their first visit and linked to their GarryNet account if they have one. At most 256 players per heartbeat. Returns `{ "server": {...} }`, plus `"token"` when the JWT was rotated.
 
 **POST `/gnet/server/{SERVER_ID}/unlink`**: `Authorization: Bearer <JWT>`. Unlinks the server and revokes its token and any access key. Returns 204.
+
+**GET `/gnet/server/{SERVER_ID}/bans`**: `Authorization: Bearer <JWT>`. Users banned on GarryNet right now, by SteamID64. `ends` is unix seconds, or null for a permanent ban. When the community doesn't keep banned users off its servers, `enforce` is false and `bans` is empty. `appeal_url` is the website's support page, for the kick message.
+
+```json
+{
+  "enforce": true,
+  "appeal_url": "https://example.com/support",
+  "bans": [{ "steam_id": "76561197960287931", "reason": "Aimbot on DarkRP", "ends": 1795000000 }]
+}
+```
 
 ### Store fulfillments
 

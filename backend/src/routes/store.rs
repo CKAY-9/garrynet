@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 
 use crate::{
-    auth::AuthUser,
+    auth::{AuthUser, MaybeUser},
     error::ApiError,
     models::{
         Permissions, Server, Usergroup,
@@ -120,7 +120,7 @@ struct ItemPage {
 async fn get_item(
     state: web::Data<AppState>,
     path: web::Path<(i64, i64)>,
-    user: Option<AuthUser>,
+    MaybeUser(user): MaybeUser,
 ) -> Result<HttpResponse, ApiError> {
     let (store_id, item_id) = path.into_inner();
     let (store, server) = find_enabled_store(&state, store_id).await?;
@@ -381,16 +381,30 @@ async fn cancel_purchase(
     Ok(HttpResponse::Ok().json(purchase))
 }
 
-/// The buyer's receipts with their delivery status, newest first.
+/// Receipt fields only staff see: Stripe's identifiers of the payment. They're useless to a
+/// buyer and only widen what a leaked response gives away.
+const STAFF_ONLY_RECEIPT_FIELDS: [&str; 2] = ["stripe_checkout_session_id", "stripe_payment_intent_id"];
+
+/// The buyer's receipts with their delivery status, newest first, without staff-only details
+/// (Stripe's identifiers and the addon's error text; buyers see the delivery status).
 #[get("/store/purchases")]
 async fn my_purchases(state: web::Data<AppState>, user: AuthUser) -> Result<HttpResponse, ApiError> {
-    let mut receipts: Vec<ReceiptView> = Receipt::list_for_buyer(&state.db, user.0.id).await?;
-    // The addon's error text is for staff; buyers see the status.
-    for receipt in &mut receipts {
-        if let Some(fulfillment) = &mut receipt.fulfillment {
-            fulfillment.last_error = None;
-        }
-    }
+    let receipts: Vec<ReceiptView> = Receipt::list_for_buyer(&state.db, user.0.id).await?;
+    let receipts: Vec<serde_json::Value> = receipts
+        .into_iter()
+        .map(|mut receipt| {
+            if let Some(fulfillment) = &mut receipt.fulfillment {
+                fulfillment.last_error = None;
+            }
+            let mut value = serde_json::to_value(receipt).map_err(|e| ApiError::Internal(e.to_string()))?;
+            if let Some(fields) = value.as_object_mut() {
+                for field in STAFF_ONLY_RECEIPT_FIELDS {
+                    fields.remove(field);
+                }
+            }
+            Ok(value)
+        })
+        .collect::<Result<_, ApiError>>()?;
     Ok(HttpResponse::Ok().json(receipts))
 }
 
@@ -472,7 +486,8 @@ async fn handle_event(state: &AppState, event: &Event) -> Result<(), ApiError> {
 
 /// Turns the paid Checkout Session `session` into a receipt and fulfillment (see
 /// [`Purchase::mark_paid`]) and tells the buyer. `charged` is the pre-tax amount and
-/// currency Stripe reports, if known; a mismatch with the purchase is logged for staff.
+/// currency Stripe reports, if known; on a mismatch with the purchase the delivery is held
+/// for staff to check.
 /// `source` (the webhook event, or the sweeper) is for the logs.
 async fn record_paid(
     state: &AppState,
@@ -482,7 +497,8 @@ async fn record_paid(
     charged: Option<(i64, String)>,
     source: &str,
 ) -> Result<(), ApiError> {
-    match Purchase::mark_paid(&state.db, session, purchase_id, payment_intent).await? {
+    let charged_ref = charged.as_ref().map(|(amount, currency)| (*amount, currency.as_str()));
+    match Purchase::mark_paid(&state.db, session, purchase_id, payment_intent, charged_ref).await? {
         MarkPaid::Paid(receipt, fulfillment) => {
             log::info!(
                 "purchase paid: receipt {} for user {} ({} {}), fulfillment {} for server {} ({source})",
@@ -492,8 +508,8 @@ async fn record_paid(
                 && (amount != receipt.price || !currency.eq_ignore_ascii_case(&receipt.currency))
             {
                 log::error!(
-                    "checkout session {session} charged {amount} {currency} but receipt {} records {} {} ({source})",
-                    receipt.id, receipt.price, receipt.currency
+                    "checkout session {session} charged {amount} {currency} but receipt {} records {} {}; delivery {} is held until staff retry it ({source})",
+                    receipt.id, receipt.price, receipt.currency, fulfillment.id
                 );
             }
             notify::purchase_paid(&state.db, &receipt).await;

@@ -63,9 +63,10 @@ impl Config {
         })
     }
 
-    /// URL Steam redirects back to after the user signs in.
-    pub fn steam_return_to(&self) -> String {
-        format!("{}/auth/steam/callback", self.backend_url)
+    /// URL Steam redirects back to after the user signs in, carrying the login's `state`
+    /// nonce (hex, so it needs no encoding). See `routes::auth`.
+    pub fn steam_return_to(&self, state: &str) -> String {
+        format!("{}/auth/steam/callback?state={state}", self.backend_url)
     }
 }
 

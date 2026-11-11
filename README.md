@@ -49,7 +49,7 @@ Sell in-game rewards per server: usergroups (permanent or timed), weapons and Da
 
 ### Users and Permissions
 
-Steam login, profiles, online status and user search. Usergroups have permission bits and custom colors, icons and effects.
+Steam login, profiles, online status and user search. Usergroups have permission bits and custom colors, icons and effects. Staff can ban users (support only) or suspend them (no posting) from their profile, permanently or for a set time, and optionally keep banned users off your game servers.
 
 <p align="center">
     <img src="./assets/showcase/admin-usergroups.png" alt="Admin usergroups" width="672" height="400" />
@@ -57,11 +57,11 @@ Steam login, profiles, online status and user search. Usergroups have permission
 
 ### Servers and Players
 
-Register servers on the website and link them with a one-time access key. The site shows each server's status, gamemode and map. The addon syncs per-server player records every minute: playtime, last seen and gamemode stats such as DarkRP money and job.
+Register servers on the website and link them with a one-time access key. The site shows each server's status, gamemode and map. The addon syncs per-server player records every minute: playtime, last seen and gamemode stats such as DarkRP money and job. It can also refuse players banned on the website.
 
 ### Notifications
 
-In-site notifications for ticket replies, purchases and deliveries, forum replies and usergroup changes.
+In-site notifications for ticket replies, purchases and deliveries, forum replies, usergroup changes, and bans and suspensions.
 
 ## How It Fits Together
 
@@ -191,6 +191,8 @@ backend usergroup list
 backend usergroup add <USER_ID or SteamID64> <GROUP>
 backend usergroup remove <USER_ID or SteamID64> <GROUP>
 backend user show <USER_ID or SteamID64>
+backend user unban <USER_ID or SteamID64>
+backend user unsuspend <USER_ID or SteamID64>
 backend help
 ```
 
@@ -234,7 +236,7 @@ frontend/   Website and loading screen (Next.js, TypeScript)
 
 These appear in the design docs but don't exist yet:
 
-- Website punishments (bans, suspensions, warnings) and in-game player punishments
+- Website warnings and in-game player punishments
 - Private messages
 - Pushing config changes from the website to the addon
 - A light/dark theme toggle (the site currently follows your system theme)

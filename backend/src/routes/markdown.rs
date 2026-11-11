@@ -39,6 +39,25 @@ pub fn markdown(field: &str, value: &str, max: usize) -> Result<String, ApiError
     Err(bad(format!("{field} contains HTML that couldn't be escaped")))
 }
 
+/// 400 unless every image in `source` (already checked by [`markdown`]) is a file served
+/// by this backend, i.e. its URL starts with `files_base` (`{BACKEND_URL}/file/`). For
+/// support tickets: an image from elsewhere would load from that host when staff open the
+/// ticket, telling whoever runs it their IP address and when they read it. Links are left
+/// alone; following one is the reader's choice.
+pub fn local_images_only(field: &str, source: &str, files_base: &str) -> Result<(), ApiError> {
+    for event in Parser::new_ext(source, options()) {
+        if let Event::Start(Tag::Image { dest_url, .. }) = event
+            && !dest_url.starts_with(files_base)
+        {
+            return Err(bad(format!(
+                "{field} can only show images uploaded here; attach the image instead of linking {:?}",
+                dest_url.as_ref()
+            )));
+        }
+    }
+    Ok(())
+}
+
 /// Byte ranges of raw HTML (blocks and inline tags), in source order.
 fn html_ranges(source: &str) -> Vec<Range<usize>> {
     Parser::new_ext(source, options())
@@ -142,6 +161,20 @@ mod tests {
         ] {
             assert!(md(src).is_ok(), "{src}");
         }
+    }
+
+    #[test]
+    fn local_images() {
+        let base = "https://api.example.com/file/";
+        let ok = |src: &str| local_images_only("content", &md(src).unwrap(), base).is_ok();
+        assert!(ok("![x](https://api.example.com/file/1/abc)"));
+        assert!(ok("[a link](https://elsewhere.example)"), "links are fine");
+        assert!(ok("no images at all"));
+        assert!(!ok("![x](https://evil.example/pixel.png)"));
+        assert!(!ok("![x](https://api.example.com.evil.example/file/1/abc)"));
+        assert!(!ok("![x](//evil.example/pixel.png)"));
+        assert!(!ok("![x](/file/1/abc)"), "relative to the frontend, not ours");
+        assert!(!ok("![x][p]\n\n[p]: https://evil.example/pixel.png"));
     }
 
     #[test]

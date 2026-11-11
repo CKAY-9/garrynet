@@ -6,17 +6,24 @@ mod notify;
 mod routes;
 mod shell;
 mod state;
+mod steam_profiles;
 mod storage;
 mod stripe;
 
 use std::{sync::Arc, time::Duration};
 
-use actix_web::{App, HttpServer, middleware::Logger, web};
+use actix_web::{
+    App, HttpServer,
+    dev::{Service, ServiceResponse},
+    middleware::Logger,
+    web,
+};
 use sqlx::{PgPool, postgres::PgPoolOptions};
 
 use crate::{
     auth::jwt::JwtKeys,
     config::Config,
+    error::ApiError,
     models::{
         Community, File, Usergroup, notification::Notification,
         support::SupportTicket,
@@ -79,6 +86,7 @@ async fn main() -> std::io::Result<()> {
         http,
         stripe,
         storage,
+        steam_profiles: Arc::default(),
     };
 
     log::info!("GarryNet backend listening on http://{}", config.bind_addr);
@@ -88,9 +96,25 @@ async fn main() -> std::io::Result<()> {
     spawn_upload_sweeper(state.db.clone(), state.storage.clone());
     spawn_notification_sweeper(state.db.clone());
 
+    let trusted_origins = Arc::new(auth::trusted_origins(&config));
     HttpServer::new(move || {
+        let trusted_origins = trusted_origins.clone();
         App::new()
             .app_data(web::Data::new(state.clone()))
+            // Refuse cookie-authenticated writes from other sites' pages (CSRF).
+            .wrap_fn(move |req, srv| {
+                let forged = auth::cross_site_write(req.request(), &trusted_origins);
+                let res = (!forged).then(|| srv.call(req));
+                async move {
+                    match res {
+                        Some(res) => res.await.map(ServiceResponse::map_into_boxed_body),
+                        None => Err(ApiError::Forbidden(
+                            "a request from this site (the login cookie can't be used from other sites)".into(),
+                        )
+                        .into()),
+                    }
+                }
+            })
             .wrap(Logger::new("%r %s %Dms"))
             .configure(routes::configure)
     })

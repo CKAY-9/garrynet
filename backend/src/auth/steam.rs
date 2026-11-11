@@ -135,7 +135,7 @@ pub async fn verify_with_steam(
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct PlayerSummary {
     pub steamid: String,
     pub personaname: String,
@@ -267,6 +267,21 @@ mod tests {
         let mut both = with("openid.claimed_id", short);
         both.iter_mut().find(|(k, _)| k == "openid.identity").unwrap().1 = short.into();
         assert!(rejected(both));
+    }
+
+    #[test]
+    fn return_to_binds_the_login_nonce() {
+        // Steam returns to `return_to` with its own parameters appended, so the callback's
+        // query also has the `state` from it.
+        let ours = format!("{RETURN_TO}?state=aaaa");
+        let mut params = with("openid.return_to", &ours);
+        params.push(("state".into(), "aaaa".into()));
+        assert!(parse_assertion(&params, &ours).is_ok());
+        // An assertion from a login another browser started carries another nonce.
+        assert!(matches!(
+            parse_assertion(&params, &format!("{RETURN_TO}?state=bbbb")),
+            Err(ApiError::SteamVerification(_))
+        ));
     }
 
     #[test]

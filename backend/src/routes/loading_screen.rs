@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use actix_web::{HttpResponse, get, put, web};
 use serde::{Deserialize, Serialize};
@@ -11,6 +11,7 @@ use crate::{
         loading_screen::LoadingScreenStyle,
     },
     state::AppState,
+    steam_profiles::Lookup,
 };
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
@@ -124,19 +125,9 @@ async fn find_player(
     }
 
     // No GarryNet account, so ask Steam for their name and avatar. The loading screen
-    // still works without them, so a slow or failing Steam only costs the avatar.
-    let lookup = steam::player_summary(&state.http, &state.config.steam_api_key, &steam_id);
-    let summary = match tokio::time::timeout(STEAM_LOOKUP_TIMEOUT, lookup).await {
-        Ok(Ok(summary)) => Some(summary),
-        Ok(Err(e)) => {
-            log::warn!("loading screen: steam lookup for {steam_id} failed: {e}");
-            None
-        }
-        Err(_) => {
-            log::warn!("loading screen: steam lookup for {steam_id} timed out");
-            None
-        }
-    };
+    // still works without them, so a slow or failing Steam (or a spent lookup budget, see
+    // `SteamProfiles`) only costs the avatar.
+    let summary = steam_profile(state, &steam_id).await;
 
     let name = record
         .as_ref()
@@ -150,6 +141,32 @@ async fn find_player(
         user_id: None,
         record,
     })
+}
+
+/// The player's Steam profile, from the cache if possible.
+async fn steam_profile(state: &AppState, steam_id: &str) -> Option<steam::PlayerSummary> {
+    match state.steam_profiles.lookup(steam_id, Instant::now()) {
+        Lookup::Cached(summary) => return summary,
+        Lookup::OverBudget => {
+            log::debug!("loading screen: skipped the steam lookup for {steam_id}: lookup budget spent");
+            return None;
+        }
+        Lookup::Fetch => {}
+    }
+    let lookup = steam::player_summary(&state.http, &state.config.steam_api_key, steam_id);
+    let result = match tokio::time::timeout(STEAM_LOOKUP_TIMEOUT, lookup).await {
+        Ok(Ok(summary)) => Ok(Some(summary)),
+        Ok(Err(e)) => {
+            log::warn!("loading screen: steam lookup for {steam_id} failed: {e}");
+            Err(())
+        }
+        Err(_) => {
+            log::warn!("loading screen: steam lookup for {steam_id} timed out");
+            Err(())
+        }
+    };
+    state.steam_profiles.store(steam_id, result.clone(), Instant::now());
+    result.ok().flatten()
 }
 
 /// A 17-digit SteamID64.

@@ -63,7 +63,11 @@ async fn update_community(
     let community = Community::update(&state.db, &details)
         .await?
         .ok_or(ApiError::NotFound("community"))?;
-    log::info!("user {} updated the community details", user.0.id);
+    log::info!(
+        "user {} updated the community details (banned users kept off game servers: {})",
+        user.0.id,
+        community.ban_from_servers
+    );
     Ok(HttpResponse::Ok().json(community))
 }
 
@@ -81,6 +85,9 @@ struct CommunityBody {
     external_links: Vec<String>,
     #[serde(default)]
     key_figures: Vec<KeyFigure>,
+    /// Keep users banned on GarryNet off the game servers (docs/ADDON.md "Ban Enforcement").
+    #[serde(default)]
+    ban_from_servers: bool,
 }
 
 const MAX_NAME: usize = 64;
@@ -143,6 +150,7 @@ fn normalize(body: CommunityBody) -> Result<CommunityDetails, ApiError> {
         splash_background,
         external_links,
         key_figures,
+        ban_from_servers: body.ban_from_servers,
     })
 }
 
@@ -164,6 +172,7 @@ mod tests {
                 role: "Owner".into(),
                 description: String::new(),
             }],
+            ban_from_servers: true,
         }
     }
 
@@ -173,6 +182,7 @@ mod tests {
         assert_eq!(details.name, "Test");
         assert_eq!(details.logo_url, None);
         assert_eq!(details.key_figures[0].profile_picture, "");
+        assert!(details.ban_from_servers);
     }
 
     #[test]

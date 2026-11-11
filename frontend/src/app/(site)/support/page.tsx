@@ -56,6 +56,12 @@ async function Support({ searchParams }: { searchParams: SearchParams }) {
         </Link>
       </div>
       <SupportNav support={viewer.support} active="mine" />
+      {viewer.banned && (
+        <p className={styles.notice} role="status">
+          Your account is banned from the rest of the site. You can still open and reply to support tickets, for
+          example to appeal the ban.
+        </p>
+      )}
       <TicketFilterForm filters={filters} action="/support" />
       <section className={styles.section} aria-labelledby="active-heading">
         <div className={styles.sectionHead}>

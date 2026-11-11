@@ -2,7 +2,10 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::{PgConnection, PgPool};
 
-use super::Permissions;
+use super::{
+    Permissions,
+    punishment::{self, PunishmentKind},
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
 #[sqlx(type_name = "usergroup_effect", rename_all = "lowercase")]
@@ -110,6 +113,10 @@ pub enum EditError {
     NotHeld(Permissions),
     /// The change would take [`Editor::must_keep`] permissions away from the editor.
     LocksOut,
+    /// The user being removed holds these permissions, which the editor doesn't.
+    Outranked(Permissions),
+    /// The change would leave the `admin` group without members.
+    LastAdmin,
     Database(sqlx::Error),
 }
 
@@ -124,6 +131,9 @@ impl From<sqlx::Error> for EditError {
 
 /// Name of the group every new user joins on their first login.
 pub const DEFAULT_GROUP: &str = "user";
+
+/// Name of the group with every permission, which must always keep a member.
+pub const ADMIN_GROUP: &str = "admin";
 
 struct DefaultGroup {
     name: &'static str,
@@ -145,7 +155,7 @@ const DEFAULT_GROUPS: [DefaultGroup; 2] = [
         permissions: Permissions::BASIC,
     },
     DefaultGroup {
-        name: "admin",
+        name: ADMIN_GROUP,
         effect: UsergroupEffect::Rainbow,
         color: "#e5484d",
         permissions: Permissions::ALL,
@@ -267,17 +277,32 @@ impl Usergroup {
     }
 
     /// The user's effective permissions: the OR of all their groups' permissions.
+    ///
+    /// Bans and suspensions in effect take their permissions away (see
+    /// [`PunishmentKind::revokes`]), so every permission check honours them.
     pub async fn permissions_for_user(db: &PgPool, user_id: i64) -> sqlx::Result<Permissions> {
-        let bits: i64 = sqlx::query_scalar(
-            "SELECT COALESCE(bit_or(g.permissions), 0)
-             FROM usergroups g
-             JOIN usergroup_members um ON um.usergroup_id = g.id
-             WHERE um.user_id = $1",
-        )
+        let bits: i64 = sqlx::query_scalar(punishment::in_effect!(
+            "SELECT COALESCE((SELECT bit_or(g.permissions)
+                              FROM usergroups g
+                              JOIN usergroup_members um ON um.usergroup_id = g.id
+                              WHERE um.user_id = $1), 0)
+                    & ~COALESCE((SELECT bit_or(CASE p.kind WHEN 'BAN' THEN $2 ELSE $3 END)
+                                 FROM user_punishments p
+                                 WHERE p.user_id = $1 AND",
+            "), 0)"
+        ))
         .bind(user_id)
+        .bind(PunishmentKind::Ban.revokes())
+        .bind(PunishmentKind::Suspend.revokes())
         .fetch_one(db)
         .await?;
         Ok(Permissions::from_bits(bits))
+    }
+
+    /// The permissions the user's usergroups grant, ignoring punishments: what they'd hold
+    /// if every ban and suspension were lifted. Used to decide who outranks whom.
+    pub async fn group_permissions_for_user(db: &PgPool, user_id: i64) -> sqlx::Result<Permissions> {
+        effective_permissions(&mut *db.acquire().await?, user_id).await
     }
 
     /// Adds the user to the group. Returns `false` if they were already a member. No
@@ -365,8 +390,9 @@ impl Usergroup {
     }
 
     /// Removes the user from the group on the editor's behalf. The editor must hold every
-    /// permission the group grants, and must keep [`Editor::must_keep`] if they're
-    /// removing themselves.
+    /// permission the group grants and, when removing someone else, every permission that
+    /// user holds (so nobody can demote someone above them). The `admin` group must keep a
+    /// member, and the editor must keep [`Editor::must_keep`] if they're removing themselves.
     pub async fn remove_member_as(
         db: &PgPool,
         group_id: i64,
@@ -374,10 +400,26 @@ impl Usergroup {
         editor: Editor,
     ) -> Result<(), EditError> {
         let mut tx = db.begin().await?;
-        let (_, permissions) = lock(&mut tx, group_id).await?;
+        let (name, permissions) = lock(&mut tx, group_id).await?;
         check_held(editor, permissions)?;
+        if user_id != editor.user_id {
+            let outranking = effective_permissions(&mut tx, user_id).await?.difference(editor.permissions);
+            if !outranking.is_empty() {
+                return Err(EditError::Outranked(outranking));
+            }
+        }
         if !delete_member(&mut tx, group_id, user_id).await? {
             return Err(EditError::NotMember);
+        }
+        // The group's row is locked, so concurrent removals can't both take the last one.
+        if name.eq_ignore_ascii_case(ADMIN_GROUP) {
+            let left: i64 = sqlx::query_scalar("SELECT count(*) FROM usergroup_members WHERE usergroup_id = $1")
+                .bind(group_id)
+                .fetch_one(&mut *tx)
+                .await?;
+            if left == 0 {
+                return Err(EditError::LastAdmin);
+            }
         }
         check_kept(&mut tx, editor).await?;
         touch(&mut tx, group_id).await?;
@@ -443,14 +485,17 @@ impl Usergroup {
     }
 
     /// Deletes a group, removing its members from it. Returns the deleted group's name.
-    /// Default groups can't be deleted, nor can a group whose removal would take
-    /// [`Editor::must_keep`] away from the editor.
+    /// Default groups can't be deleted, nor can a group granting permissions the editor
+    /// doesn't hold (deleting it revokes them from its members, like removing them in
+    /// [`Usergroup::update`]), nor one whose removal would take [`Editor::must_keep`] away
+    /// from the editor.
     pub async fn delete(db: &PgPool, id: i64, editor: Editor) -> Result<String, EditError> {
         let mut tx = db.begin().await?;
-        let (name, _) = lock(&mut tx, id).await?;
+        let (name, permissions) = lock(&mut tx, id).await?;
         if is_default_group(&name) {
             return Err(EditError::DefaultGroup);
         }
+        check_held(editor, permissions)?;
         sqlx::query("DELETE FROM usergroups WHERE id = $1")
             .bind(id)
             .execute(&mut *tx)
@@ -498,18 +543,23 @@ fn check_held(editor: Editor, changed: Permissions) -> Result<(), EditError> {
     if not_held.is_empty() { Ok(()) } else { Err(EditError::NotHeld(not_held)) }
 }
 
-/// The editor must still hold [`Editor::must_keep`] after the transaction's changes.
-async fn check_kept(conn: &mut PgConnection, editor: Editor) -> Result<(), EditError> {
+/// The user's effective permissions as the transaction sees them.
+async fn effective_permissions(conn: &mut PgConnection, user_id: i64) -> sqlx::Result<Permissions> {
     let bits: i64 = sqlx::query_scalar(
         "SELECT COALESCE(bit_or(g.permissions), 0)
          FROM usergroups g
          JOIN usergroup_members um ON um.usergroup_id = g.id
          WHERE um.user_id = $1",
     )
-    .bind(editor.user_id)
+    .bind(user_id)
     .fetch_one(conn)
     .await?;
-    if Permissions::from_bits(bits).contains(editor.must_keep) {
+    Ok(Permissions::from_bits(bits))
+}
+
+/// The editor must still hold [`Editor::must_keep`] after the transaction's changes.
+async fn check_kept(conn: &mut PgConnection, editor: Editor) -> Result<(), EditError> {
+    if effective_permissions(conn, editor.user_id).await?.contains(editor.must_keep) {
         Ok(())
     } else {
         Err(EditError::LocksOut)

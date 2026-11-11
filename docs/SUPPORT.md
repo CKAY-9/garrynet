@@ -68,9 +68,11 @@ CLOSED
 ## Support Message
 
 Support messages can be edited once and have the previous value in `previous_content`.
+
+A message's Markdown (and a ticket's initial message) can only show images uploaded here, i.e. URLs under `{BACKEND_URL}/file/`; any other image is refused with 400. An image from another host would load when staff open the ticket, telling whoever runs that host their IP address and when they read it. Links to other sites are fine. Forum posts and FAQs, which are public, may still show images from anywhere; wherever Markdown is shown, images are loaded without a `Referer`.
 A message can have up to 10 files attached (see [STORAGE.md](STORAGE.md)). The author uploads them first, then sends their file IDs as `attachments` with the message (or with the ticket, for its initial message). Each must be a ready file in the author's own folder that isn't attached to anything else; otherwise 400. Editing a message doesn't change its attachments.
 
-File URLs are public but unguessable, so an attachment can be opened by anyone who is given its link, even though the ticket itself is private.
+Attachments are as private as the ticket: once attached, a file is only served to the ticket's creator and the Support Team (by the auth cookie the browser sends with the request), and an internal note's files only to the Support Team. Anyone else, logged out or not, gets 404, even with the link. See [STORAGE.md](STORAGE.md#get-fileowner_idfile_id).
 
 ```
 id: number
@@ -156,7 +158,7 @@ List FAQs by category, include:
 Show everything for the FAQ.
 ## Routes
 
-Login is required for tickets but not Site Access: banned users can still use support. "Support Team" means the `Support Team` permission.
+Login is required for tickets but not Site Access: banned users can still use support. "Support Team" means the `Support Team` permission together with Site Access: like a forum moderator, a banned team member loses their staff powers and is treated as a regular user (their own tickets only).
 
 Tickets:
 - GET `/support/tickets`: my tickets. Query: `status`, `category`, `state` (`active` | `done`), `activity` (`day` | `week` | `month`, updated within), `sort` (`latest` default | `oldest` | `created`). Each ticket includes its `author` and visible `message_count`.

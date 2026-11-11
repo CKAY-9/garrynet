@@ -84,7 +84,8 @@ async function UsergroupSettings({ id }: { id: string }) {
         />
       </section>
 
-      {!isDefaultGroup(group.name) && (
+      {/* Deleting revokes the group's permissions, so it needs all of them, like the backend. */}
+      {!isDefaultGroup(group.name) && hasPermission(user.permissions, group.permissions) && (
         <section className={styles.section} aria-labelledby="danger-heading">
           <h2 id="danger-heading" className={styles.sectionTitle}>
             Danger zone

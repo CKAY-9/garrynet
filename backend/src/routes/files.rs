@@ -6,7 +6,7 @@
 //! `POST /file/{owner}/{id}/complete` verifies them and makes the file readable.
 
 use actix_web::{
-    HttpRequest, HttpResponse, delete, get,
+    FromRequest, HttpRequest, HttpResponse, delete, get,
     http::header::{self, ContentDisposition, DispositionParam, DispositionType, EntityTag},
     post, put, route, web,
 };
@@ -19,6 +19,7 @@ use crate::{
     models::{
         File, Permissions,
         file::{COMMUNITY_OWNER, FileStatus, NewFile},
+        support::SupportMessage,
     },
     routes::validate::bad,
     state::AppState,
@@ -34,13 +35,18 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .service(delete_file);
 }
 
-const UPLOAD: Permissions = Permissions::SITE_ACCESS;
+/// Uploading a user file only needs a login, not Site Access: banned users can still use
+/// support, including attaching screenshots to an appeal. What a file can be attached to is
+/// checked where it's attached (posting on the forum needs Site Access).
+const UPLOAD: Permissions = Permissions::from_bits(0);
 /// Community files are the images set in the admin pages (logos, icons, splashes), which
 /// are managed by different permissions, so uploading one only needs the dashboard itself.
 const UPLOAD_COMMUNITY: Permissions = Permissions::ADMIN_ACCESS;
 const MANAGE_COMMUNITY: Permissions = Permissions::ADMIN_ACCESS.union(Permissions::COMMUNITY_MANAGEMENT);
 /// Deleting other users' files.
 const MANAGE_USERS: Permissions = Permissions::ADMIN_ACCESS.union(Permissions::USER_MANAGEMENT);
+/// Reading any support attachment, as `routes::support` lets the team read any ticket.
+use crate::routes::support::SUPPORT_TEAM;
 
 /// Content types that can be uploaded. Nothing a browser would run as a document (HTML,
 /// SVG, ...): files are served from the backend's own origin.
@@ -117,8 +123,8 @@ struct UploadResponse {
     upload: UploadTarget,
 }
 
-/// Starts an upload: records a pending file and returns where to send its bytes. Requires
-/// Site Access; community files require Admin Access.
+/// Starts an upload: records a pending file and returns where to send its bytes. Requires a
+/// login (not Site Access, see [`UPLOAD`]); community files require Admin Access.
 #[post("/file/upload")]
 async fn create_upload(
     state: web::Data<AppState>,
@@ -300,8 +306,10 @@ async fn complete(state: &AppState, file: File, backend: Backend) -> Result<Http
     }
 }
 
-/// Serves a file: streamed from local storage, or a redirect to the cloud provider.
-/// Public; file IDs are unguessable.
+/// Serves a file: streamed from local storage, or a redirect to the cloud provider. Public
+/// (file IDs are unguessable), except files attached to a support message: those are only
+/// served to the ticket's creator (not for internal notes) and the Support Team, by the
+/// auth cookie or token, and anyone else gets 404.
 #[get("/file/{owner_id}/{file_id}")]
 async fn get_file(
     state: web::Data<AppState>,
@@ -313,14 +321,21 @@ async fn get_file(
         .await?
         .filter(|file| file.status == FileStatus::Ready)
         .ok_or(ApiError::NotFound("file"))?;
+    let private = file.support_message_id.is_some();
+    if let Some(message_id) = file.support_message_id
+        && !may_read_support_file(&state, &req, message_id).await?
+    {
+        return Err(ApiError::NotFound("file"));
+    }
     let backend = backend_of(&file)?;
     let storage = &state.storage;
 
-    match storage.read_target(backend, &file.key).await? {
+    match storage.read_target(backend, &file.key, private).await? {
         ReadTarget::Redirect(url) => Ok(HttpResponse::Found()
             .insert_header((header::LOCATION, url))
-            // Presigned URLs expire, so don't let the redirect outlive them.
-            .insert_header((header::CACHE_CONTROL, "private, max-age=300"))
+            // Presigned URLs expire, so don't let the redirect outlive them; a private one
+            // isn't kept at all, so every view is checked again.
+            .insert_header((header::CACHE_CONTROL, if private { "private, no-store" } else { "private, max-age=300" }))
             .finish()),
         ReadTarget::Stream => {
             // Files never change once ready, so the ID is a strong validator.
@@ -337,7 +352,12 @@ async fn get_file(
             };
             response
                 .insert_header((header::ETAG, etag))
-                .insert_header((header::CACHE_CONTROL, "public, max-age=31536000, immutable"))
+                // A private file may only sit in the viewer's own cache, and is revalidated
+                // (a cheap 304) on every use, so losing access takes effect at once.
+                .insert_header((
+                    header::CACHE_CONTROL,
+                    if private { "private, no-cache" } else { "public, max-age=31536000, immutable" },
+                ))
                 .insert_header((header::X_CONTENT_TYPE_OPTIONS, "nosniff"))
                 .insert_header((header::CONTENT_SECURITY_POLICY, "default-src 'none'; sandbox"));
             if not_modified {
@@ -357,6 +377,24 @@ async fn get_file(
                 .streaming(stream))
         }
     }
+}
+
+/// Whether the requester may read a file attached to support message `message_id`: the
+/// ticket's creator (unless it's an internal note) or the Support Team. The login is only
+/// looked up here, so public files don't mark their viewers online.
+async fn may_read_support_file(state: &AppState, req: &HttpRequest, message_id: i64) -> Result<bool, ApiError> {
+    let Some(audience) = SupportMessage::audience(&state.db, message_id).await? else {
+        return Ok(false);
+    };
+    let user = match AuthUser::extract(req).await {
+        Ok(user) => user,
+        Err(ApiError::Unauthorized) => return Ok(false),
+        Err(e) => return Err(e),
+    };
+    if audience.visible_to(user.0.id) {
+        return Ok(true);
+    }
+    Ok(user.require(&state.db, SUPPORT_TEAM).await.is_ok())
 }
 
 /// Validates the files a user wants to attach to something they're posting: at most `max`
@@ -398,8 +436,11 @@ pub async fn delete_all(state: &AppState, files: Vec<File>) {
     }
 }
 
-/// Deletes a file. Allowed for its uploader, users with Admin Access and User Management
-/// (user files) or Admin Access and Community Management (community files).
+/// Deletes a file. Community files need Admin Access and Community Management, whoever
+/// uploaded them: they may be in use as a logo or splash. A user file can be deleted by its
+/// uploader until it's attached to a forum post or support message (it's then deleted with
+/// it, so a ticket's evidence can't be pulled after staff have seen it), and at any time by
+/// users with Admin Access and User Management.
 #[delete("/file/{owner_id}/{file_id}")]
 async fn delete_file(
     state: web::Data<AppState>,
@@ -410,9 +451,15 @@ async fn delete_file(
     let file = File::get(&state.db, owner_id, &file_id)
         .await?
         .ok_or(ApiError::NotFound("file"))?;
-    if file.uploaded_by != Some(user.0.id) {
-        let required = if owner_id == COMMUNITY_OWNER { MANAGE_COMMUNITY } else { MANAGE_USERS };
-        user.require(&state.db, required).await?;
+    if owner_id == COMMUNITY_OWNER {
+        user.require(&state.db, MANAGE_COMMUNITY).await?;
+    } else if file.uploaded_by != Some(user.0.id) {
+        user.require(&state.db, MANAGE_USERS).await?;
+    } else if file.is_attached() && user.require(&state.db, MANAGE_USERS).await.is_err() {
+        return Err(bad(
+            "attached files can't be deleted on their own; they're deleted with the post or message they're attached to"
+                .into(),
+        ));
     }
     let backend = backend_of(&file)?;
     if File::delete(&state.db, owner_id, &file_id).await? {

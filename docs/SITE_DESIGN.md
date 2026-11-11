@@ -16,7 +16,7 @@ Should display the user's avatar, name, description, status, when they joined an
 
 Display all usergroups they're a part of as "chips" (small, reusable components). They should implement the usergroup's effect attribute.
 
-Should have a link to their steam profile.
+Should have a link to their steam profile. Staff with Admin Access and User Management also get Ban/Unban and Suspend/Unsuspend buttons beside it, and see the user's punishments. A ban in effect (reason, when it was issued and when it ends, but not who issued it) is shown to everyone (see [USERS.md](USERS.md#banning-and-suspending)).
 
 ## Navigation
 

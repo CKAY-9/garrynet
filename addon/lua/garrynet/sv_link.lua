@@ -40,6 +40,8 @@ function GarryNet.Link.Link(access_key, callback)
 		return
 	end
 
+	if GarryNet.HTTP.IsInsecure() then GarryNet.Util.Warn(GarryNet.HTTP.InsecureWarning) end
+
 	Busy = true
 	GarryNet.HTTP.Request("POST", "/gnet/server/link", {
 		headers = { Authorization = "Bearer " .. access_key },
@@ -63,6 +65,7 @@ function GarryNet.Link.Link(access_key, callback)
 		GarryNet.Util.Log(string.format("Linked to GarryNet as server #%d (%s)", server_id, name))
 
 		GarryNet.Interval.OnLinked()
+		GarryNet.Bans.Sync()
 		callback(true, string.format("Linked to GarryNet as \"%s\" (#%d).", name, server_id))
 	end)
 end
@@ -99,9 +102,10 @@ function GarryNet.Link.Unlink(callback)
 	end)
 end
 
--- Drop the credentials and stop syncing.
+-- Drop the credentials and stop syncing. The ban list goes too: it can't be kept up to date.
 function GarryNet.Link.Forget()
 	GarryNet.Interval.Stop()
+	GarryNet.Bans.Clear()
 	GarryNet.Storage.Clear()
 	GarryNet.BroadcastStatus()
 end

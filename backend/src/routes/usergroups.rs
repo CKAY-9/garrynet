@@ -27,7 +27,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
 
 /// Like the other admin pages, managing usergroups needs Admin Access as well as the
 /// specific permission.
-const MANAGE: Permissions = Permissions::ADMIN_ACCESS.union(Permissions::USERGROUP_CONTROL);
+const MANAGE: Permissions = Permissions::ADMIN_ACCESS.union(Permissions::USERGROUP_MANAGEMENT);
 
 /// Every usergroup's public details (no members or permissions), e.g. for filtering users
 /// by group. No login required.
@@ -107,7 +107,7 @@ async fn update(
 }
 
 /// Deletes a usergroup; its members leave it. Requires Admin Access and Usergroup
-/// Management. The default groups can't be deleted.
+/// Management, and every permission the group grants. The default groups can't be deleted.
 #[delete("/admin/usergroups/{id}")]
 async fn remove(
     state: web::Data<AppState>,
@@ -168,7 +168,8 @@ async fn add_member(
 }
 
 /// Removes a user from a usergroup (204). Requires Admin Access and Usergroup Management,
-/// and every permission the group grants. Refused if it would lock the editor out.
+/// every permission the group grants and every permission the removed user holds. Refused
+/// if it would lock the editor out or leave the admin group empty.
 #[delete("/admin/usergroups/{id}/members/{user_id}")]
 async fn remove_member(
     state: web::Data<AppState>,
@@ -216,6 +217,13 @@ fn edit_error(e: EditError) -> ApiError {
         EditError::LocksOut => bad(
             "this would remove your own Admin Access or Usergroup Management, locking you out of usergroups"
                 .to_owned(),
+        ),
+        EditError::Outranked(held) => ApiError::Forbidden(format!(
+            "{} (the user you're removing holds permissions you don't)",
+            held.names().collect::<Vec<_>>().join(", ")
+        )),
+        EditError::LastAdmin => bad(
+            "the admin group must keep at least one member; add someone else to it first".to_owned(),
         ),
         EditError::Database(e) => e.into(),
     }

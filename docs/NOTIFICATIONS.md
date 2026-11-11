@@ -52,7 +52,9 @@ The backend creates notifications from the following events. The person who caus
 | Purchase refunded or fulfillment revoked | buyer | STORE | `/store/purchases` |
 | Reply to a thread | thread author | FORUM | `/forum/threads/{id}` |
 | Thread locked, or a post or thread deleted, by a moderator | post/thread author | FORUM | `/forum/threads/{id}` (none if deleted) |
-| Ban, suspension or warning issued | the user | ACCOUNT | none |
+| Banned | the user | ACCOUNT | `/support` |
+| Suspended | the user | ACCOUNT | none |
+| Ban or suspension lifted early | the user | ACCOUNT | none |
 | Added to or removed from a usergroup | the user | ACCOUNT | `/users/{id}` |
 
 Disputes (`charge.dispute.created`) are not a user notification. Staff handle them from the store admin pages.

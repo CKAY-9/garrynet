@@ -211,8 +211,15 @@ local function UpdateResult()
 end
 
 local function NotConfiguredWarning(parent)
-	TextBlock(parent, "GarryNet.Small", Colors.Warning, GarryNet.ClientState.configured and ""
-		or "garrynet_api_url is not set on this server. Add it to server.cfg before linking.")
+	local state = GarryNet.ClientState
+	local text = ""
+	if not state.configured then
+		text = "garrynet_api_url is not set on this server. Add it to server.cfg before linking."
+	elseif state.insecure then
+		text = "garrynet_api_url doesn't use https://, so the access key and server token are sent unencrypted. "
+			.. "Use an https:// URL unless GarryNet is on a private network you fully trust."
+	end
+	TextBlock(parent, "GarryNet.Small", Colors.Warning, text)
 end
 
 local function BuildUnlinked(card)

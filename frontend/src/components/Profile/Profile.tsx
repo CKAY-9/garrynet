@@ -1,7 +1,9 @@
+import type { ReactNode } from "react";
 import Image from "next/image";
 import { UsergroupChip } from "@/components/UsergroupChip";
 import { dateFormat, fullFormat, timeAgo } from "@/lib/time";
 import type { UserProfile, UserStatus } from "@/lib/types";
+import { BanNotice } from "./Punishments";
 import styles from "./Profile.module.scss";
 import Link from "next/link";
 
@@ -11,8 +13,12 @@ const statusLabels: Record<UserStatus, string> = {
   OFFLINE: "Offline",
 };
 
-/** A user's profile: avatar, name, status, usergroups, bio and stats. */
-export function Profile({ user }: { user: UserProfile }) {
+/**
+ * A user's profile: avatar, name, status, usergroups, bio and stats. `actions` go beside the
+ * Steam link (staff tools); `notices` go above the bio (e.g. a suspension, for staff). A ban
+ * in effect is shown to everyone.
+ */
+export function Profile({ user, actions, notices }: { user: UserProfile; actions?: ReactNode; notices?: ReactNode }) {
   const joined = new Date(user.joined);
   const lastSeen = new Date(user.last_seen);
   const online = user.status === "ONLINE";
@@ -46,7 +52,13 @@ export function Profile({ user }: { user: UserProfile }) {
         </div>
       </header>
 
-      <Link href={`https://steamcommunity.com/profiles/${user.steam_id}`} className={styles.steam}>View on Steam</Link>
+      <div className={styles.links}>
+        <Link href={`https://steamcommunity.com/profiles/${user.steam_id}`} className={styles.steam}>View on Steam</Link>
+        {actions}
+      </div>
+
+      {user.ban && <BanNotice ban={user.ban} />}
+      {notices}
 
       <section className={styles.bio}>
         {user.bio ? <p>{user.bio}</p> : <p className={styles.empty}>No description yet.</p>}

@@ -46,6 +46,58 @@ pub fn removal_cookie(config: &Config) -> Cookie<'static> {
     cookie
 }
 
+/// Name of the cookie tying a Steam login to the browser that started it.
+pub const LOGIN_STATE_COOKIE: &str = "garrynet_login_state";
+
+/// How long the user has to finish signing in on Steam.
+const LOGIN_STATE_TTL_MINUTES: i64 = 10;
+
+/// The login-state cookie, holding the nonce that must come back in Steam's `return_to`. Only
+/// sent to the callback; `Lax` still sends it on Steam's top-level redirect back.
+pub fn login_state_cookie(config: &Config, nonce: String) -> Cookie<'static> {
+    Cookie::build(LOGIN_STATE_COOKIE, nonce)
+        .path("/auth/steam/callback")
+        .http_only(true)
+        .secure(config.cookie_secure)
+        .same_site(SameSite::Lax)
+        .max_age(time::Duration::minutes(LOGIN_STATE_TTL_MINUTES))
+        .finish()
+}
+
+/// A cookie that overwrites and expires the login-state cookie.
+pub fn login_state_removal_cookie(config: &Config) -> Cookie<'static> {
+    let mut cookie = login_state_cookie(config, String::new());
+    cookie.make_removal();
+    cookie
+}
+
+/// Origins (`scheme://host[:port]`) of the frontend and backend: the only sites whose
+/// pages may make state-changing requests with the auth cookie. See [`cross_site_write`].
+pub fn trusted_origins(config: &Config) -> Vec<String> {
+    [&config.frontend_url, &config.backend_url]
+        .into_iter()
+        .filter_map(|u| url::Url::parse(u).ok())
+        .map(|u| u.origin().ascii_serialization())
+        .collect()
+}
+
+/// Whether `req` is a state-changing request authenticated by the auth cookie that a page
+/// on another site sent (CSRF). `SameSite=Lax` keeps the cookie off cross-site POSTs, but
+/// not off requests from sibling subdomains, which count as the same site. Requests with a
+/// Bearer token don't use the cookie, and ones without an `Origin` header don't come from a
+/// browser page, so neither can be forged this way.
+pub fn cross_site_write(req: &HttpRequest, trusted: &[String]) -> bool {
+    if req.method().is_safe() || bearer_token(req).is_some() || req.cookie(AUTH_COOKIE).is_none() {
+        return false;
+    }
+    match req.headers().get(header::ORIGIN).map(|v| v.to_str()) {
+        None => false,
+        Some(Ok(origin)) => !trusted.iter().any(|t| t == origin),
+        // Not even text (or `null`, from sandboxed frames and the like): not one of ours.
+        Some(Err(_)) => true,
+    }
+}
+
 /// Extracts the JWT from `Authorization: Bearer <token>` (used by the Next.js server) or,
 /// failing that, from the auth cookie (direct browser requests).
 fn token_from_request(req: &HttpRequest) -> Option<String> {
@@ -121,7 +173,7 @@ impl AuthServer {
 }
 
 /// The authenticated user. Add it as a handler argument to require login; requests
-/// without a valid JWT are rejected with 401. Extracting it also records the access
+/// without a valid JWT, or with a revoked one, are rejected with 401. Extracting it also records the access
 /// (status ONLINE, `last_seen` = now).
 pub struct AuthUser(pub User);
 
@@ -137,11 +189,34 @@ impl FromRequest for AuthUser {
             let state =
                 state.ok_or_else(|| ApiError::Internal("AppState not registered".into()))?;
             let token = token.ok_or(ApiError::Unauthorized)?;
-            let user_id = state.jwt.verify(&token)?;
-            let user = User::touch(&state.db, user_id)
+            let claims = state.jwt.verify(&token)?;
+            // Also rejects a token revoked since (an old `ver`).
+            let user = User::touch(&state.db, claims.user_id()?, claims.ver)
                 .await?
                 .ok_or(ApiError::Unauthorized)?;
             Ok(AuthUser(user))
+        })
+    }
+}
+
+/// The authenticated user, if any, for routes that also serve visitors. Unlike
+/// `Option<AuthUser>`, which turns every failure into "logged out", only a missing, invalid
+/// or revoked token gives `None`; other errors (e.g. the database being down) fail the
+/// request.
+pub struct MaybeUser(pub Option<AuthUser>);
+
+impl FromRequest for MaybeUser {
+    type Error = ApiError;
+    type Future = Pin<Box<dyn Future<Output = Result<Self, Self::Error>>>>;
+
+    fn from_request(req: &HttpRequest, payload: &mut Payload) -> Self::Future {
+        let user = AuthUser::from_request(req, payload);
+        Box::pin(async move {
+            match user.await {
+                Ok(user) => Ok(MaybeUser(Some(user))),
+                Err(ApiError::Unauthorized) => Ok(MaybeUser(None)),
+                Err(e) => Err(e),
+            }
         })
     }
 }
@@ -161,5 +236,50 @@ impl AuthUser {
                 .collect();
             Err(ApiError::Forbidden(missing.join(", ")))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use actix_web::{cookie::Cookie, http::Method, test::TestRequest};
+
+    use super::*;
+
+    fn trusted() -> Vec<String> {
+        vec!["https://example.com".into(), "https://api.example.com".into()]
+    }
+
+    fn post(origin: Option<&str>) -> TestRequest {
+        let req = TestRequest::default().method(Method::POST).cookie(Cookie::new(AUTH_COOKIE, "jwt"));
+        match origin {
+            Some(o) => req.insert_header((header::ORIGIN, o)),
+            None => req,
+        }
+    }
+
+    #[test]
+    fn refuses_cookie_writes_from_other_sites() {
+        let t = trusted();
+        // A sibling subdomain is the same site, so the Lax cookie is sent; the origin isn't ours.
+        assert!(cross_site_write(&post(Some("https://forum.example.com")).to_http_request(), &t));
+        assert!(cross_site_write(&post(Some("null")).to_http_request(), &t));
+        assert!(!cross_site_write(&post(Some("https://example.com")).to_http_request(), &t));
+        assert!(!cross_site_write(&post(Some("https://api.example.com")).to_http_request(), &t));
+        // No Origin: not a browser page.
+        assert!(!cross_site_write(&post(None).to_http_request(), &t));
+    }
+
+    #[test]
+    fn ignores_reads_bearer_tokens_and_cookieless_requests() {
+        let t = trusted();
+        let evil = "https://evil.example";
+        let get = TestRequest::default()
+            .cookie(Cookie::new(AUTH_COOKIE, "jwt"))
+            .insert_header((header::ORIGIN, evil));
+        assert!(!cross_site_write(&get.to_http_request(), &t));
+        let bearer = post(Some(evil)).insert_header((header::AUTHORIZATION, "Bearer jwt"));
+        assert!(!cross_site_write(&bearer.to_http_request(), &t));
+        let no_cookie = TestRequest::default().method(Method::POST).insert_header((header::ORIGIN, evil));
+        assert!(!cross_site_write(&no_cookie.to_http_request(), &t));
     }
 }

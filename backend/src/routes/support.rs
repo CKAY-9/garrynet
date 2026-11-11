@@ -20,7 +20,7 @@ use crate::{
     notify,
     routes::{
         files,
-        markdown::markdown,
+        markdown::{local_images_only, markdown},
         validate::{bad, parse_enum, present, required_text},
     },
     state::AppState,
@@ -41,7 +41,9 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .service(delete_faq);
 }
 
-const SUPPORT_TEAM: Permissions = Permissions::SUPPORT_TEAM;
+/// What acting as the Support Team takes. Site Access too, as for forum moderators: a
+/// banned team member is a regular user here, seeing only their own tickets.
+pub const SUPPORT_TEAM: Permissions = Permissions::SITE_ACCESS.union(Permissions::SUPPORT_TEAM);
 
 const MAX_TITLE: usize = 128;
 const MAX_SUBJECT: usize = 256;
@@ -114,6 +116,7 @@ async fn create_ticket(
     body: web::Json<TicketBody>,
 ) -> Result<HttpResponse, ApiError> {
     let mut details = normalize_ticket(body.into_inner(), user.0.id)?;
+    local_images_only("content", &details.content, &files_base(&state))?;
     details.attachments = files::attachable(&state, user.0.id, &details.attachments, MAX_ATTACHMENTS).await?;
     let missing = User::missing_ids(&state.db, &details.associated_user_ids).await?;
     if let Some(id) = missing.first() {
@@ -192,7 +195,7 @@ async fn create_message(
     id: web::Path<i64>,
     body: web::Json<MessageBody>,
 ) -> Result<HttpResponse, ApiError> {
-    let content = markdown("content", &body.content, MAX_CONTENT)?;
+    let content = message_markdown(&state, &body.content)?;
     let (ticket, support) = find_ticket(&state, &user, id.into_inner()).await?;
     let attachments = files::attachable(&state, user.0.id, &body.attachments, MAX_ATTACHMENTS).await?;
     let message = if support {
@@ -205,7 +208,7 @@ async fn create_message(
         message
     } else {
         if body.is_internal {
-            return Err(ApiError::Forbidden(SUPPORT_TEAM.name().to_owned()));
+            return Err(ApiError::Forbidden(Permissions::SUPPORT_TEAM.name().to_owned()));
         }
         if ticket.status.is_done() {
             return Err(ApiError::Locked("ticket"));
@@ -261,7 +264,7 @@ async fn edit_message(
     id: web::Path<i64>,
     body: web::Json<EditBody>,
 ) -> Result<HttpResponse, ApiError> {
-    let content = markdown("content", &body.content, MAX_CONTENT)?;
+    let content = message_markdown(&state, &body.content)?;
     let message = SupportMessage::find_by_id(&state.db, id.into_inner())
         .await?
         .ok_or(ApiError::NotFound("message"))?;
@@ -367,6 +370,19 @@ async fn delete_faq(
     }
     log::info!("user {} deleted FAQ {id}", user.0.id);
     Ok(HttpResponse::NoContent().finish())
+}
+
+/// A ticket message's Markdown: sanitized, with images only from this backend's files (see
+/// [`local_images_only`]).
+fn message_markdown(state: &AppState, content: &str) -> Result<String, ApiError> {
+    let content = markdown("content", content, MAX_CONTENT)?;
+    local_images_only("content", &content, &files_base(state))?;
+    Ok(content)
+}
+
+/// Where this backend serves files from, e.g. `https://api.example.com/file/`.
+fn files_base(state: &AppState) -> String {
+    format!("{}/file/", state.config.backend_url)
 }
 
 /// The ticket, and whether `user` is on the Support Team. 404 (not 403) for other
