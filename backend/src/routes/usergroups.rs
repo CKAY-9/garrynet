@@ -27,7 +27,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
 
 /// Like the other admin pages, managing usergroups needs Admin Access as well as the
 /// specific permission.
-const MANAGE: Permissions = Permissions::ADMIN_ACCESS.union(Permissions::USERGROUP_CONTROL);
+const MANAGE: Permissions = Permissions::ADMIN_ACCESS.union(Permissions::USERGROUP_MANAGEMENT);
 
 /// Every usergroup's public details (no members or permissions), e.g. for filtering users
 /// by group. No login required.

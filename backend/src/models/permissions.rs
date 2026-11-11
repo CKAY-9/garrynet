@@ -20,7 +20,7 @@ impl Permissions {
     pub const ADMIN_ACCESS: Self = Self(0x40);
     /// Dangerous, site-wide actions such as clearing all data or triggering a panic.
     pub const ELEVATED_CONTROL: Self = Self(0x80);
-    pub const USERGROUP_CONTROL: Self = Self(0x100);
+    pub const USERGROUP_MANAGEMENT: Self = Self(0x100);
     pub const USER_MESSAGES: Self = Self(0x200);
     pub const SERVER_MANAGEMENT: Self = Self(0x400);
     pub const COMMUNITY_MANAGEMENT: Self = Self(0x800);
@@ -42,7 +42,7 @@ impl Permissions {
         (Self::USER_MANAGEMENT, "User Management"),
         (Self::ADMIN_ACCESS, "Admin Access"),
         (Self::ELEVATED_CONTROL, "Elevated Control"),
-        (Self::USERGROUP_CONTROL, "Usergroup Control"),
+        (Self::USERGROUP_MANAGEMENT, "Usergroup Management"),
         (Self::USER_MESSAGES, "User Messages"),
         (Self::SERVER_MANAGEMENT, "Server Management"),
         (Self::COMMUNITY_MANAGEMENT, "Community Management"),
