@@ -59,13 +59,18 @@ be bought by players to give in-game rewards.
 id: number
 server_id: number // unique, one store per server
 enabled: boolean // if false, hidden from /store and nothing can be bought
-currency: string // ISO 4217, lowercase (e.g. "usd"); applies to every item in the store; fixed once it has items
+currency: string // ISO 4217, lowercase (e.g. "usd"), from the allowed list below; applies to every item in the store; fixed once it has items
 override_name?: string // by default item stores use the server name
 store_message?: string // shown at the top of the item store page
 grantable_usergroups: string[] // allowlist of Garry's Mod usergroups items may grant; default empty
 created_at: utc timestamp
 last_updated?: utc timestamp
 ```
+
+Stores may use USD, EUR, GBP, CAD, AUD, NZD, CHF, SEK, NOK, DKK, PLN, CZK, JPY, BRL or MXN
+(`CURRENCIES` in `models/store.rs`, mirrored in the frontend's `lib/storeEnums.ts`). Prices are in
+the currency's minor unit, which for JPY is the yen itself. A store set up before the list existed
+keeps its currency but can't switch to another one off the list.
 
 `grantable_usergroups` can only be edited by users with `Elevated Control`. This stops a store manager
 from creating an item that grants a privileged rank such as `superadmin`. Removing a usergroup from
@@ -305,9 +310,9 @@ Everything is JSON; errors are `{ "error": "..." }`. "Manage" means Admin Access
 **Manage**
 
 - GET `/admin/store`: every store (Manage or Finance)
-- POST `/admin/store`: `{ server_id, enabled?, currency?, override_name?, store_message? }`; 409 if the server has a store
+- POST `/admin/store`: `{ server_id, enabled?, currency?, override_name?, store_message? }`; 409 if the server has a store; 400 for a currency off the allowed list
 - GET `/admin/store/{id}`: the store with its `server`, every `discounts` and unarchived `items`
-- PUT `/admin/store/{id}`: `{ enabled, currency, override_name, store_message }`; 400 if the currency changes while the store has items (archive them first)
+- PUT `/admin/store/{id}`: `{ enabled, currency, override_name, store_message }`; 400 if the currency changes while the store has items (archive them first) or to one off the allowed list
 - PUT `/admin/store/{id}/grantable-usergroups`: `{ grantable_usergroups }`; also needs Elevated Control
 - POST `/admin/store/{id}/items`, PUT `/admin/store/{id}/items/{item_id}`: `name`, `short_description`, `full_description`, `image_url`, `sort_order`, `available`, `price`, `discount`, `starting_stock`, `max_per_user`, `rewards`
 - DELETE `/admin/store/{id}/items/{item_id}`: archives the item (204)

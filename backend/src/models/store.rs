@@ -59,6 +59,13 @@ pub enum FulfillmentStatus {
     Revoked,
 }
 
+/// The currencies a store may use (ISO 4217, lowercase): common ones Stripe accepts in most
+/// countries. Prices are in each one's minor unit, which for `jpy` is the yen itself. Keep
+/// in step with `CURRENCIES` in the frontend's `lib/storeEnums.ts`.
+pub const CURRENCIES: &[&str] = &[
+    "usd", "eur", "gbp", "cad", "aud", "nzd", "chf", "sek", "nok", "dkk", "pln", "czk", "jpy", "brl", "mxn",
+];
+
 /// Failed fulfillments are offered to the addon again until they've been tried this often.
 pub const MAX_ATTEMPTS: i32 = 20;
 

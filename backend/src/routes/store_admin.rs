@@ -13,7 +13,7 @@ use crate::{
         Permissions, Server,
         store::{
             DiscountDetails, Fulfillment, ItemDetails, ItemStore, PricedItem, Receipt, ReceiptFilter, ReceiptStatus,
-            ReceiptView, Reward, StoreDetails, StoreDiscount, StoreItem, StoreSummary,
+            CURRENCIES, ReceiptView, Reward, StoreDetails, StoreDiscount, StoreItem, StoreSummary,
         },
     },
     notify,
@@ -109,6 +109,7 @@ async fn create_store(
     user.require(&state.db, MANAGE).await?;
     let body = body.into_inner();
     let details = normalize_store(body.store)?;
+    allowed_currency(&details.currency)?;
     Server::find_by_id(&state.db, body.server_id)
         .await?
         .ok_or(ApiError::NotFound("server"))?;
@@ -156,11 +157,16 @@ async fn update_store(
     user.require(&state.db, MANAGE).await?;
     let details = normalize_store(body.into_inner())?;
     let (current, _) = find_store(&state, store_id.into_inner()).await?;
-    if current.store.currency != details.currency && current.item_count > 0 {
-        return Err(bad(format!(
-            "the currency can't change while the store has items (their prices are in {}); archive them first",
-            current.store.currency.to_ascii_uppercase()
-        )));
+    // A store set up before the currency list may keep its currency, but not switch to
+    // another one off the list.
+    if current.store.currency != details.currency {
+        if current.item_count > 0 {
+            return Err(bad(format!(
+                "the currency can't change while the store has items (their prices are in {}); archive them first",
+                current.store.currency.to_ascii_uppercase()
+            )));
+        }
+        allowed_currency(&details.currency)?;
     }
     let store = ItemStore::update(&state.db, current.store.id, &details)
         .await?
@@ -438,6 +444,19 @@ fn normalize_store(body: StoreBody) -> Result<StoreDetails, ApiError> {
     })
 }
 
+/// 400 unless `currency` (already lowercased) is one stores may use.
+fn allowed_currency(currency: &str) -> Result<(), ApiError> {
+    if CURRENCIES.contains(&currency) {
+        return Ok(());
+    }
+    let list: Vec<String> = CURRENCIES.iter().map(|c| c.to_ascii_uppercase()).collect();
+    Err(bad(format!(
+        "{} isn't a supported currency; use one of {}",
+        currency.to_ascii_uppercase(),
+        list.join(", ")
+    )))
+}
+
 /// Trimmed, deduplicated usergroup names.
 fn normalize_usergroups(groups: Vec<String>) -> Result<Vec<String>, ApiError> {
     let mut out: Vec<String> = Vec::new();
@@ -643,6 +662,11 @@ mod tests {
         assert_eq!(d.store_message.as_deref(), Some("Hi"));
         assert!(normalize_store(StoreBody { enabled: true, currency: Some("dollars".into()), override_name: None, store_message: None }).is_err());
         assert_eq!(normalize_store(StoreBody { enabled: false, currency: None, override_name: None, store_message: None }).unwrap().currency, "usd");
+
+        assert!(allowed_currency("usd").is_ok());
+        assert!(allowed_currency("jpy").is_ok());
+        assert!(allowed_currency("xyz").is_err());
+        assert!(allowed_currency("USD").is_err(), "callers lowercase first");
     }
 
     #[test]

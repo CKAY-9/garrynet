@@ -33,6 +33,31 @@ export function storeName(store: Pick<ItemStore, "override_name">, server: Pick<
   return store.override_name ?? server.name;
 }
 
+/**
+ * The currencies a store may use, lowercase. Keep in step with `CURRENCIES` in the backend's
+ * `models/store.rs`, which enforces it.
+ */
+export const CURRENCIES = [
+  "usd", "eur", "gbp", "cad", "aud", "nzd", "chf", "sek", "nok", "dkk", "pln", "czk", "jpy", "brl", "mxn",
+] as const;
+
+export type Currency = (typeof CURRENCIES)[number];
+
+export function isCurrency(value: string): value is Currency {
+  return (CURRENCIES as readonly string[]).includes(value);
+}
+
+/** e.g. "USD — US Dollar". */
+export function currencyLabel(currency: string): string {
+  const code = currency.toUpperCase();
+  try {
+    const name = new Intl.DisplayNames("en", { type: "currency" }).of(code);
+    return name && name !== code ? `${code} — ${name}` : code;
+  } catch {
+    return code;
+  }
+}
+
 /** How many decimal digits the currency's minor unit has (2 for USD, 0 for JPY). */
 export function minorUnitDigits(currency: string): number {
   try {
