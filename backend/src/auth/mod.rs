@@ -199,6 +199,28 @@ impl FromRequest for AuthUser {
     }
 }
 
+/// The authenticated user, if any, for routes that also serve visitors. Unlike
+/// `Option<AuthUser>`, which turns every failure into "logged out", only a missing, invalid
+/// or revoked token gives `None`; other errors (e.g. the database being down) fail the
+/// request.
+pub struct MaybeUser(pub Option<AuthUser>);
+
+impl FromRequest for MaybeUser {
+    type Error = ApiError;
+    type Future = Pin<Box<dyn Future<Output = Result<Self, Self::Error>>>>;
+
+    fn from_request(req: &HttpRequest, payload: &mut Payload) -> Self::Future {
+        let user = AuthUser::from_request(req, payload);
+        Box::pin(async move {
+            match user.await {
+                Ok(user) => Ok(MaybeUser(Some(user))),
+                Err(ApiError::Unauthorized) => Ok(MaybeUser(None)),
+                Err(e) => Err(e),
+            }
+        })
+    }
+}
+
 impl AuthUser {
     /// The user's effective permissions, or 403 (naming the missing flags) unless they
     /// include every flag in `required`.

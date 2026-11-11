@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 
 use crate::{
-    auth::AuthUser,
+    auth::{AuthUser, MaybeUser},
     error::ApiError,
     models::{
         Permissions, Server, Usergroup,
@@ -120,7 +120,7 @@ struct ItemPage {
 async fn get_item(
     state: web::Data<AppState>,
     path: web::Path<(i64, i64)>,
-    user: Option<AuthUser>,
+    MaybeUser(user): MaybeUser,
 ) -> Result<HttpResponse, ApiError> {
     let (store_id, item_id) = path.into_inner();
     let (store, server) = find_enabled_store(&state, store_id).await?;

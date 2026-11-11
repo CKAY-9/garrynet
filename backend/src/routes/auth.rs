@@ -2,7 +2,7 @@ use actix_web::{HttpRequest, HttpResponse, get, http::header, post, web};
 
 use crate::{
     auth::{
-        AuthUser, LOGIN_STATE_COOKIE, auth_cookie, login_state_cookie, login_state_removal_cookie, removal_cookie,
+        AuthUser, LOGIN_STATE_COOKIE, MaybeUser, auth_cookie, login_state_cookie, login_state_removal_cookie, removal_cookie,
         steam::{self, Assertion},
     },
     config::Config,
@@ -97,7 +97,7 @@ fn finish(mut res: HttpResponse, config: &Config) -> Result<HttpResponse, ApiErr
 /// working too) and clears this browser's auth cookie. Without a valid token it only clears
 /// the cookie.
 #[post("/auth/logout")]
-async fn logout(state: web::Data<AppState>, user: Option<AuthUser>) -> Result<HttpResponse, ApiError> {
+async fn logout(state: web::Data<AppState>, MaybeUser(user): MaybeUser) -> Result<HttpResponse, ApiError> {
     if let Some(AuthUser(user)) = user {
         User::revoke_tokens(&state.db, user.id).await?;
         log::info!("user {} logged out; their tokens are revoked", user.id);
