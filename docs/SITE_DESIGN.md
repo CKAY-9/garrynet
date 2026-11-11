@@ -42,8 +42,9 @@ Below the community name is a user search box. Submitting it opens `/users/searc
 User specific redirects are at the bottom, e.g.
 - Notification bell with an unread badge (logged-in users only, above the Profile Preview). It opens a dropdown of recent notifications; see [Notifications](NOTIFICATIONS.md#frontend). On wide screens the dropdown is a flyout beside the sidebar; in the mobile overlay it opens inline.
 - Profile Preview
-- "Login with Steam" button (should include inline Steam icon)
+- "Login with Steam" button (should include inline Steam icon), with a line under it: "By logging in you agree to our Terms and Privacy Policy."
 - "Logout" button (should be stylized with a logout icon)
+- Small links to the Terms, Privacy and Refunds pages, last (see [LEGAL.md](LEGAL.md))
 
 ### Mobile Navigation
 

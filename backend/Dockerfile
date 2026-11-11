@@ -10,10 +10,12 @@ COPY Cargo.toml Cargo.lock ./
 RUN mkdir src && echo 'fn main() {}' > src/main.rs \
     && cargo build --release --locked
 
-# Real sources. Migrations are embedded in the binary by `sqlx::migrate!`.
+# Real sources. Migrations are embedded in the binary by `sqlx::migrate!`, and the
+# default legal documents by `include_str!`.
 # `touch` makes cargo see main.rs as newer than the stub it just compiled.
 COPY src ./src
 COPY migrations ./migrations
+COPY legal ./legal
 RUN touch src/main.rs && cargo build --release --locked
 
 # ---- Runtime ----

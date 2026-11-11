@@ -17,6 +17,7 @@ These documents are the design reference: each one describes a feature's behavio
 - [ADDON.md](ADDON.md): the Garry's Mod addon
 - [AUTH.md](AUTH.md): authentication, server tokens and banned users
 - [ADMIN.md](ADMIN.md): admin pages
+- [LEGAL.md](LEGAL.md): terms of service, privacy policy and refund policy
 - [USER_STORIES.md](USER_STORIES.md): user stories
 - [SITE_DESIGN.md](SITE_DESIGN.md): frontend layout, navigation, themes
 - [ARCHITECTURE.md](ARCHITECTURE.md): how the frontend, backend and addon fit together
@@ -63,6 +64,8 @@ POST/PUT take `name`, `description`, `logo_url`, `splash_background`, `external_
 
 - Homepage: splash background, logo, name, description, external links, then key figures (linking to their profile when `user_id` is set).
 - Navigation: logo and name at the top, on every page. Without a logo, the name's initial is shown.
+
+The community's terms, privacy policy and refund policy are separate documents; see [LEGAL.md](LEGAL.md).
 
 ## Store
 

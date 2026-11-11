@@ -59,6 +59,10 @@ Steam login, profiles, online status and user search. Usergroups have permission
 
 Register servers on the website and link them with a one-time access key. The site shows each server's status, gamemode and map. The addon syncs per-server player records every minute: playtime, last seen and gamemode stats such as DarkRP money and job. It can also refuse players banned on the website.
 
+### Legal Pages
+
+Terms of service, a privacy policy and a refund policy, linked from every page, the login button and the store. GarryNet fills them with templates based on what it actually stores, and you edit them from the admin dashboard. The templates are a starting point, not legal advice.
+
 ### Notifications
 
 In-site notifications for ticket replies, purchases and deliveries, forum replies, usergroup changes, and bans and suspensions.

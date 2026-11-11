@@ -25,7 +25,7 @@ use crate::{
     config::Config,
     error::ApiError,
     models::{
-        Community, File, Usergroup, notification::Notification,
+        Community, File, Usergroup, legal::LegalDocument, notification::Notification,
         support::SupportTicket,
     },
     state::AppState,
@@ -123,8 +123,8 @@ async fn main() -> std::io::Result<()> {
     .await
 }
 
-/// Connects to Postgres, applies migrations and creates the default usergroups and the
-/// skeleton community.
+/// Connects to Postgres, applies migrations and creates the default usergroups, the
+/// skeleton community and the default legal documents.
 async fn connect_db(database_url: &str) -> std::io::Result<PgPool> {
     let db = PgPoolOptions::new()
         .max_connections(10)
@@ -140,6 +140,9 @@ async fn connect_db(database_url: &str) -> std::io::Result<PgPool> {
         .await
         .map_err(std::io::Error::other)?;
     Community::ensure_exists(&db)
+        .await
+        .map_err(std::io::Error::other)?;
+    LegalDocument::ensure_seeded(&db)
         .await
         .map_err(std::io::Error::other)?;
     Ok(db)

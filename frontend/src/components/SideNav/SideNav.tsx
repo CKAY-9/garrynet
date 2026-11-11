@@ -1,7 +1,9 @@
 import { Suspense } from "react";
 import { Account, AccountSkeleton } from "@/components/Account";
 import { NavNotifications } from "@/components/Notifications";
+import Link from "next/link";
 import { getCurrentUser } from "@/lib/auth";
+import { legalHref, legalPages } from "@/lib/legalPages";
 import { hasPermission, Permission } from "@/lib/permissions";
 import { CommunityBrand, CommunityBrandSkeleton } from "./CommunityBrand";
 import { NavLink } from "./NavLink";
@@ -21,7 +23,7 @@ const links = [
 
 /**
  * Site-wide navigation: the community's name and logo, general links, then user-specific links
- * at the bottom. A sidebar on wide screens, a hamburger-triggered overlay on narrow ones.
+ * and the legal documents at the bottom. A sidebar on wide screens, a hamburger-triggered overlay on narrow ones.
  */
 export function SideNav() {
   return (
@@ -54,6 +56,13 @@ export function SideNav() {
         <Suspense fallback={<AccountSkeleton />}>
           <Account />
         </Suspense>
+        <ul className={styles.legal} aria-label="Legal">
+          {legalPages.map(({ slug, label }) => (
+            <li key={slug}>
+              <Link href={legalHref(slug)}>{label}</Link>
+            </li>
+          ))}
+        </ul>
       </div>
     </NavShell>
   );

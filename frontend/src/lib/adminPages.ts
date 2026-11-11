@@ -10,6 +10,7 @@ export const adminPages: { href: string; label: string; permission: number; any?
   { href: "/admin/servers", label: "Servers", permission: Permission.ServerManagement },
   { href: "/admin/loading-screen", label: "Loading Screen", permission: Permission.ServerManagement },
   { href: "/admin/community", label: "Community", permission: Permission.CommunityManagement },
+  { href: "/admin/legal", label: "Legal", permission: Permission.CommunityManagement },
   {
     href: "/admin/forum",
     label: "Forum",
