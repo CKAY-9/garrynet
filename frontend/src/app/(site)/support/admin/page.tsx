@@ -1,8 +1,7 @@
 import { Suspense } from "react";
 import { SupportNav, TicketFilterForm, TicketRows } from "@/components/Support";
 import { requirePermission } from "@/lib/auth";
-import { Permission } from "@/lib/permissions";
-import { getAllTickets, readTicketFilters, type SearchParams } from "@/lib/support";
+import { SUPPORT_TEAM, getAllTickets, readTicketFilters, type SearchParams } from "@/lib/support";
 import styles from "@/components/Support/Support.module.scss";
 
 export default function SupportAdminPage({ searchParams }: PageProps<"/support/admin">) {
@@ -16,7 +15,7 @@ export default function SupportAdminPage({ searchParams }: PageProps<"/support/a
 
 /** /support/admin: every ticket, for the Support Team. */
 async function AllTickets({ searchParams }: { searchParams: SearchParams }) {
-  await requirePermission(Permission.SupportTeam);
+  await requirePermission(SUPPORT_TEAM);
   const filters = await readTicketFilters(searchParams);
   const tickets = await getAllTickets(filters);
   const filtered = Object.values(filters).some((v) => v);

@@ -39,6 +39,12 @@ export async function readFaqCategory(searchParams: SearchParams): Promise<FaqCa
   return oneOf(firstParam(await searchParams, "category"), faqCategories);
 }
 
+/**
+ * What acting as the Support Team takes, as on the backend (`SUPPORT_TEAM` in
+ * src/routes/support.rs): Site Access too, so a banned team member is a regular user here.
+ */
+export const SUPPORT_TEAM = Permission.SiteAccess | Permission.SupportTeam;
+
 /** Who the current user is to the support system. Reads the session cookie. */
 export type SupportViewer = {
   /** `null` when logged out. */
@@ -54,7 +60,7 @@ export async function getSupportViewer(): Promise<SupportViewer> {
   if (!user) return { userId: null, support: false, banned: false };
   return {
     userId: user.id,
-    support: hasPermission(user.permissions, Permission.SupportTeam),
+    support: hasPermission(user.permissions, SUPPORT_TEAM),
     banned: !hasPermission(user.permissions, Permission.SiteAccess),
   };
 }

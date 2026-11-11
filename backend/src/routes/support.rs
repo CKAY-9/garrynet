@@ -41,7 +41,9 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .service(delete_faq);
 }
 
-const SUPPORT_TEAM: Permissions = Permissions::SUPPORT_TEAM;
+/// What acting as the Support Team takes. Site Access too, as for forum moderators: a
+/// banned team member is a regular user here, seeing only their own tickets.
+pub const SUPPORT_TEAM: Permissions = Permissions::SITE_ACCESS.union(Permissions::SUPPORT_TEAM);
 
 const MAX_TITLE: usize = 128;
 const MAX_SUBJECT: usize = 256;
@@ -205,7 +207,7 @@ async fn create_message(
         message
     } else {
         if body.is_internal {
-            return Err(ApiError::Forbidden(SUPPORT_TEAM.name().to_owned()));
+            return Err(ApiError::Forbidden(Permissions::SUPPORT_TEAM.name().to_owned()));
         }
         if ticket.status.is_done() {
             return Err(ApiError::Locked("ticket"));

@@ -156,7 +156,7 @@ List FAQs by category, include:
 Show everything for the FAQ.
 ## Routes
 
-Login is required for tickets but not Site Access: banned users can still use support. "Support Team" means the `Support Team` permission.
+Login is required for tickets but not Site Access: banned users can still use support. "Support Team" means the `Support Team` permission together with Site Access: like a forum moderator, a banned team member loses their staff powers and is treated as a regular user (their own tickets only).
 
 Tickets:
 - GET `/support/tickets`: my tickets. Query: `status`, `category`, `state` (`active` | `done`), `activity` (`day` | `week` | `month`, updated within), `sort` (`latest` default | `oldest` | `created`). Each ticket includes its `author` and visible `message_count`.

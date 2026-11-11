@@ -46,7 +46,7 @@ const MANAGE_COMMUNITY: Permissions = Permissions::ADMIN_ACCESS.union(Permission
 /// Deleting other users' files.
 const MANAGE_USERS: Permissions = Permissions::ADMIN_ACCESS.union(Permissions::USER_MANAGEMENT);
 /// Reading any support attachment, as `routes::support` lets the team read any ticket.
-const SUPPORT_TEAM: Permissions = Permissions::SUPPORT_TEAM;
+use crate::routes::support::SUPPORT_TEAM;
 
 /// Content types that can be uploaded. Nothing a browser would run as a document (HTML,
 /// SVG, ...): files are served from the backend's own origin.

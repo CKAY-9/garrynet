@@ -8,7 +8,7 @@
 use sqlx::PgPool;
 
 use crate::models::{
-    Permissions, User, Usergroup,
+    User, Usergroup,
     forum::{ForumPost, ForumThread},
     notification::{MAX_BODY, MAX_TITLE, NewNotification, Notification, NotificationType},
     store::{Fulfillment, Receipt},
@@ -80,11 +80,12 @@ pub async fn ticket_reply(db: &PgPool, ticket: &SupportTicket, author: &User) {
 
 /// The ticket's owner replied: tells the support team members who have responded to it.
 pub async fn ticket_owner_reply(db: &PgPool, ticket: &SupportTicket, owner: &User) {
-    // A responder who has since left the Support Team can't open the ticket any more.
+    // A responder who has since left the Support Team (or been banned) can't open the ticket
+    // any more.
     let mut recipients = Vec::with_capacity(ticket.responders.len());
     for &id in &ticket.responders {
         match Usergroup::permissions_for_user(db, id).await {
-            Ok(permissions) if permissions.contains(Permissions::SUPPORT_TEAM) => recipients.push(id),
+            Ok(permissions) if permissions.contains(crate::routes::support::SUPPORT_TEAM) => recipients.push(id),
             Ok(_) => {}
             Err(e) => log::error!("failed to check whether user {id} is still on the support team: {e}"),
         }

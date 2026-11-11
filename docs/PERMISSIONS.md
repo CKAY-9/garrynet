@@ -67,7 +67,7 @@ Rules:
 - 0x200, User Messages: If set, users can privately message other users. **Planned**: reserved for [Private Messages](README.md#private-messages), which aren't implemented.
 - 0x400, Server Management: If set, users can create, edit, remove, and link/unlink Garry's Mod servers.
 - 0x800, Community Management: If set, users can edit community details.
-- 0x1000, Support Team: If set, users can access other users' tickets and help.
+- 0x1000, Support Team: If set, users can access other users' tickets and help. Only together with Site Access: a banned team member is a regular user in support.
 - 0x2000, Store Management: If set, users can edit, add, and archive stores, items, and discounts. Cannot edit a store's grantable usergroups (requires `Elevated Control`). Accessing `/admin/store` also requires `Admin Access`.
 - 0x4000, Store Finance: If set, users can view receipts and revenue, and issue refunds.
 
