@@ -135,7 +135,7 @@ pub async fn verify_with_steam(
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct PlayerSummary {
     pub steamid: String,
     pub personaname: String,

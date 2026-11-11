@@ -68,6 +68,8 @@ sv_loadingurl "https://<site>/loading-screen?server=<SERVER_ID>&steamid=%s&mapna
 - GET `/loading-screen`: return the loading screen config
 - PUT `/loading-screen`: set `{ style }`, requires Admin Access and Server Management
 - GET `/servers/{id}/loading-screen?steam_id=`: everything the loading screen shows: `style`, `server` (never its `access_key`) and `player`. `player` combines the GarryNet user (name, avatar), their UserPlayer record for this server (`null` on a first visit) and, for players without an account, their Steam name and avatar. Public, since the game client isn't logged in.
+  - Because it's public and takes any SteamID64, Steam profiles are cached (an hour; 5 minutes after a failed lookup) and at most 60 fresh lookups a minute are made for everyone together, so it can't be used to burn through the `STEAM_API_KEY` quota that login also needs. Past that limit, players without an account get no Steam name or avatar until the next minute.
+  - Anyone can read any player's record for a server this way (playtime, rank, gamemode stats, first join and last visit). That's inherent: `sv_loadingurl` is the same for every player and Garry's Mod sends no credentials, so there's nothing to tell the player apart from someone else asking about them.
 
 ## Loading Screen Config
 

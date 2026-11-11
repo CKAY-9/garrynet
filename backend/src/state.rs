@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use sqlx::PgPool;
 
-use crate::{auth::jwt::JwtKeys, config::Config, storage::Storage, stripe::Stripe};
+use crate::{auth::jwt::JwtKeys, config::Config, steam_profiles::SteamProfiles, storage::Storage, stripe::Stripe};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -14,6 +14,8 @@ pub struct AppState {
     pub stripe: Option<Stripe>,
     /// File storage (docs/STORAGE.md).
     pub storage: Storage,
+    /// Steam profiles looked up for the loading screen.
+    pub steam_profiles: Arc<SteamProfiles>,
 }
 
 impl AppState {

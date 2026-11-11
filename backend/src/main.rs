@@ -6,6 +6,7 @@ mod notify;
 mod routes;
 mod shell;
 mod state;
+mod steam_profiles;
 mod storage;
 mod stripe;
 
@@ -79,6 +80,7 @@ async fn main() -> std::io::Result<()> {
         http,
         stripe,
         storage,
+        steam_profiles: Arc::default(),
     };
 
     log::info!("GarryNet backend listening on http://{}", config.bind_addr);
