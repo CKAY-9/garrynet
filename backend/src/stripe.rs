@@ -31,6 +31,12 @@ pub struct CheckoutSession {
     /// `open`, `complete` or `expired`.
     #[serde(default)]
     pub status: Option<String>,
+    /// `paid`, `unpaid` (e.g. a bank debit still clearing) or `no_payment_required`.
+    #[serde(default)]
+    pub payment_status: Option<String>,
+    /// The PaymentIntent's id, once there is one.
+    #[serde(default)]
+    pub payment_intent: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -134,6 +140,9 @@ impl Stripe {
         }
         if self.config.tax {
             form.push(("automatic_tax[enabled]", "true".into()));
+            // Whether `unit_amount` already includes tax. Stripe Tax needs to know, and
+            // without it falls back to the account's default, failing if there is none.
+            form.push(("line_items[0][price_data][tax_behavior]", self.config.tax_behavior.as_str().into()));
         }
         Ok(self.post("/checkout/sessions", &form, Some(&format!("purchase-{}", p.purchase_id))).await?)
     }
@@ -190,7 +199,11 @@ impl Stripe {
             Ok(b) => (b.error.message, b.error.code),
             Err(_) => (format!("HTTP {status}"), None),
         };
-        if status.is_client_error() && status.as_u16() != 429 {
+        // A bad or under-privileged key is GarryNet's problem, not the request's, and
+        // Stripe's message for it quotes part of the key, so it mustn't reach a client.
+        if matches!(status.as_u16(), 401 | 403) {
+            Err(Failure::Unavailable(format!("{status}: Stripe refused GarryNet's API key (check STRIPE_SECRET_KEY)")))
+        } else if status.is_client_error() && status.as_u16() != 429 {
             Err(Failure::Rejected { code, message })
         } else {
             Err(Failure::Unavailable(format!("{status}: {message}")))
@@ -239,7 +252,7 @@ fn verify_signature(secret: &[u8], payload: &[u8], header: &str, now: i64) -> Re
     if verified { Ok(()) } else { Err(invalid()) }
 }
 
-fn decode_hex(s: &str) -> Option<Vec<u8>> {
+pub fn decode_hex(s: &str) -> Option<Vec<u8>> {
     if s.len() % 2 != 0 {
         return None;
     }
@@ -296,6 +309,7 @@ mod tests {
                 secret_key: "sk_test".into(),
                 webhook_secret: String::from_utf8(SECRET.to_vec()).unwrap(),
                 tax: false,
+                tax_behavior: crate::config::TaxBehavior::Exclusive,
             },
         );
         let event = stripe.verify_webhook(PAYLOAD, &header, 5).unwrap();

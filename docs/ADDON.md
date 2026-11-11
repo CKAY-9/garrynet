@@ -184,7 +184,8 @@ Idempotent: repeating a report changes nothing. Returns the fulfillment as it st
 - **All or nothing:** every reward is validated before any is applied (the usergroup exists in the admin mod and isn't
   protected, the server runs DarkRP for money, the weapon class is known). A failure is acknowledged as `failed` with the
   reason, superadmins and the buyer get a chat notice, and it's retried with backoff (1, 2, 4... minutes, at most 60), so
-  fixing the server gives it a chance before GarryNet stops offering it after 20 attempts. DarkRP money waits, without
+  fixing the server gives it a chance before GarryNet stops offering it after 20 attempts (staff with Store Finance can
+  reset it from the receipts page once it's fixed). DarkRP money waits, without
   failing, until DarkRP has loaded the player's data.
 - **Exactly once:** an applied fulfillment is written to `data/garrynet/store_pending.json` before it's acknowledged and
   only forgotten once GarryNet confirms. If the acknowledgement is lost, the next fetch re-acknowledges instead of applying

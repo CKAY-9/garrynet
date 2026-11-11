@@ -21,6 +21,7 @@ export async function startCheckout(storeId: number, itemId: number): Promise<Ac
     {
       401: "Log in with Steam to buy items.",
       403: "Your account can't make purchases.",
+      409: "You're already checking out this item. Finish or cancel that checkout first.",
       423: "This item can't be bought right now.",
       502: "The payment provider couldn't be reached. Try again in a moment.",
     },

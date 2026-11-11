@@ -120,6 +120,20 @@ export async function deleteDiscount(storeId: number, id: number): Promise<Actio
   });
 }
 
+/**
+ * Offers a failed delivery to the server's addon again with a fresh set of attempts, once
+ * whatever made it fail is fixed. Needs Store Finance.
+ */
+export async function retryFulfillment(id: number): Promise<ActionResult<ReceiptView>> {
+  return runAction("retry the delivery", async () => {
+    const { data } = await backend.post<ReceiptView>(`/admin/store/fulfillments/${id}/retry`, null, {
+      headers: await authHeaders(),
+    });
+    refresh();
+    return data;
+  });
+}
+
 /** Refunds a receipt in full through Stripe and revokes its fulfillment. Needs Store Finance. */
 export async function refundReceipt(id: number): Promise<ActionResult<ReceiptView>> {
   return runAction(

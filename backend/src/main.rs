@@ -18,7 +18,7 @@ use crate::{
     auth::jwt::JwtKeys,
     config::Config,
     models::{
-        Community, File, Usergroup, notification::Notification, store::Purchase,
+        Community, File, Usergroup, notification::Notification,
         support::SupportTicket,
     },
     state::AppState,
@@ -84,7 +84,7 @@ async fn main() -> std::io::Result<()> {
     log::info!("GarryNet backend listening on http://{}", config.bind_addr);
     shell::spawn(state.db.clone());
     spawn_ticket_auto_close(state.db.clone());
-    spawn_purchase_sweeper(state.db.clone());
+    spawn_purchase_sweeper(state.clone());
     spawn_upload_sweeper(state.db.clone(), state.storage.clone());
     spawn_notification_sweeper(state.db.clone());
 
@@ -157,21 +157,22 @@ fn spawn_notification_sweeper(db: PgPool) {
     });
 }
 
-/// Checkout Sessions expire after 30 minutes; a pending purchase this old has missed its
-/// `checkout.session.expired` webhook.
+/// Checkout Sessions expire after 35 minutes; a pending purchase this old has missed its
+/// webhook (or is a delayed payment still clearing).
 const STALE_PURCHASE_MINUTES: i64 = 90;
 
-/// Cancels store purchases whose Checkout Session has long expired without Stripe telling
-/// us, returning their reserved stock. Every 10 minutes. A purchase that was in fact paid is
-/// reinstated when its webhook finally arrives (see `Purchase::mark_paid`).
-fn spawn_purchase_sweeper(db: PgPool) {
+/// Settles store purchases whose Checkout Session should long have been settled by a
+/// webhook (see `routes::store::sweep_stale_purchases`). Every 10 minutes.
+fn spawn_purchase_sweeper(state: AppState) {
     actix_web::rt::spawn(async move {
         let mut tick = tokio::time::interval(Duration::from_secs(10 * 60));
         loop {
             tick.tick().await;
-            match Purchase::cancel_stale(&db, STALE_PURCHASE_MINUTES).await {
-                Ok(cancelled) if cancelled.is_empty() => {}
-                Ok(cancelled) => log::info!("cancelled {} stale store purchase(s)", cancelled.len()),
+            match routes::store::sweep_stale_purchases(&state, STALE_PURCHASE_MINUTES).await {
+                Ok((0, 0)) => {}
+                Ok((cancelled, paid)) => {
+                    log::info!("stale store purchases: {cancelled} cancelled, {paid} recorded as paid")
+                }
                 Err(e) => log::error!("failed to sweep stale store purchases: {e}"),
             }
         }

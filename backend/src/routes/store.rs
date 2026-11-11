@@ -5,7 +5,9 @@
 
 use actix_web::{HttpRequest, HttpResponse, get, post, web};
 use chrono::{Duration, Utc};
-use serde::Serialize;
+use hmac::{Hmac, Mac};
+use serde::{Deserialize, Serialize};
+use sha2::Sha256;
 
 use crate::{
     auth::AuthUser,
@@ -13,14 +15,14 @@ use crate::{
     models::{
         Permissions, Server, Usergroup,
         store::{
-            Begin, CHECKOUT_TTL_MINUTES, ItemStore, MarkPaid, PricedItem, Purchase, PurchaseStatus,
+            Begin, CHECKOUT_TTL_MINUTES, ItemStore, MAX_PENDING_PER_BUYER, MarkPaid, PricedItem, Purchase, PurchaseStatus,
             Receipt, ReceiptStatus, ReceiptView, StoreDiscount, StoreItem, StoreSummary,
             ungrantable_usergroup,
         },
     },
     notify,
     state::AppState,
-    stripe::{CheckoutParams, Event},
+    stripe::{CheckoutParams, Event, decode_hex},
 };
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
@@ -190,6 +192,24 @@ async fn checkout(
         .await?
         .ok_or(ApiError::NotFound("item"))?;
 
+    // Every checkout opens a Stripe session, so starting them is rate limited.
+    let window = CHECKOUT_WINDOW_SECS as f64;
+    let (recent, oldest) = Purchase::recent_by_buyer(&state.db, user.0.id, window).await?;
+    if recent >= CHECKOUT_BURST {
+        let elapsed = oldest.map_or(0.0, |t| (Utc::now() - t).num_milliseconds() as f64 / 1000.0);
+        return Err(ApiError::RateLimited((window - elapsed).ceil().max(1.0) as u64));
+    }
+
+    // A buyer who comes back for an item they didn't finish paying for starts over: the
+    // old checkout is closed first, so it doesn't keep holding a unit of stock.
+    for pending in Purchase::pending_for_buyer(&state.db, user.0.id, item_id).await? {
+        if release_pending(&state, &pending).await?.is_none() {
+            return Err(ApiError::BadRequest(
+                "your last checkout of this item has been paid or its payment is still clearing; see My purchases".to_owned(),
+            ));
+        }
+    }
+
     // The price and currency charged are the ones `begin` recorded on the purchase, read
     // under its locks, so an edit made meanwhile can't make the two disagree.
     let (purchase, item) = match Purchase::begin(&state.db, item_id, user.0.id, &user.0.steam_id).await? {
@@ -204,6 +224,15 @@ async fn checkout(
             log::warn!("item {item_id} grants usergroup {group:?}, which its store no longer allows");
             return Err(ApiError::BadRequest(NOT_GRANTABLE.to_owned()));
         }
+        // Another checkout of the item was started at the same moment.
+        Begin::AlreadyPending => {
+            return Err(ApiError::Conflict("an open checkout of this item"));
+        }
+        Begin::TooManyPending => {
+            return Err(ApiError::BadRequest(format!(
+                "you have {MAX_PENDING_PER_BUYER} checkouts open; finish or cancel one first"
+            )));
+        }
     };
 
     let frontend = &state.config.frontend_url;
@@ -217,7 +246,11 @@ async fn checkout(
         description: &item.short_description,
         image_url: item.image_url.as_deref(),
         success_url: &format!("{frontend}/store/purchases?paid=1"),
-        cancel_url: &format!("{frontend}/store/checkout/cancel?purchase={}", purchase.id),
+        cancel_url: &format!(
+            "{frontend}/store/checkout/cancel?purchase={}&token={}",
+            purchase.id,
+            cancel_token(&state.config.jwt_secret, purchase.id)
+        ),
         expires_at: (Utc::now() + Duration::minutes(CHECKOUT_TTL_MINUTES)).timestamp(),
     };
     let session = match stripe.create_checkout_session(&params).await {
@@ -253,6 +286,10 @@ async fn checkout(
     Ok(HttpResponse::Created().json(Checkout { purchase_id: purchase.id, url }))
 }
 
+/// At most this many purchases may be started per buyer in any `CHECKOUT_WINDOW_SECS`.
+const CHECKOUT_BURST: i64 = 10;
+const CHECKOUT_WINDOW_SECS: i64 = 10 * 60;
+
 const FREE_ITEM: &str =
     "this item is currently free, which the payment provider can't process; ask a store manager to adjust the discount";
 const NOT_GRANTABLE: &str =
@@ -272,23 +309,29 @@ async fn abandon_checkout(state: &AppState, purchase_id: i64, session_id: Option
     }
 }
 
-/// Cancels the buyer's own pending purchase (they backed out of Checkout), returning its
-/// stock and closing the Stripe session. Returns the purchase; 404 for other people's.
-/// A session that turns out to have been completed is left for the webhook to settle, so
-/// a paid purchase is never cancelled here.
-#[post("/store/purchases/{purchase_id}/cancel")]
-async fn cancel_purchase(
-    state: web::Data<AppState>,
-    user: AuthUser,
-    purchase_id: web::Path<i64>,
-) -> Result<HttpResponse, ApiError> {
-    let purchase = Purchase::find_by_id(&state.db, purchase_id.into_inner())
-        .await?
-        .filter(|p| p.buyer_id == user.0.id)
-        .ok_or(ApiError::NotFound("purchase"))?;
-    if purchase.status != PurchaseStatus::Pending {
-        return Ok(HttpResponse::Ok().json(purchase));
-    }
+/// The cancel link's proof that it came from the purchase's Checkout Session: the hex
+/// HMAC of the purchase id. Without it, any site could send a logged-in buyer to the cancel
+/// link and close their checkout.
+fn cancel_token(secret: &str, purchase_id: i64) -> String {
+    cancel_mac(secret, purchase_id).finalize().into_bytes().iter().map(|b| format!("{b:02x}")).collect()
+}
+
+fn cancel_mac(secret: &str, purchase_id: i64) -> Hmac<Sha256> {
+    let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes()).expect("any key length");
+    mac.update(format!("store-cancel:{purchase_id}").as_bytes());
+    mac
+}
+
+/// Compares in constant time.
+fn valid_cancel_token(secret: &str, purchase_id: i64, token: &str) -> bool {
+    decode_hex(token).is_some_and(|token| cancel_mac(secret, purchase_id).verify_slice(&token).is_ok())
+}
+
+/// Closes a pending purchase's Checkout Session and cancels the purchase, returning its
+/// stock. A session that turns out to have completed is left for the webhook to settle (it
+/// was paid, or a delayed payment is clearing), and `None` is returned; so a paid purchase
+/// is never cancelled. Otherwise returns the purchase as it now stands.
+async fn release_pending(state: &AppState, purchase: &Purchase) -> Result<Option<Purchase>, ApiError> {
     if let (Some(stripe), Some(session)) = (&state.stripe, &purchase.stripe_checkout_session_id) {
         match stripe.expire_checkout_session(session).await {
             Ok(_) => {}
@@ -298,13 +341,43 @@ async fn cancel_purchase(
                 let current = stripe.retrieve_checkout_session(session).await?;
                 if current.status.as_deref() == Some("complete") {
                     log::info!("purchase {} not cancelled: its checkout session {session} completed", purchase.id);
-                    return Ok(HttpResponse::Ok().json(purchase));
+                    return Ok(None);
                 }
             }
             Err(e) => return Err(e),
         }
     }
-    let purchase = Purchase::cancel(&state.db, purchase.id).await?.unwrap_or(purchase);
+    Ok(Some(Purchase::cancel(&state.db, purchase.id).await?.unwrap_or_else(|| purchase.clone())))
+}
+
+#[derive(Deserialize)]
+struct CancelBody {
+    /// From the cancel link; see [`cancel_token`].
+    token: String,
+}
+
+/// Cancels the buyer's own pending purchase (they backed out of Checkout), returning its
+/// stock and closing the Stripe session; see [`release_pending`]. Needs the token from the
+/// cancel link. Returns the purchase; 404 for other people's or with a wrong token.
+#[post("/store/purchases/{purchase_id}/cancel")]
+async fn cancel_purchase(
+    state: web::Data<AppState>,
+    user: AuthUser,
+    purchase_id: web::Path<i64>,
+    body: web::Json<CancelBody>,
+) -> Result<HttpResponse, ApiError> {
+    let purchase_id = purchase_id.into_inner();
+    if !valid_cancel_token(&state.config.jwt_secret, purchase_id, body.token.trim()) {
+        return Err(ApiError::NotFound("purchase"));
+    }
+    let purchase = Purchase::find_by_id(&state.db, purchase_id)
+        .await?
+        .filter(|p| p.buyer_id == user.0.id)
+        .ok_or(ApiError::NotFound("purchase"))?;
+    if purchase.status != PurchaseStatus::Pending {
+        return Ok(HttpResponse::Ok().json(purchase));
+    }
+    let purchase = release_pending(&state, &purchase).await?.unwrap_or(purchase);
     Ok(HttpResponse::Ok().json(purchase))
 }
 
@@ -358,24 +431,12 @@ async fn handle_event(state: &AppState, event: &Event) -> Result<(), ApiError> {
                 .and_then(|v| v.as_str())
                 .or_else(|| object.get("client_reference_id").and_then(|v| v.as_str()))
                 .and_then(|id| id.parse::<i64>().ok());
-            match Purchase::mark_paid(&state.db, &session, purchase_id, &payment_intent).await? {
-                MarkPaid::Paid(receipt, fulfillment) => {
-                    log::info!(
-                        "purchase paid: receipt {} for user {} ({} {}), fulfillment {} for server {}",
-                        receipt.id, receipt.buyer_id, receipt.price, receipt.currency, fulfillment.id, fulfillment.server_id
-                    );
-                    notify::purchase_paid(&state.db, &receipt).await;
-                }
-                MarkPaid::AlreadyPaid => log::debug!("checkout session {session} already handled ({})", event.id),
-                // Ours, but the purchase is gone (its server was deleted): the buyer paid
-                // for nothing. Retrying wouldn't bring it back, so this is for staff.
-                MarkPaid::Unknown if purchase_id.is_some() => log::error!(
-                    "checkout session {session} was paid ({payment_intent}) but purchase {} no longer exists; refund it from the Stripe dashboard ({})",
-                    purchase_id.unwrap_or_default(), event.id
-                ),
-                // Not a GarryNet session (e.g. `stripe trigger`, or another integration).
-                MarkPaid::Unknown => log::debug!("ignoring checkout session {session} without a purchase ({})", event.id),
-            }
+            // What Stripe charged before tax, to check against what the purchase recorded.
+            let charged = object
+                .get("amount_subtotal")
+                .and_then(|v| v.as_i64())
+                .zip(str_field("currency"));
+            record_paid(state, &session, purchase_id, &payment_intent, charged, &event.id).await?;
         }
         "checkout.session.expired" | "checkout.session.async_payment_failed" => {
             let session = str_field("id").ok_or_else(|| ApiError::BadRequest("event has no session id".to_owned()))?;
@@ -407,6 +468,97 @@ async fn handle_event(state: &AppState, event: &Event) -> Result<(), ApiError> {
         other => log::debug!("ignoring stripe event {} ({other})", event.id),
     }
     Ok(())
+}
+
+/// Turns the paid Checkout Session `session` into a receipt and fulfillment (see
+/// [`Purchase::mark_paid`]) and tells the buyer. `charged` is the pre-tax amount and
+/// currency Stripe reports, if known; a mismatch with the purchase is logged for staff.
+/// `source` (the webhook event, or the sweeper) is for the logs.
+async fn record_paid(
+    state: &AppState,
+    session: &str,
+    purchase_id: Option<i64>,
+    payment_intent: &str,
+    charged: Option<(i64, String)>,
+    source: &str,
+) -> Result<(), ApiError> {
+    match Purchase::mark_paid(&state.db, session, purchase_id, payment_intent).await? {
+        MarkPaid::Paid(receipt, fulfillment) => {
+            log::info!(
+                "purchase paid: receipt {} for user {} ({} {}), fulfillment {} for server {} ({source})",
+                receipt.id, receipt.buyer_id, receipt.price, receipt.currency, fulfillment.id, fulfillment.server_id
+            );
+            if let Some((amount, currency)) = charged
+                && (amount != receipt.price || !currency.eq_ignore_ascii_case(&receipt.currency))
+            {
+                log::error!(
+                    "checkout session {session} charged {amount} {currency} but receipt {} records {} {} ({source})",
+                    receipt.id, receipt.price, receipt.currency
+                );
+            }
+            notify::purchase_paid(&state.db, &receipt).await;
+        }
+        MarkPaid::AlreadyPaid => log::debug!("checkout session {session} already handled ({source})"),
+        // Ours, but the purchase is gone (its server was deleted): the buyer paid for
+        // nothing. Retrying wouldn't bring it back, so this is for staff.
+        MarkPaid::Unknown if purchase_id.is_some() => log::error!(
+            "checkout session {session} was paid ({payment_intent}) but purchase {} no longer exists; refund it from the Stripe dashboard ({source})",
+            purchase_id.unwrap_or_default()
+        ),
+        // Not a GarryNet session (e.g. `stripe trigger`, or another integration).
+        MarkPaid::Unknown => log::debug!("ignoring checkout session {session} without a purchase ({source})"),
+    }
+    Ok(())
+}
+
+/// A completed session whose delayed payment (e.g. a bank debit) hasn't cleared keeps its
+/// purchase pending, and its stock reserved, for at most this long.
+const ASYNC_PAYMENT_DAYS: i64 = 14;
+
+/// Settles pending purchases older than `minutes`, whose Checkout Session expired or was
+/// paid without a webhook reaching us, by asking Stripe how each session stands: paid ones
+/// are recorded as paid, ones whose delayed payment is still clearing are left (for up to
+/// [`ASYNC_PAYMENT_DAYS`]), and the rest are cancelled, returning their stock. A cancelled
+/// purchase that's paid after all is reinstated by the webhook. Returns how many were
+/// cancelled and how many recorded as paid. Stops early if Stripe is unreachable.
+pub async fn sweep_stale_purchases(state: &AppState, minutes: i64) -> Result<(usize, usize), ApiError> {
+    let (mut cancelled, mut paid) = (0, 0);
+    for purchase in Purchase::stale_pending(&state.db, minutes).await? {
+        let (Some(stripe), Some(session)) = (&state.stripe, purchase.stripe_checkout_session_id.as_deref()) else {
+            // Never got a session, or Stripe isn't configured: nothing can pay it.
+            cancelled += usize::from(Purchase::cancel(&state.db, purchase.id).await?.is_some());
+            continue;
+        };
+        let current = match stripe.retrieve_checkout_session(session).await {
+            Ok(current) => current,
+            Err(ApiError::StripeRejected(e)) => {
+                log::warn!("stale purchase {}: Stripe doesn't know checkout session {session} ({e}); cancelling", purchase.id);
+                cancelled += usize::from(Purchase::cancel(&state.db, purchase.id).await?.is_some());
+                continue;
+            }
+            Err(e) => {
+                log::warn!("stale purchase sweep stopped: {e}");
+                break;
+            }
+        };
+        match (current.status.as_deref(), current.payment_status.as_deref()) {
+            (Some("complete"), Some("paid" | "no_payment_required")) => {
+                let payment_intent = current.payment_intent.unwrap_or_else(|| format!("session:{session}"));
+                record_paid(state, session, Some(purchase.id), &payment_intent, None, "stale purchase sweep").await?;
+                paid += 1;
+            }
+            (Some("complete"), _) if purchase.created_at > Utc::now() - Duration::days(ASYNC_PAYMENT_DAYS) => {}
+            (status, _) => {
+                if status == Some("open")
+                    && let Err(e) = stripe.expire_checkout_session(session).await
+                {
+                    log::warn!("couldn't expire stale checkout session {session}: {e}");
+                }
+                cancelled += usize::from(Purchase::cancel(&state.db, purchase.id).await?.is_some());
+            }
+        }
+    }
+    Ok((cancelled, paid))
 }
 
 /// Moves the receipt of `payment_intent` to `status`, revoking its fulfillment.
@@ -444,4 +596,21 @@ async fn find_enabled_store(state: &AppState, id: i64) -> Result<(StoreSummary, 
         .await?
         .ok_or(ApiError::NotFound("store"))?;
     Ok((store, server))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cancel_tokens() {
+        let secret = "a-secret-that-is-at-least-32-bytes-long";
+        let token = cancel_token(secret, 42);
+        assert_eq!(token.len(), 64);
+        assert!(valid_cancel_token(secret, 42, &token));
+        assert!(!valid_cancel_token(secret, 43, &token));
+        assert!(!valid_cancel_token("another-secret-at-least-32-bytes-long", 42, &token));
+        assert!(!valid_cancel_token(secret, 42, ""));
+        assert!(!valid_cancel_token(secret, 42, "zz"));
+    }
 }

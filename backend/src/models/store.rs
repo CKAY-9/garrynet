@@ -308,7 +308,15 @@ pub enum Begin {
     /// The item grants a usergroup its store no longer allows (`grantable_usergroups` was
     /// narrowed after the item was saved).
     NotGrantable(String),
+    /// The buyer already has a checkout of this item open.
+    AlreadyPending,
+    /// The buyer has [`MAX_PENDING_PER_BUYER`] checkouts open.
+    TooManyPending,
 }
+
+/// Checkouts one buyer may have open at once, across every store. Each holds a unit of
+/// limited stock until it's paid or cancelled.
+pub const MAX_PENDING_PER_BUYER: i64 = 3;
 
 /// The outcome of a paid Checkout Session; see [`Purchase::mark_paid`].
 #[allow(clippy::large_enum_variant, reason = "returned once and matched at once")]
@@ -740,6 +748,22 @@ impl Purchase {
         if price <= 0 {
             return Ok(Begin::Free);
         }
+        // At most one open checkout per item, and a few overall, so one buyer can't hold all
+        // of an item's limited stock (or many items') by opening checkouts they never pay.
+        let (pending_item, pending_all): (i64, i64) = sqlx::query_as(
+            "SELECT count(*) FILTER (WHERE item_id = $2), count(*) FROM store_purchases
+             WHERE buyer_id = $1 AND status = 'PENDING'",
+        )
+        .bind(buyer_id)
+        .bind(item_id)
+        .fetch_one(&mut *tx)
+        .await?;
+        if pending_item > 0 {
+            return Ok(Begin::AlreadyPending);
+        }
+        if pending_all >= MAX_PENDING_PER_BUYER {
+            return Ok(Begin::TooManyPending);
+        }
         if let Some(max) = item.max_per_user {
             let bought: i64 = sqlx::query_scalar(COUNT_FOR_BUYER)
                 .bind(buyer_id)
@@ -784,6 +808,32 @@ impl Purchase {
         Ok(Begin::Started { purchase, item })
     }
 
+    /// The buyer's pending purchases of an item, oldest first.
+    pub async fn pending_for_buyer(db: &PgPool, buyer_id: i64, item_id: i64) -> sqlx::Result<Vec<Purchase>> {
+        sqlx::query_as(
+            "SELECT * FROM store_purchases
+             WHERE buyer_id = $1 AND item_id = $2 AND status = 'PENDING'
+             ORDER BY created_at, id",
+        )
+        .bind(buyer_id)
+        .bind(item_id)
+        .fetch_all(db)
+        .await
+    }
+
+    /// How many purchases the buyer started in the past `seconds`, and when the oldest of
+    /// them was, for rate limiting checkout.
+    pub async fn recent_by_buyer(db: &PgPool, buyer_id: i64, seconds: f64) -> sqlx::Result<(i64, Option<DateTime<Utc>>)> {
+        sqlx::query_as(
+            "SELECT count(*), min(created_at) FROM store_purchases
+             WHERE buyer_id = $1 AND created_at > now() - make_interval(secs => $2)",
+        )
+        .bind(buyer_id)
+        .bind(seconds)
+        .fetch_one(db)
+        .await
+    }
+
     /// Records the Checkout Session opened for the purchase. `None` if the purchase isn't
     /// pending any more (the buyer cancelled it while the session was being created), in
     /// which case the session should be expired rather than handed out.
@@ -808,23 +858,17 @@ impl Purchase {
         Ok(purchase)
     }
 
-    /// Cancels every pending purchase older than `minutes`, for when Stripe's expiry
-    /// webhook never arrived. Returns the cancelled purchases.
-    pub async fn cancel_stale(db: &PgPool, minutes: i64) -> sqlx::Result<Vec<Purchase>> {
-        let ids: Vec<i64> = sqlx::query_scalar(
-            "SELECT id FROM store_purchases
-             WHERE status = 'PENDING' AND created_at < now() - make_interval(mins => $1)",
+    /// Pending purchases older than `minutes`, oldest first: their Checkout Session should
+    /// have been settled by a webhook by now. See `routes::store::sweep_stale_purchases`.
+    pub async fn stale_pending(db: &PgPool, minutes: i64) -> sqlx::Result<Vec<Purchase>> {
+        sqlx::query_as(
+            "SELECT * FROM store_purchases
+             WHERE status = 'PENDING' AND created_at < now() - make_interval(mins => $1)
+             ORDER BY created_at, id",
         )
         .bind(minutes as i32)
         .fetch_all(db)
-        .await?;
-        let mut cancelled = Vec::with_capacity(ids.len());
-        for id in ids {
-            if let Some(p) = Self::cancel(db, id).await? {
-                cancelled.push(p);
-            }
-        }
-        Ok(cancelled)
+        .await
     }
 
     /// Marks the purchase of Checkout Session `session_id` paid: writes its receipt, bumps the
@@ -1094,6 +1138,21 @@ impl Fulfillment {
         .await
     }
 
+    /// Offers a failed fulfillment to the addon again with a fresh set of attempts, e.g.
+    /// once whatever made it fail has been fixed. `None` unless it's failed and its receipt
+    /// is still paid.
+    pub async fn retry(db: &PgPool, id: i64) -> sqlx::Result<Option<Fulfillment>> {
+        sqlx::query_as(
+            "UPDATE store_fulfillments f SET status = 'PENDING', attempts = 0, last_error = NULL
+              FROM store_receipts r
+              WHERE f.id = $1 AND f.status = 'FAILED' AND r.id = f.receipt_id AND r.status = 'PAID'
+              RETURNING f.*",
+        )
+        .bind(id)
+        .fetch_optional(db)
+        .await
+    }
+
     pub async fn find_for_server(db: &PgPool, server_id: i64, id: i64) -> sqlx::Result<Option<Fulfillment>> {
         sqlx::query_as("SELECT * FROM store_fulfillments WHERE id = $1 AND server_id = $2")
             .bind(id)
@@ -1102,10 +1161,12 @@ impl Fulfillment {
             .await
     }
 
-    /// Records the addon's report. Idempotent: a repeated or stale report changes nothing.
-    /// Rewards delivered after a revocation are still recorded as delivered, so the
-    /// revocation gets applied on the next sync. Returns the fulfillment as it stands and
-    /// whether this report changed it; `None` if the server has no such fulfillment.
+    /// Records the addon's report. A repeated `fulfilled` or `revoked` report changes
+    /// nothing; each `failed` report counts as an attempt, up to [`MAX_ATTEMPTS`], after
+    /// which further ones are ignored. Rewards delivered after a revocation are still
+    /// recorded as delivered, so the revocation gets applied on the next sync. Returns the
+    /// fulfillment as it stands and whether this report changed it; `None` if the server
+    /// has no such fulfillment.
     pub async fn acknowledge(
         db: &PgPool,
         server_id: i64,
@@ -1113,34 +1174,35 @@ impl Fulfillment {
         result: AckResult,
         error: Option<&str>,
     ) -> sqlx::Result<Option<(Fulfillment, bool)>> {
-        let sql = match result {
-            AckResult::Fulfilled => {
+        let query = match result {
+            AckResult::Fulfilled => sqlx::query(
                 "UPDATE store_fulfillments
                     SET status = CASE WHEN status = 'REVOKED' THEN status ELSE 'FULFILLED' END,
                         fulfilled_at = COALESCE(fulfilled_at, now()),
                         attempts = attempts + 1, last_error = NULL
-                  WHERE id = $1 AND server_id = $2 AND $3::TEXT IS NULL
-                    AND (status IN ('PENDING', 'FAILED') OR (status = 'REVOKED' AND fulfilled_at IS NULL))"
-            }
-            AckResult::Failed => {
+                  WHERE id = $1 AND server_id = $2
+                    AND (status IN ('PENDING', 'FAILED') OR (status = 'REVOKED' AND fulfilled_at IS NULL))",
+            )
+            .bind(id)
+            .bind(server_id),
+            AckResult::Failed => sqlx::query(
                 "UPDATE store_fulfillments
                     SET status = 'FAILED', attempts = attempts + 1, last_error = $3
-                  WHERE id = $1 AND server_id = $2 AND status IN ('PENDING', 'FAILED')"
-            }
-            AckResult::Revoked => {
-                "UPDATE store_fulfillments
-                    SET revocation_applied_at = COALESCE(revocation_applied_at, now())
-                  WHERE id = $1 AND server_id = $2 AND status = 'REVOKED' AND $3::TEXT IS NULL"
-            }
-        };
-        let changed = sqlx::query(sql)
+                  WHERE id = $1 AND server_id = $2 AND status IN ('PENDING', 'FAILED') AND attempts < $4",
+            )
             .bind(id)
             .bind(server_id)
-            .bind(if result == AckResult::Failed { error } else { None })
-            .execute(db)
-            .await?
-            .rows_affected()
-            > 0;
+            .bind(error)
+            .bind(MAX_ATTEMPTS),
+            AckResult::Revoked => sqlx::query(
+                "UPDATE store_fulfillments
+                    SET revocation_applied_at = COALESCE(revocation_applied_at, now())
+                  WHERE id = $1 AND server_id = $2 AND status = 'REVOKED'",
+            )
+            .bind(id)
+            .bind(server_id),
+        };
+        let changed = query.execute(db).await?.rows_affected() > 0;
         Ok(Self::find_for_server(db, server_id, id).await?.map(|f| (f, changed)))
     }
 }

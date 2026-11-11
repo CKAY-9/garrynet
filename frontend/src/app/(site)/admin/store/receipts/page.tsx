@@ -12,6 +12,7 @@ import styles from "../../admin.module.scss";
 import form from "../../community/editor.module.scss";
 import list from "../store.module.scss";
 import { RefundButton } from "./RefundButton";
+import { RetryButton } from "./RetryButton";
 
 export default function ReceiptsPage({ searchParams }: PageProps<"/admin/store/receipts">) {
   return (
@@ -125,6 +126,9 @@ async function Receipts({ searchParams }: { searchParams: SearchParams }) {
                           <span className={list.cellMeta} title={r.fulfillment.last_error}>
                             {r.fulfillment.attempts} attempts
                           </span>
+                        )}
+                        {r.fulfillment?.status === "FAILED" && r.status === "PAID" && (
+                          <RetryButton fulfillmentId={r.fulfillment.id} />
                         )}
                         {r.fulfillment?.status === "REVOKED" && (
                           <span className={list.cellMeta}>

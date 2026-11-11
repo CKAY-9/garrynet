@@ -12,7 +12,7 @@ use crate::{
     models::{
         Permissions, Server,
         store::{
-            DiscountDetails, ItemDetails, ItemStore, PricedItem, Receipt, ReceiptFilter, ReceiptStatus,
+            DiscountDetails, Fulfillment, ItemDetails, ItemStore, PricedItem, Receipt, ReceiptFilter, ReceiptStatus,
             ReceiptView, Reward, StoreDetails, StoreDiscount, StoreItem, StoreSummary,
         },
     },
@@ -31,6 +31,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .service(create_store)
         .service(list_receipts)
         .service(refund)
+        .service(retry_fulfillment)
         .service(get_store)
         .service(update_store)
         .service(set_grantable_usergroups)
@@ -142,7 +143,9 @@ async fn get_store(state: web::Data<AppState>, user: AuthUser, store_id: web::Pa
     Ok(HttpResponse::Ok().json(AdminStorePage { store, server, discounts, items }))
 }
 
-/// Replaces a store's settings (not its grantable usergroups).
+/// Replaces a store's settings (not its grantable usergroups). The currency can only change
+/// while the store has no items: their prices are in its minor units, so changing it would
+/// re-price every item (1000 cents becoming ¥1000).
 #[put("/admin/store/{store_id}")]
 async fn update_store(
     state: web::Data<AppState>,
@@ -152,7 +155,14 @@ async fn update_store(
 ) -> Result<HttpResponse, ApiError> {
     user.require(&state.db, MANAGE).await?;
     let details = normalize_store(body.into_inner())?;
-    let store = ItemStore::update(&state.db, store_id.into_inner(), &details)
+    let (current, _) = find_store(&state, store_id.into_inner()).await?;
+    if current.store.currency != details.currency && current.item_count > 0 {
+        return Err(bad(format!(
+            "the currency can't change while the store has items (their prices are in {}); archive them first",
+            current.store.currency.to_ascii_uppercase()
+        )));
+    }
+    let store = ItemStore::update(&state.db, current.store.id, &details)
         .await?
         .ok_or(ApiError::NotFound("store"))?;
     log::info!("user {} updated store {}", user.0.id, store.id);
@@ -379,6 +389,27 @@ async fn refund(
         .await?
         .ok_or(ApiError::NotFound("receipt"))?;
     Ok(HttpResponse::Ok().json(updated))
+}
+
+/// Offers a failed fulfillment to the server's addon again with a fresh set of attempts,
+/// once whatever made it fail is fixed. Requires Admin Access and Store Finance. 400 unless
+/// it's failed and its receipt is still paid.
+#[post("/admin/store/fulfillments/{fulfillment_id}/retry")]
+async fn retry_fulfillment(
+    state: web::Data<AppState>,
+    user: AuthUser,
+    fulfillment_id: web::Path<i64>,
+) -> Result<HttpResponse, ApiError> {
+    user.require(&state.db, FINANCE).await?;
+    let id = fulfillment_id.into_inner();
+    let fulfillment = Fulfillment::retry(&state.db, id)
+        .await?
+        .ok_or_else(|| bad("only a failed delivery of a paid purchase can be retried".to_owned()))?;
+    log::info!("user {} reset fulfillment {id} for another round of delivery attempts", user.0.id);
+    let receipt = Receipt::find_by_id(&state.db, fulfillment.receipt_id)
+        .await?
+        .ok_or(ApiError::NotFound("receipt"))?;
+    Ok(HttpResponse::Ok().json(receipt))
 }
 
 /// A store (enabled or not) and its server.
