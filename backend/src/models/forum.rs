@@ -3,9 +3,12 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use sqlx::{PgPool, types::Json};
+use sqlx::{PgPool, Postgres, QueryBuilder, types::Json};
 
-use super::file::{AttachTo, Attachment, File, attachments_json};
+use super::{
+    escape_like,
+    file::{AttachTo, Attachment, File, attachments_json},
+};
 
 #[derive(Clone, Debug, Serialize, sqlx::FromRow)]
 pub struct ForumSection {
@@ -187,6 +190,59 @@ macro_rules! post_columns {
             attachments_json!("forum_post_id", "p.id"), " AS attachments"
         )
     };
+}
+
+/// Which of a user's writing [`ForumPost::by_author`] lists.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AuthoredKind {
+    /// Threads they started (each with its first post).
+    Threads,
+    /// Their replies: posts that aren't a thread's first.
+    Replies,
+}
+
+/// Order of [`ForumPost::by_author`].
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum AuthoredSort {
+    #[default]
+    Newest,
+    Oldest,
+    /// Most likes minus dislikes first.
+    ReputationDesc,
+    ReputationAsc,
+}
+
+/// Filters for [`ForumPost::by_author`]. Already validated (see `routes::users`).
+#[derive(Debug)]
+pub struct AuthoredFilter {
+    /// `None` for both threads and replies.
+    pub kind: Option<AuthoredKind>,
+    /// Case-insensitive part of the thread's title or the post's content.
+    pub search: Option<String>,
+    pub sort: AuthoredSort,
+    pub limit: i64,
+    pub offset: i64,
+}
+
+/// Characters of a post's content sent as its [`Authored::excerpt`].
+const EXCERPT_CHARS: i32 = 300;
+
+/// A thread or reply as previewed on its author's profile.
+#[derive(Clone, Debug, Serialize, sqlx::FromRow)]
+pub struct Authored {
+    /// The thread's first post, standing for the thread; otherwise a reply.
+    pub is_thread: bool,
+    pub post_id: i64,
+    pub thread_id: i64,
+    pub thread_title: String,
+    pub category_id: i64,
+    pub category_name: String,
+    /// The start of the post's Markdown.
+    pub excerpt: String,
+    pub created_at: DateTime<Utc>,
+    pub edited: Option<DateTime<Utc>>,
+    /// Likes minus dislikes. For a thread, its first post's.
+    pub reputation: i32,
 }
 
 /// Forum-wide totals for the forum homepage.
@@ -493,6 +549,59 @@ impl ForumPost {
         .await?;
         tx.commit().await?;
         Ok(())
+    }
+}
+
+impl ForumPost {
+    /// The threads and replies written by `author_id` that match `filter`. A thread's first
+    /// post is always by the thread's author, so it stands for the thread.
+    pub async fn by_author(
+        db: &PgPool,
+        author_id: i64,
+        filter: &AuthoredFilter,
+    ) -> sqlx::Result<Vec<Authored>> {
+        let mut q: QueryBuilder<Postgres> = QueryBuilder::new(
+            "SELECT p.id = t.thread_post_id AS is_thread, p.id AS post_id, t.id AS thread_id,
+                    t.title AS thread_title, c.id AS category_id, c.name AS category_name,
+                    left(p.content, ",
+        );
+        q.push_bind(EXCERPT_CHARS).push(
+            ") AS excerpt, p.created_at, p.edited,
+                    cardinality(p.likes) - cardinality(p.dislikes) AS reputation
+             FROM forum_posts p
+             JOIN forum_threads t ON t.id = p.thread_id
+             JOIN forum_categories c ON c.id = t.category_id
+             WHERE p.author_id = ",
+        );
+        q.push_bind(author_id);
+        match filter.kind {
+            Some(AuthoredKind::Threads) => {
+                q.push(" AND p.id = t.thread_post_id");
+            }
+            Some(AuthoredKind::Replies) => {
+                q.push(" AND p.id <> t.thread_post_id");
+            }
+            None => {}
+        }
+        if let Some(search) = &filter.search {
+            let pattern = format!("%{}%", escape_like(search));
+            q.push(" AND (t.title ILIKE ")
+                .push_bind(pattern.clone())
+                .push(" OR p.content ILIKE ")
+                .push_bind(pattern)
+                .push(")");
+        }
+        q.push(match filter.sort {
+            AuthoredSort::Newest => " ORDER BY p.created_at DESC, p.id DESC",
+            AuthoredSort::Oldest => " ORDER BY p.created_at, p.id",
+            AuthoredSort::ReputationDesc => " ORDER BY reputation DESC, p.created_at DESC, p.id DESC",
+            AuthoredSort::ReputationAsc => " ORDER BY reputation, p.created_at DESC, p.id DESC",
+        });
+        q.push(" LIMIT ")
+            .push_bind(filter.limit)
+            .push(" OFFSET ")
+            .push_bind(filter.offset);
+        q.build_query_as().fetch_all(db).await
     }
 }
 

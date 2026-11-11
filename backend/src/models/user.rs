@@ -2,7 +2,7 @@ use chrono::{DateTime, TimeDelta, Utc};
 use serde::Serialize;
 use sqlx::{PgPool, Postgres, QueryBuilder};
 
-use super::Usergroup;
+use super::{Usergroup, escape_like};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, sqlx::Type)]
 #[sqlx(type_name = "user_status", rename_all = "UPPERCASE")]
@@ -87,6 +87,8 @@ pub struct User {
     pub status: UserStatus,
     pub joined: DateTime<Utc>,
     pub last_seen: DateTime<Utc>,
+    /// Hides the bio, reputation, threads and posts from everyone but the user and staff.
+    pub private: bool,
     /// The JWT version currently accepted for this user; see [`User::revoke_tokens`].
     #[serde(skip)]
     pub token_version: i64,
@@ -200,12 +202,7 @@ impl User {
              WHERE true",
         );
 
-        // Escaped so `%` and `_` in the search are matched literally.
-        let pattern = search.name.as_deref().map(|name| {
-            name.replace('\\', "\\\\")
-                .replace('%', "\\%")
-                .replace('_', "\\_")
-        });
+        let pattern = search.name.as_deref().map(escape_like);
         if let Some(pattern) = &pattern {
             q.push(" AND u.username ILIKE '%' || ")
                 .push_bind(pattern.clone())
@@ -242,19 +239,41 @@ impl User {
             (UserSort::BestMatch, None) => {
                 q.push(" ORDER BY random()");
             }
+            // Private users hide their reputation and posts, so they sort last rather than
+            // giving away where they'd rank.
             (UserSort::ReputationDesc, _) => {
-                q.push(" ORDER BY u.reputation DESC, u.id");
+                q.push(" ORDER BY u.private, u.reputation DESC, u.id");
             }
             (UserSort::ReputationAsc, _) => {
-                q.push(" ORDER BY u.reputation ASC, u.id");
+                q.push(" ORDER BY u.private, u.reputation ASC, u.id");
             }
             (UserSort::Posts, _) => {
-                q.push(" ORDER BY post_count DESC, u.id");
+                q.push(" ORDER BY u.private, post_count DESC, u.id");
             }
         }
         q.push(" LIMIT ").push_bind(search.limit);
 
         q.build_query_as().fetch_all(db).await
+    }
+
+    /// Changes the user's own profile settings; `None` leaves a field as it is. Already
+    /// validated (see `routes::users`).
+    pub async fn update_profile(
+        db: &PgPool,
+        id: i64,
+        bio: Option<&str>,
+        private: Option<bool>,
+    ) -> sqlx::Result<User> {
+        sqlx::query_as(
+            "UPDATE users SET bio = COALESCE($2, bio), private = COALESCE($3, private)
+             WHERE id = $1
+             RETURNING *",
+        )
+        .bind(id)
+        .bind(bio)
+        .bind(private)
+        .fetch_one(db)
+        .await
     }
 
     /// Number of registered users.

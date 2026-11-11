@@ -56,11 +56,11 @@ export function UserCard({ user }: { user: UserSearchResult }) {
       <dl className={styles.stats}>
         <div>
           <dt>Reputation</dt>
-          <dd>{user.reputation.toLocaleString("en")}</dd>
+          <dd>{user.reputation?.toLocaleString("en") ?? <Hidden />}</dd>
         </div>
         <div>
           <dt>Posts</dt>
-          <dd>{user.post_count.toLocaleString("en")}</dd>
+          <dd>{user.post_count?.toLocaleString("en") ?? <Hidden />}</dd>
         </div>
         <div>
           <dt>ID</dt>
@@ -68,6 +68,15 @@ export function UserCard({ user }: { user: UserSearchResult }) {
         </div>
       </dl>
     </Link>
+  );
+}
+
+/** A private user's reputation or post count. */
+function Hidden() {
+  return (
+    <span className={styles.hidden} title="This profile is private">
+      Private
+    </span>
   );
 }
 

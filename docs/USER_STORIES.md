@@ -152,3 +152,24 @@ so that I can manage their membership
 2. I view all members of a usergroup
 3. I find the user and click the "X" next to their name
 4. This removes them from the group
+
+## Profile Management
+
+**Editing Description/Biography**
+1. As a logged-in, non-banned user, I want to change my profile's bio, so that I can better reflect myself
+2. Going to `/settings`, User Settings, displays possible configuration options, such as biography
+3. Users can save it.
+
+**Privating Profile**
+1. As a logged-in, non-banned user, I want to toggle my privacy status, so that I can hide my posts, and reputation from other users (not admins)
+2. Going to `/settings` has a privacy switch
+3. This toggles user.private and hides my profile from other users
+
+## Profile
+
+**Viewing Profile Threads/Posts**
+1. As a general user, I want to see a user's post on their profile, so that I can easily
+follow them
+   - If they are privated, I need to be an admin to see it
+2. Going to a user's profile, `/users/${id}`, shows their details, and displays small previews of their posts and threads
+3. I should be able to refine what I'm seeing by Post or Thread, title, content, reputation ascending/descending
