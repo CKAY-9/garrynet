@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { themeScript } from "@/lib/theme";
 import "./globals.scss";
 
 export const metadata: Metadata = {
@@ -12,7 +13,12 @@ export const metadata: Metadata = {
  */
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en">
+    // The theme script sets `data-theme` before React hydrates, so the attribute won't match.
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        {/* Applies the stored theme before the first paint, so it never flashes the other one. */}
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+      </head>
       <body>{children}</body>
     </html>
   );

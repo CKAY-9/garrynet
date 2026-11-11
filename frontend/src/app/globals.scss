@@ -4,12 +4,21 @@
   --foreground: #171a21;
 }
 
+@mixin dark-tokens {
+  color-scheme: dark;
+  --background: #0f1115;
+  --foreground: #e6e8ec;
+}
+
+// Dark when the user picked it, or hasn't picked and their system is dark (`src/lib/theme.ts`).
 @media (prefers-color-scheme: dark) {
-  :root {
-    color-scheme: dark;
-    --background: #0f1115;
-    --foreground: #e6e8ec;
+  :root:not([data-theme="light"]) {
+    @include dark-tokens;
   }
+}
+
+:root[data-theme="dark"] {
+  @include dark-tokens;
 }
 
 *,

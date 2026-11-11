@@ -9,6 +9,7 @@ import { CommunityBrand, CommunityBrandSkeleton } from "./CommunityBrand";
 import { NavLink } from "./NavLink";
 import { NavSearch } from "./NavSearch";
 import { NavShell } from "./NavShell";
+import { ThemeToggle } from "./ThemeToggle";
 import { AdminIcon, ForumsIcon, HomeIcon, StoreIcon, SupportIcon, UsersIcon } from "./icons";
 import styles from "./SideNav.module.scss";
 
@@ -22,8 +23,8 @@ const links = [
 ];
 
 /**
- * Site-wide navigation: the community's name and logo, general links, then user-specific links
- * and the legal documents at the bottom. A sidebar on wide screens, a hamburger-triggered overlay on narrow ones.
+ * Site-wide navigation: the community's name and logo, general links, then user-specific links,
+ * the theme picker and the legal documents at the bottom. A sidebar on wide screens, a hamburger-triggered overlay on narrow ones.
  */
 export function SideNav() {
   return (
@@ -56,6 +57,7 @@ export function SideNav() {
         <Suspense fallback={<AccountSkeleton />}>
           <Account />
         </Suspense>
+        <ThemeToggle />
         <ul className={styles.legal} aria-label="Legal">
           {legalPages.map(({ slug, label }) => (
             <li key={slug}>
