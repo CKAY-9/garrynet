@@ -581,8 +581,10 @@ export type FulfillmentStatus = "PENDING" | "FULFILLED" | "FAILED" | "REVOKED";
 
 export type Receipt = {
   id: number;
-  stripe_checkout_session_id: string;
-  stripe_payment_intent_id: string;
+  /** Staff only: absent from `GET /store/purchases`. */
+  stripe_checkout_session_id?: string;
+  /** Staff only: absent from `GET /store/purchases`. */
+  stripe_payment_intent_id?: string;
   buyer_id: number;
   /** `null` once the item was deleted along with its server. */
   item_id: number | null;

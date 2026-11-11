@@ -301,7 +301,7 @@ Everything is JSON; errors are `{ "error": "..." }`. "Manage" means Admin Access
 
 - POST `/store/{store_id}/items/{item_id}/checkout`: starts a purchase, returns `{ purchase_id, url }` (201). Needs Site Access. 400 sold out / limit reached / free item / too many open checkouts, 409 a checkout of the item was started at the same moment, 423 unavailable, 429 rate limited, 422 Stripe refused, 503 Stripe not configured
 - POST `/store/purchases/{purchase_id}/cancel`: `{ token }` (from the cancel link); cancels the buyer's own pending purchase, returns it. 404 for other people's purchases or a wrong token
-- GET `/store/purchases`: the buyer's receipts, newest first, each with `buyer` and `fulfillment` (without `last_error`)
+- GET `/store/purchases`: the buyer's receipts, newest first, each with `buyer` and `fulfillment` (without `last_error`), and without Stripe's `stripe_checkout_session_id` and `stripe_payment_intent_id`, which only staff see
 
 **Stripe**
 

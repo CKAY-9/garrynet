@@ -381,16 +381,30 @@ async fn cancel_purchase(
     Ok(HttpResponse::Ok().json(purchase))
 }
 
-/// The buyer's receipts with their delivery status, newest first.
+/// Receipt fields only staff see: Stripe's identifiers of the payment. They're useless to a
+/// buyer and only widen what a leaked response gives away.
+const STAFF_ONLY_RECEIPT_FIELDS: [&str; 2] = ["stripe_checkout_session_id", "stripe_payment_intent_id"];
+
+/// The buyer's receipts with their delivery status, newest first, without staff-only details
+/// (Stripe's identifiers and the addon's error text; buyers see the delivery status).
 #[get("/store/purchases")]
 async fn my_purchases(state: web::Data<AppState>, user: AuthUser) -> Result<HttpResponse, ApiError> {
-    let mut receipts: Vec<ReceiptView> = Receipt::list_for_buyer(&state.db, user.0.id).await?;
-    // The addon's error text is for staff; buyers see the status.
-    for receipt in &mut receipts {
-        if let Some(fulfillment) = &mut receipt.fulfillment {
-            fulfillment.last_error = None;
-        }
-    }
+    let receipts: Vec<ReceiptView> = Receipt::list_for_buyer(&state.db, user.0.id).await?;
+    let receipts: Vec<serde_json::Value> = receipts
+        .into_iter()
+        .map(|mut receipt| {
+            if let Some(fulfillment) = &mut receipt.fulfillment {
+                fulfillment.last_error = None;
+            }
+            let mut value = serde_json::to_value(receipt).map_err(|e| ApiError::Internal(e.to_string()))?;
+            if let Some(fields) = value.as_object_mut() {
+                for field in STAFF_ONLY_RECEIPT_FIELDS {
+                    fields.remove(field);
+                }
+            }
+            Ok(value)
+        })
+        .collect::<Result<_, ApiError>>()?;
     Ok(HttpResponse::Ok().json(receipts))
 }
 
