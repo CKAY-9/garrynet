@@ -1,7 +1,7 @@
 import type { FaqCategory, SupportStatus, TicketActivity, TicketCategory, TicketSort } from "./types";
 
 /*
- * The support enums (docs/SUPPORT.MD) in display order, with their labels. Safe to import
+ * The support enums (docs/SUPPORT.md) in display order, with their labels. Safe to import
  * from client components.
  */
 

@@ -1,6 +1,6 @@
 # Support
 
-Part of [GarryNet Design](DESIGN.md).
+Part of [GarryNet Design](README.md).
 
 GarryNet offers a support system to users to get into contact with community administrators or review frequently asked questions. Tickets should support markdown like forum posts.
 

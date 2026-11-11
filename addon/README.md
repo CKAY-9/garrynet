@@ -3,7 +3,7 @@
 Garry's Mod addon that connects a server to a GarryNet deployment. See [docs/ADDON.md](../docs/ADDON.md),
 [docs/SERVERS.md](../docs/SERVERS.md) and [docs/USER_STORIES.md](../docs/USER_STORIES.md) for the design.
 
-**Status:** linking, unlinking, the per-minute heartbeat (server details, player records) and store delivery work. Config changes are not implemented yet.
+**Status:** linking, unlinking, the per-minute heartbeat (server details, player records, gamemode stats) and store delivery work. Pushing config changes from the website is not implemented yet.
 
 ## Install
 
@@ -19,6 +19,12 @@ server with `-allowlocalhttp`, since Garry's Mod blocks HTTP to local addresses 
 To link, register the server on the website (Admin > Servers), then a superadmin runs `!gnet` in chat and pastes the access key.
 Superadmins get a chat notice once it's linked and once the first heartbeat is accepted; the website then shows the server as
 Online. From the server console: `garrynet_link <key>`, `garrynet_status`, `garrynet_sync`, `garrynet_unlink`.
+
+## Gamemode Stats
+
+Each heartbeat carries per-player stats for the running gamemode: DarkRP money and job, and Sandbox props spawned and tool uses.
+Other addons can register their own with `GarryNet.Stats.Register` and `GarryNet.Stats.Count`; see
+[docs/ADDON.md](../docs/ADDON.md#gamemode-stats).
 
 ## Store
 
@@ -52,6 +58,7 @@ lua/garrynet/
   sv_http.lua               HTTP wrapper for /gnet/server/... requests, JWT rotation
   sv_link.lua               link (access key -> JWT) and unlink
   sv_interval.lua           player sessions, per-minute heartbeat, force sync
+  sv_stats.lua              gamemode stats: providers, sampling, counters
   sv_store_rewards.lua      store rewards: usergroup adapters (ULX/plain), timed groups, weapons, revoking
   sv_store.lua              store delivery: fetch the queue, apply, acknowledge
   sv_net.lua                net handlers for the menu (superadmin-checked)

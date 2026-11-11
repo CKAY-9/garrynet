@@ -1,6 +1,6 @@
 # Storage
 
-Part of [GarryNet Design](DESIGN.md).
+Part of [GarryNet Design](README.md).
 
 Files are stored locally or in an S3-compatible bucket (AWS S3, Cloudflare R2, MinIO, ...), depending on backend configuration. Every provider sits behind one interface (`backend/src/storage.rs`, built on the [`object_store`](https://docs.rs/object_store) crate), so routes never care where a file lives.
 
@@ -94,7 +94,7 @@ Clients see a file as `{ owner_id, id, url, name, content_type, size, status, up
 
 ## Where files are used
 
-- Attachments: up to 5 files per forum post ([FORUM.md](FORUM.md)) and 10 per support message ([SUPPORT.MD](SUPPORT.MD)). These are user files. A file can be attached to one thing only, by its owner, when the post or message is written; it's deleted when its forum post or thread is deleted.
+- Attachments: up to 5 files per forum post ([FORUM.md](FORUM.md)) and 10 per support message ([SUPPORT.md](SUPPORT.md)). These are user files. A file can be attached to one thing only, by its owner, when the post or message is written; it's deleted when its forum post or thread is deleted.
 - Image links in the admin pages (community logo, splash and key figure pictures, forum section icons, server icons and splashes, store item images): each link input has an Upload button that stores the image as a community file and fills the input with its URL. A link can still be pasted instead.
 - User avatars come from Steam and can't be uploaded.
 

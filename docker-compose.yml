@@ -27,12 +27,19 @@ services:
   backend:
     build: ./backend
     restart: unless-stopped
+    # Keep stdin open with a terminal so the backend's interactive admin shell works:
+    # `docker compose attach backend`, then detach with Ctrl+P Ctrl+Q (Ctrl+C stops the backend).
+    stdin_open: true
+    tty: true
     env_file:
       - path: ./backend/.env
         required: false
     environment:
       BIND_ADDR: 0.0.0.0:8080
       DATABASE_URL: postgres://${POSTGRES_USER:-garrynet}:${POSTGRES_PASSWORD:-garrynet}@db:5432/${POSTGRES_DB:-garrynet}
+    volumes:
+      # Uploaded files (local storage provider). Unused with STORAGE_PROVIDER=s3.
+      - uploads:/app/storage
     depends_on:
       db:
         condition: service_healthy
@@ -56,3 +63,4 @@ services:
 
 volumes:
   db-data:
+  uploads:

@@ -1,6 +1,6 @@
 # Authentication
 
-Part of [GarryNet Design](DESIGN.md).
+Part of [GarryNet Design](README.md).
 
 All authentication uses JWT. A standard user JWT expires after 24 hours and is stored in an httpOnly cookie.
 
@@ -10,6 +10,6 @@ Users log in with Steam. If no GarryNet account exists for the Steam account, on
 
 ## Banned Users
 
-Users with an active ban (see User Punishment in [USERS.md](USERS.md)) cannot post or interact with anyone except administration.
+Users whose usergroups clear `Site Access` can only view and use the support pages, so they can still appeal. They keep receiving notifications.
 
-Users whose usergroups clear `Site Access` can only view support pages.
+**Planned:** users with an active ban (see [User Punishment](USERS.md#user-punishment)) will be treated the same way, without changing their usergroups.

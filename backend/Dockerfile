@@ -23,6 +23,12 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --system --no-create-home --shell /usr/sbin/nologin garrynet
 
+# Uploads with the local storage provider (STORAGE_LOCAL_PATH=./storage) land in
+# /app/storage. docker-compose.yml mounts a volume here; a new volume copies this
+# directory's ownership, so the non-root user can write to it.
+WORKDIR /app
+RUN mkdir storage && chown garrynet:garrynet storage
+
 COPY --from=builder /app/target/release/backend /usr/local/bin/backend
 
 USER garrynet

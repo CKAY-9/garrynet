@@ -1,6 +1,6 @@
 # Store
 
-Part of [GarryNet Design](DESIGN.md).
+Part of [GarryNet Design](README.md).
 
 **GarryNet prohibits any usage of the store that involves gambling, loot boxes, or other
 similar luck-based mechanics.** Item names and descriptions must not imply random or

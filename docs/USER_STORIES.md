@@ -1,6 +1,6 @@
 # User Stories
 
-Part of [GarryNet Design](DESIGN.md).
+Part of [GarryNet Design](README.md).
 
 ## General
 

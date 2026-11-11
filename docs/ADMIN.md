@@ -1,6 +1,6 @@
 # Admin Pages
 
-Part of [GarryNet Design](DESIGN.md).
+Part of [GarryNet Design](README.md).
 
 ## /admin: Dashboard
 
@@ -18,7 +18,7 @@ There should be a navigation bar within the dashboard where they can navigate to
 - `/admin/forum`
 - `/admin/store`
 
-They must have the correct permission to view/access the page.
+Every admin page requires Admin Access, plus the permission listed under each page below. The navigation only shows the pages the user can open.
 
 ## /admin/loading-screen
 
@@ -68,7 +68,7 @@ Requires: Section Management or Category Management. Each form only shows with i
 ## /admin/store
 
 Admins can manage item stores (see [STORE.md](STORE.md)).
-Requires: Store Management or Store Finance. Management forms only show with Store Management; the receipts link only with Store Finance.
+Requires: Store Management or Store Finance (and Admin Access, like every admin page). Management forms only show with Store Management; the receipts link only with Store Finance.
 
 - Lists every store (enabled or not) with its server, currency, grantable usergroups and item count; creating one picks a server without a store.
 - `/admin/store/{id}`: the store's settings (name, currency, message, enabled), its grantable usergroups (editable with Elevated Control), its items and its store-wide discounts.

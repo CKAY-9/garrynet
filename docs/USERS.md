@@ -1,6 +1,6 @@
 # Users
 
-Part of [GarryNet Design](DESIGN.md).
+Part of [GarryNet Design](README.md).
 
 Users are authenticated using Steam. Everyone logs in with their Steam account and GarryNet stores each user in its own table entry.
 
@@ -19,7 +19,9 @@ joined: utc timestamp
 last_seen: utc timestamp // updated when they access a route/resource
 ```
 
-Profile details (username, avatar) can be re-synced with Steam when the user clicks a "Sync with Steam" button, which will fetch their latest information and update their entry. Avatars always come from Steam; users can't upload their own.
+Profile details (username, avatar) come from Steam and are refreshed each time the user logs in. Avatars always come from Steam; users can't upload their own.
+
+**Planned:** a "Sync with Steam" button on the profile that refreshes them without logging out and back in.
 
 ## User Status
 
@@ -35,6 +37,8 @@ OFFLINE
 ```
 
 ## User Punishment
+
+**Planned.** Not implemented yet: there is no punishments table or route. Until then, removing a user's `Site Access` (through their usergroups) works as a ban.
 
 Tracks website bans, suspensions, and warnings. These are separate from Player Punishments, which apply in-game.
 
@@ -70,7 +74,7 @@ time_played: number // in minutes; the addon updates it every minute
 
 Player Punishments are in-game punishments such as kicks, bans, jails, and warnings.
 
-To be implemented.
+**Planned.** Not implemented yet.
 
 ## User Searching
 

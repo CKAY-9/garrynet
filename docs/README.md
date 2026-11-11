@@ -2,21 +2,24 @@
 
 GarryNet is a community platform (forum, store, Garry's Mod server integration) with one deployment per community.
 
+These documents are the design reference: each one describes a feature's behavior, data model and API routes. They're kept up to date with the code. Anything not built yet is marked **Planned**. For installing and running GarryNet, see the [main README](../README.md).
+
 ## Documents
 
 - [USERS.md](USERS.md): users, status, punishments, per-server players
 - [PERMISSIONS.md](PERMISSIONS.md): usergroups and permission bits
 - [FORUM.md](FORUM.md): sections, categories, threads, posts
-- [SUPPORT.MD](SUPPORT.MD): support tickets, messages, FAQs
+- [SUPPORT.md](SUPPORT.md): support tickets, messages, FAQs
 - [STORE.md](STORE.md): item stores, items, purchases, receipts, fulfillment
 - [STORAGE.md](STORAGE.md): file uploads, local and S3-compatible storage
+- [NOTIFICATIONS.md](NOTIFICATIONS.md): in-site notifications, events and retention
 - [SERVERS.md](SERVERS.md): Garry's Mod servers and the loading screen
 - [ADDON.md](ADDON.md): the Garry's Mod addon
-- [AUTH.md](AUTH.md): authentication and banned users
+- [AUTH.md](AUTH.md): authentication, server tokens and banned users
 - [ADMIN.md](ADMIN.md): admin pages
 - [USER_STORIES.md](USER_STORIES.md): user stories
 - [SITE_DESIGN.md](SITE_DESIGN.md): frontend layout, navigation, themes
-- [ARCHITECTURE.md](ARCHITECTURE.md): frontend, backend, addon stack
+- [ARCHITECTURE.md](ARCHITECTURE.md): how the frontend, backend and addon fit together
 
 ## Community
 
@@ -67,4 +70,4 @@ See [STORE.md](STORE.md). Uses Stripe Checkout; the addon delivers purchases in-
 
 ## Private Messages
 
-To be implemented.
+**Planned.** Not implemented yet. The `User Messages` permission bit is reserved for it.

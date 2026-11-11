@@ -314,7 +314,7 @@ export type ForumSectionDetails = Pick<ForumSection, "name" | "accent" | "icon_u
 /** Sent to `POST /forum/categories`. */
 export type ForumCategoryDetails = Pick<ForumCategory, "name" | "section_id" | "description" | "locked" | "position">;
 
-// Support (docs/SUPPORT.MD)
+// Support (docs/SUPPORT.md)
 
 export type TicketCategory = "OTHER" | "USER_REPORT" | "SUGGESTION" | "BUG_REPORT" | "USER_ISSUE";
 

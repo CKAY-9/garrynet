@@ -1,6 +1,6 @@
 # Notifications
 
-Part of [GarryNet Design](DESIGN.md).
+Part of [GarryNet Design](README.md).
 
 Notifications tell a user that something happened that concerns them, and link to where they can act on it. The system is deliberately small: in-site only, one row per recipient, created by the backend when an event happens.
 
@@ -93,5 +93,5 @@ Left out on purpose; add them only when needed:
 - Email, Discord or in-game delivery. The addon could later show a "you have N unread" line, but that is a separate feature.
 - Per-user preferences. A later addition is one mute toggle per `NotificationType`, applied when the notification is created. `ACCOUNT` and support replies should never be mutable.
 - Saved or "acknowledged" notifications (`acknowledged_by` in the first draft). Read and delete cover it.
-- Mentions and Private Messages. Both need their own design first (see [DESIGN.md](DESIGN.md#private-messages)); each would add one event row above and no new schema.
+- Mentions and Private Messages. Both need their own design first (see [Private Messages](README.md#private-messages)); each would add one event row above and no new schema.
 - Real-time updates over websockets or server-sent events. Polling is enough at this scale.

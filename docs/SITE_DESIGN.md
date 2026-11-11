@@ -1,6 +1,6 @@
 # Site Design
 
-Part of [GarryNet Design](DESIGN.md). Frontend layout and visuals.
+Part of [GarryNet Design](README.md). Frontend layout and visuals.
 
 The whole site should have a consistent structure of [SIDE NAVIGATION] [CONTENT].
 
@@ -14,7 +14,7 @@ Should display any connected servers and a link to connect to them (`steam://`).
 
 Should display the user's avatar, name, description, status, when they joined and were last seen, reputation.
 
-Display all usergroups they're apart of as "chips" (small, reusable components). They should implement the usergroup's effect attribute.
+Display all usergroups they're a part of as "chips" (small, reusable components). They should implement the usergroup's effect attribute.
 
 Should have a link to their steam profile.
 
@@ -28,7 +28,7 @@ Redirects in general should have inline icons and subtle hover/click animations.
 
 The side navigation should stretch the whole height of the screen, and fit it. Should never take up >= 30% of the screen.
 
-If it were too take up too much screen space, switch to mobile specific navigation
+If it would take up too much screen space, switch to mobile-specific navigation.
 
 More general redirects are higher up, e.g.,
 1. Home
@@ -59,10 +59,12 @@ Anyone should be able to grab a couple random users or filter search for them.
 
 ## Themes
 
+The site follows the operating system's light or dark preference (`prefers-color-scheme`). **Planned:** a manual toggle.
+
 ### Dark
 
 The default theme: dark and cool, easy on the eyes.
 
 ### Light
 
-A toggle switches to light mode, a warmer, brighter theme.
+A warmer, brighter theme.

@@ -1,4 +1,4 @@
-//! The support system (docs/SUPPORT.MD): tickets hold messages between a user and the
+//! The support system (docs/SUPPORT.md): tickets hold messages between a user and the
 //! support team; FAQs answer common questions.
 
 use chrono::{DateTime, Utc};

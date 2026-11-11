@@ -1,6 +1,6 @@
 # Addon Details
 
-Part of [GarryNet Design](DESIGN.md). Servers and access keys are defined in [SERVERS.md](SERVERS.md).
+Part of [GarryNet Design](README.md). Servers and access keys are defined in [SERVERS.md](SERVERS.md).
 
 The GarryNet Garry's Mod addon is responsible for communicating with GarryNet. It will update player data, fetch unrealized store requests, config changes, etc.
 

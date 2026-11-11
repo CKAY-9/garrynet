@@ -1,6 +1,6 @@
 # Permissions
 
-Part of [GarryNet Design](DESIGN.md).
+Part of [GarryNet Design](README.md).
 
 Permissions are managed through usergroups. Each usergroup has a bit flag field that stores its permissions.
 
@@ -60,20 +60,20 @@ Rules:
 - 0x4, Thread Management: If set, users can delete, lock, sticky, and edit forum threads and posts.
 - 0x8, Category Management: If set, users can delete, create, edit, move, and configure forum categories.
 - 0x10, Section Management: If set, users can delete, create, edit, move, and configure forum sections.
-- 0x20, User Management: If set, users can ban, remove, suspend, and manage users.
+- 0x20, User Management: If set, users can manage users. Today this covers deleting other users' uploaded files; banning and suspending are **Planned** (see [User Punishment](USERS.md#user-punishment)).
 - 0x40, Admin Access: If set, reveals admin navigation options and permits access to protected admin routes (e.g., `/admin`). Allows editing the loading screen and other sub-components.
-- 0x80, Elevated Control: If set, users can perform **dangerous actions** across the whole site.
+- 0x80, Elevated Control: If set, users can perform **dangerous actions** across the whole site. Today this covers editing a store's grantable usergroups.
 - 0x100, Usergroup Management: If set, users can create, edit, and remove usergroups, and add or remove users from them.
-- 0x200, User Messages: If set, users can privately message other users.
+- 0x200, User Messages: If set, users can privately message other users. **Planned**: reserved for [Private Messages](README.md#private-messages), which aren't implemented.
 - 0x400, Server Management: If set, users can create, edit, remove, and link/unlink Garry's Mod servers.
 - 0x800, Community Management: If set, users can edit community details.
-- 0x1000, Support Team: If set, users can access other tickets and help
+- 0x1000, Support Team: If set, users can access other users' tickets and help.
 - 0x2000, Store Management: If set, users can edit, add, and archive stores, items, and discounts. Cannot edit a store's grantable usergroups (requires `Elevated Control`). Accessing `/admin/store` also requires `Admin Access`.
 - 0x4000, Store Finance: If set, users can view receipts and revenue, and issue refunds.
 
 **Dangerous Actions**
 
-Actions such as clearing all site data or triggering a panic (shutting down all services).
+Actions that can't be undone or that affect the whole site, such as choosing which usergroups the store may grant. Clearing all site data or triggering a panic (shutting down all services) are **Planned**.
 
 **Users in Multiple Groups**
 

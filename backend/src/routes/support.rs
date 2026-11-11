@@ -1,4 +1,4 @@
-//! The support system; see docs/SUPPORT.MD. Any logged-in user can open tickets and reply
+//! The support system; see docs/SUPPORT.md. Any logged-in user can open tickets and reply
 //! to their own (Site Access isn't needed: banned users may still use support). The
 //! Support Team sees every ticket, replies to any, sets statuses and manages FAQs, which
 //! anyone can read.

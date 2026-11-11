@@ -1,6 +1,6 @@
 # Garry's Mod Servers and Loading Screen
 
-Part of [GarryNet Design](DESIGN.md). Player records (UserPlayer) are defined in [USERS.md](USERS.md).
+Part of [GarryNet Design](README.md). Player records (UserPlayer) are defined in [USERS.md](USERS.md).
 
 ## Garry's Mod Server
 

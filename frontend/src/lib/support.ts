@@ -8,7 +8,7 @@ import { faqCategories, supportStatuses, ticketActivities, ticketCategories, tic
 import type { FaqCategory, FaqWithPeople, TicketFilters, TicketPage, TicketSummary } from "./types";
 
 /*
- * Support reads (docs/SUPPORT.MD). All request-time, so render anything that uses these
+ * Support reads (docs/SUPPORT.md). All request-time, so render anything that uses these
  * inside a `<Suspense>` boundary. Writes are server actions in `@/components/Support/actions`.
  */
 
