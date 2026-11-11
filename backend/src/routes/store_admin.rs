@@ -12,8 +12,8 @@ use crate::{
     models::{
         Permissions, Server,
         store::{
-            DiscountDetails, ItemDetails, ItemStore, PricedItem, Receipt, ReceiptFilter, ReceiptStatus,
-            ReceiptView, Reward, StoreDetails, StoreDiscount, StoreItem, StoreSummary,
+            DiscountDetails, Fulfillment, ItemDetails, ItemStore, PricedItem, Receipt, ReceiptFilter, ReceiptStatus,
+            CURRENCIES, ReceiptView, Reward, StoreDetails, StoreDiscount, StoreItem, StoreSummary,
         },
     },
     notify,
@@ -31,6 +31,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .service(create_store)
         .service(list_receipts)
         .service(refund)
+        .service(retry_fulfillment)
         .service(get_store)
         .service(update_store)
         .service(set_grantable_usergroups)
@@ -108,6 +109,7 @@ async fn create_store(
     user.require(&state.db, MANAGE).await?;
     let body = body.into_inner();
     let details = normalize_store(body.store)?;
+    allowed_currency(&details.currency)?;
     Server::find_by_id(&state.db, body.server_id)
         .await?
         .ok_or(ApiError::NotFound("server"))?;
@@ -142,7 +144,9 @@ async fn get_store(state: web::Data<AppState>, user: AuthUser, store_id: web::Pa
     Ok(HttpResponse::Ok().json(AdminStorePage { store, server, discounts, items }))
 }
 
-/// Replaces a store's settings (not its grantable usergroups).
+/// Replaces a store's settings (not its grantable usergroups). The currency can only change
+/// while the store has no items: their prices are in its minor units, so changing it would
+/// re-price every item (1000 cents becoming ¥1000).
 #[put("/admin/store/{store_id}")]
 async fn update_store(
     state: web::Data<AppState>,
@@ -152,7 +156,19 @@ async fn update_store(
 ) -> Result<HttpResponse, ApiError> {
     user.require(&state.db, MANAGE).await?;
     let details = normalize_store(body.into_inner())?;
-    let store = ItemStore::update(&state.db, store_id.into_inner(), &details)
+    let (current, _) = find_store(&state, store_id.into_inner()).await?;
+    // A store set up before the currency list may keep its currency, but not switch to
+    // another one off the list.
+    if current.store.currency != details.currency {
+        if current.item_count > 0 {
+            return Err(bad(format!(
+                "the currency can't change while the store has items (their prices are in {}); archive them first",
+                current.store.currency.to_ascii_uppercase()
+            )));
+        }
+        allowed_currency(&details.currency)?;
+    }
+    let store = ItemStore::update(&state.db, current.store.id, &details)
         .await?
         .ok_or(ApiError::NotFound("store"))?;
     log::info!("user {} updated store {}", user.0.id, store.id);
@@ -165,6 +181,7 @@ struct GrantableBody {
 }
 
 /// Replaces the usergroups a store's items may grant. Requires Elevated Control as well.
+/// Items that grant a usergroup no longer allowed are made unavailable.
 #[put("/admin/store/{store_id}/grantable-usergroups")]
 async fn set_grantable_usergroups(
     state: web::Data<AppState>,
@@ -174,10 +191,13 @@ async fn set_grantable_usergroups(
 ) -> Result<HttpResponse, ApiError> {
     user.require(&state.db, GRANTABLE).await?;
     let groups = normalize_usergroups(body.into_inner().grantable_usergroups)?;
-    let store = ItemStore::set_grantable_usergroups(&state.db, store_id.into_inner(), &groups)
+    let (store, disabled) = ItemStore::set_grantable_usergroups(&state.db, store_id.into_inner(), &groups)
         .await?
         .ok_or(ApiError::NotFound("store"))?;
-    log::info!("user {} set the grantable usergroups of store {} to {:?}", user.0.id, store.id, groups);
+    log::info!(
+        "user {} set the grantable usergroups of store {} to {:?}; {disabled} item(s) made unavailable",
+        user.0.id, store.id, groups
+    );
     Ok(HttpResponse::Ok().json(store))
 }
 
@@ -350,6 +370,13 @@ async fn refund(
     if receipt.status != ReceiptStatus::Paid {
         return Err(bad(format!("receipt is already {}", format!("{:?}", receipt.status).to_lowercase())));
     }
+    // Sessions that needed no payment are recorded with a placeholder instead of a
+    // PaymentIntent; there's nothing to refund through Stripe.
+    if receipt.stripe_payment_intent_id.starts_with("session:") {
+        return Err(bad("this receipt has no payment to refund".to_owned()));
+    }
+    // `None` if it was already refunded in full (e.g. from the Stripe dashboard, with the
+    // webhook not yet arrived); the receipt is still marked refunded below.
     let refund = stripe
         .refund(&receipt.stripe_payment_intent_id, &format!("refund-receipt-{}", receipt.id))
         .await?;
@@ -360,13 +387,35 @@ async fn refund(
     }
     log::info!(
         "user {} refunded receipt {} ({} {}) for user {}: stripe refund {} ({})",
-        user.0.id, receipt.id, receipt.price, receipt.currency, receipt.buyer_id, refund.id,
-        refund.status.as_deref().unwrap_or("unknown")
+        user.0.id, receipt.id, receipt.price, receipt.currency, receipt.buyer_id,
+        refund.as_ref().map_or("none", |r| r.id.as_str()),
+        refund.as_ref().and_then(|r| r.status.as_deref()).unwrap_or("already refunded")
     );
     let updated = Receipt::find_by_id(&state.db, receipt.id)
         .await?
         .ok_or(ApiError::NotFound("receipt"))?;
     Ok(HttpResponse::Ok().json(updated))
+}
+
+/// Offers a failed fulfillment to the server's addon again with a fresh set of attempts,
+/// once whatever made it fail is fixed. Requires Admin Access and Store Finance. 400 unless
+/// it's failed and its receipt is still paid.
+#[post("/admin/store/fulfillments/{fulfillment_id}/retry")]
+async fn retry_fulfillment(
+    state: web::Data<AppState>,
+    user: AuthUser,
+    fulfillment_id: web::Path<i64>,
+) -> Result<HttpResponse, ApiError> {
+    user.require(&state.db, FINANCE).await?;
+    let id = fulfillment_id.into_inner();
+    let fulfillment = Fulfillment::retry(&state.db, id)
+        .await?
+        .ok_or_else(|| bad("only a failed delivery of a paid purchase can be retried".to_owned()))?;
+    log::info!("user {} reset fulfillment {id} for another round of delivery attempts", user.0.id);
+    let receipt = Receipt::find_by_id(&state.db, fulfillment.receipt_id)
+        .await?
+        .ok_or(ApiError::NotFound("receipt"))?;
+    Ok(HttpResponse::Ok().json(receipt))
 }
 
 /// A store (enabled or not) and its server.
@@ -393,6 +442,19 @@ fn normalize_store(body: StoreBody) -> Result<StoreDetails, ApiError> {
         override_name: Some(override_name).filter(|n| !n.is_empty()),
         store_message: Some(store_message).filter(|m| !m.is_empty()),
     })
+}
+
+/// 400 unless `currency` (already lowercased) is one stores may use.
+fn allowed_currency(currency: &str) -> Result<(), ApiError> {
+    if CURRENCIES.contains(&currency) {
+        return Ok(());
+    }
+    let list: Vec<String> = CURRENCIES.iter().map(|c| c.to_ascii_uppercase()).collect();
+    Err(bad(format!(
+        "{} isn't a supported currency; use one of {}",
+        currency.to_ascii_uppercase(),
+        list.join(", ")
+    )))
 }
 
 /// Trimmed, deduplicated usergroup names.
@@ -600,6 +662,11 @@ mod tests {
         assert_eq!(d.store_message.as_deref(), Some("Hi"));
         assert!(normalize_store(StoreBody { enabled: true, currency: Some("dollars".into()), override_name: None, store_message: None }).is_err());
         assert_eq!(normalize_store(StoreBody { enabled: false, currency: None, override_name: None, store_message: None }).unwrap().currency, "usd");
+
+        assert!(allowed_currency("usd").is_ok());
+        assert!(allowed_currency("jpy").is_ok());
+        assert!(allowed_currency("xyz").is_err());
+        assert!(allowed_currency("USD").is_err(), "callers lowercase first");
     }
 
     #[test]

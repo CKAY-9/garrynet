@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition, type FormEvent, type ReactNode } from "react";
-import { MAX_MESSAGE, MAX_NAME } from "@/lib/storeEnums";
+import { CURRENCIES, MAX_MESSAGE, MAX_NAME, currencyLabel } from "@/lib/storeEnums";
 import type { Server } from "@/lib/types";
 // The same form styles as the other admin editors.
 import form from "../community/editor.module.scss";
@@ -58,15 +58,14 @@ export function CreateStoreForm({ servers }: { servers: Pick<Server, "id" | "nam
             ))}
           </select>
         </Field>
-        <Field label="Currency" hint="Three-letter ISO code; every item in the store uses it.">
-          <input
-            className={form.input}
-            value={currency}
-            onChange={(e) => setCurrency(e.target.value)}
-            pattern="[A-Za-z]{3}"
-            maxLength={3}
-            required
-          />
+        <Field label="Currency" hint="Every item in the store uses it. It can't change once the store has items.">
+          <select className={form.input} value={currency} onChange={(e) => setCurrency(e.target.value)} required>
+            {CURRENCIES.map((c) => (
+              <option key={c} value={c}>
+                {currencyLabel(c)}
+              </option>
+            ))}
+          </select>
         </Field>
       </div>
       <Field label="Store name" hint="Optional. Defaults to the server's name.">

@@ -28,6 +28,8 @@ pub struct StripeConfig {
     pub webhook_secret: String,
     /// Whether Checkout Sessions ask Stripe Tax to add tax (a deployment decision).
     pub tax: bool,
+    /// With `tax`, whether item prices include tax or have it added on top.
+    pub tax_behavior: TaxBehavior,
 }
 
 impl Config {
@@ -67,6 +69,23 @@ impl Config {
     }
 }
 
+/// Whether item prices include tax (`inclusive`) or Stripe Tax adds it on top (`exclusive`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TaxBehavior {
+    Exclusive,
+    Inclusive,
+}
+
+impl TaxBehavior {
+    /// As Stripe's `tax_behavior` takes it.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Exclusive => "exclusive",
+            Self::Inclusive => "inclusive",
+        }
+    }
+}
+
 fn stripe_from_env() -> Result<Option<StripeConfig>, String> {
     let secret_key = optional("STRIPE_SECRET_KEY");
     let webhook_secret = optional("STRIPE_WEBHOOK_SECRET");
@@ -76,13 +95,18 @@ fn stripe_from_env() -> Result<Option<StripeConfig>, String> {
             .map_err(|_| "STRIPE_TAX must be `true` or `false`".to_owned())?,
         None => false,
     };
+    let tax_behavior = match optional("STRIPE_TAX_BEHAVIOR").as_deref() {
+        None | Some("exclusive") => TaxBehavior::Exclusive,
+        Some("inclusive") => TaxBehavior::Inclusive,
+        Some(_) => return Err("STRIPE_TAX_BEHAVIOR must be `exclusive` or `inclusive`".into()),
+    };
     match (secret_key, webhook_secret) {
         (None, None) => Ok(None),
         (Some(secret_key), Some(webhook_secret)) => {
             if !secret_key.starts_with("sk_") && !secret_key.starts_with("rk_") {
                 return Err("STRIPE_SECRET_KEY must be a Stripe secret key (sk_... or rk_...)".into());
             }
-            Ok(Some(StripeConfig { secret_key, webhook_secret, tax }))
+            Ok(Some(StripeConfig { secret_key, webhook_secret, tax, tax_behavior }))
         }
         _ => Err("STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET must be set together".into()),
     }

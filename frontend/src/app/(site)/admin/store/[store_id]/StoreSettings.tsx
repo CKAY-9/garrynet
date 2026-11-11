@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition, type FormEvent } from "react";
-import { MAX_MESSAGE, MAX_NAME } from "@/lib/storeEnums";
+import { CURRENCIES, MAX_MESSAGE, MAX_NAME, currencyLabel, isCurrency } from "@/lib/storeEnums";
 import type { ItemStore, StoreDetails } from "@/lib/types";
 import form from "../../community/editor.module.scss";
 import { Field } from "../CreateStoreForm";
@@ -63,9 +63,16 @@ export function StoreSettings({ store, hasItems }: { store: ItemStore; hasItems:
         </Field>
         <Field
           label="Currency"
-          hint={hasItems ? "Changing it doesn't convert prices: 499 stays 499 in the new currency." : "Three-letter ISO code; every item uses it."}
+          hint={hasItems ? "Fixed while the store has items: their prices are in this currency. Archive them to change it." : "Every item in the store uses it."}
         >
-          <input className={form.input} value={draft.currency} onChange={(e) => patch({ currency: e.target.value })} pattern="[A-Za-z]{3}" maxLength={3} required />
+          <select className={form.input} value={draft.currency} onChange={(e) => patch({ currency: e.target.value })} disabled={hasItems} required>
+            {/* A store set up before the list keeps its currency as an option. */}
+            {[...(isCurrency(store.currency) ? [] : [store.currency]), ...CURRENCIES].map((c) => (
+              <option key={c} value={c}>
+                {currencyLabel(c)}
+              </option>
+            ))}
+          </select>
         </Field>
       </div>
       <Field label="Message" hint="Optional. Shown at the top of the store page.">
