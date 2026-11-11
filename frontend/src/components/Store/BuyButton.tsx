@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import { steamLoginUrl } from "@/lib/config";
+import { legalHref } from "@/lib/legalPages";
 import { formatMoney } from "@/lib/storeEnums";
 import type { Eligibility, PricedItem } from "@/lib/types";
 import { startCheckout } from "./actions";
@@ -65,6 +67,12 @@ export function BuyButton({
       )}
       {eligibility.can_buy && !cancelled && !error && (
         <p className={styles.hint}>You&apos;ll pay on Stripe&apos;s secure checkout page and come straight back.</p>
+      )}
+      {eligibility.can_buy && (
+        <p className={styles.hint}>
+          By buying you agree to our <Link href={legalHref("terms")}>Terms</Link> and{" "}
+          <Link href={legalHref("refunds")}>Refund Policy</Link>.
+        </p>
       )}
       {error && (
         <p className={styles.error} role="status">

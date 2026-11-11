@@ -1,6 +1,7 @@
 pub mod community;
 pub mod file;
 pub mod forum;
+pub mod legal;
 pub mod loading_screen;
 pub mod notification;
 pub mod permissions;

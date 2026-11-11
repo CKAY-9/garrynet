@@ -192,6 +192,28 @@ $breakpoint: 52rem;
   flex-direction: column;
 }
 
+.legal {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  margin: 0.75rem 0 0;
+  padding: 0 0.5rem;
+  list-style: none;
+  font-size: 0.8rem;
+
+  a {
+    color: inherit;
+    text-decoration: none;
+    opacity: 0.6;
+    transition: opacity 0.15s;
+
+    &:hover {
+      opacity: 1;
+      text-decoration: underline;
+    }
+  }
+}
+
 // Mobile: the nav becomes an overlay opened by the hamburger button.
 @media (max-width: $breakpoint) {
   .hamburger {

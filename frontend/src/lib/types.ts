@@ -754,3 +754,16 @@ export type UploadTarget = {
   headers: Record<string, string>;
   expires_at: string;
 };
+
+/** A legal document (terms, privacy policy, refund policy), from `GET /legal/{slug}`. */
+export type LegalDocument = {
+  slug: LegalSlug;
+  title: string;
+  /** Markdown. */
+  body: string;
+  /** `null` while it's still GarryNet's default template. */
+  last_updated: string | null;
+  updated_by: number | null;
+};
+
+export type LegalSlug = "terms" | "privacy" | "refunds";

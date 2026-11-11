@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { getCurrentUser } from "@/lib/auth";
 import { logoutUrl, steamLoginUrl } from "@/lib/config";
+import { legalHref } from "@/lib/legalPages";
 import { LogoutIcon, SteamIcon } from "@/components/SideNav/icons";
 import styles from "./Account.module.scss";
 
@@ -14,11 +15,17 @@ export async function Account() {
 
   if (!user) {
     return (
-      // Plain anchor: this is a full navigation to the backend, which redirects to Steam.
-      <a className={styles.login} href={steamLoginUrl}>
-        <SteamIcon />
-        Login with Steam
-      </a>
+      <div className={styles.loggedOut}>
+        {/* Plain anchor: this is a full navigation to the backend, which redirects to Steam. */}
+        <a className={styles.login} href={steamLoginUrl}>
+          <SteamIcon />
+          Login with Steam
+        </a>
+        <p className={styles.consent}>
+          By logging in you agree to our <Link href={legalHref("terms")}>Terms</Link> and{" "}
+          <Link href={legalHref("privacy")}>Privacy Policy</Link>.
+        </p>
+      </div>
     );
   }
 
