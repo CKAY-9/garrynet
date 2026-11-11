@@ -151,4 +151,7 @@ They're served differently, so access is checked on every view:
 
 ## DELETE /file/{owner_id}/{id}
 
-Deletes the file and its bytes. Allowed for the uploader, and for users with Admin Access plus User Management (user files) or Community Management (community files). Returns 204.
+Deletes the file and its bytes. Returns 204.
+
+- Community files: Admin Access and Community Management, even for their uploader, since they may be in use as a logo, icon or splash.
+- User files: the uploader, until the file is attached to a forum post or support message (400 after that: it's deleted with what it's attached to, so evidence in a ticket can't be pulled once staff have seen it); and users with Admin Access and User Management at any time.

@@ -433,8 +433,11 @@ pub async fn delete_all(state: &AppState, files: Vec<File>) {
     }
 }
 
-/// Deletes a file. Allowed for its uploader, users with Admin Access and User Management
-/// (user files) or Admin Access and Community Management (community files).
+/// Deletes a file. Community files need Admin Access and Community Management, whoever
+/// uploaded them: they may be in use as a logo or splash. A user file can be deleted by its
+/// uploader until it's attached to a forum post or support message (it's then deleted with
+/// it, so a ticket's evidence can't be pulled after staff have seen it), and at any time by
+/// users with Admin Access and User Management.
 #[delete("/file/{owner_id}/{file_id}")]
 async fn delete_file(
     state: web::Data<AppState>,
@@ -445,9 +448,15 @@ async fn delete_file(
     let file = File::get(&state.db, owner_id, &file_id)
         .await?
         .ok_or(ApiError::NotFound("file"))?;
-    if file.uploaded_by != Some(user.0.id) {
-        let required = if owner_id == COMMUNITY_OWNER { MANAGE_COMMUNITY } else { MANAGE_USERS };
-        user.require(&state.db, required).await?;
+    if owner_id == COMMUNITY_OWNER {
+        user.require(&state.db, MANAGE_COMMUNITY).await?;
+    } else if file.uploaded_by != Some(user.0.id) {
+        user.require(&state.db, MANAGE_USERS).await?;
+    } else if file.is_attached() && user.require(&state.db, MANAGE_USERS).await.is_err() {
+        return Err(bad(
+            "attached files can't be deleted on their own; they're deleted with the post or message they're attached to"
+                .into(),
+        ));
     }
     let backend = backend_of(&file)?;
     if File::delete(&state.db, owner_id, &file_id).await? {

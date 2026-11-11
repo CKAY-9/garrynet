@@ -31,9 +31,18 @@ pub struct File {
     pub uploaded_by: Option<i64>,
     pub created_at: DateTime<Utc>,
     pub completed_at: Option<DateTime<Utc>>,
+    /// The forum post it's attached to.
+    pub forum_post_id: Option<i64>,
     /// The support message it's attached to. Such files are only served to the ticket's
     /// creator (not for internal notes) and the Support Team.
     pub support_message_id: Option<i64>,
+}
+
+impl File {
+    /// Whether it's attached to a forum post or support message.
+    pub fn is_attached(&self) -> bool {
+        self.forum_post_id.is_some() || self.support_message_id.is_some()
+    }
 }
 
 /// A file attached to a forum post or support message, as clients see it. Its URL is
@@ -86,7 +95,7 @@ macro_rules! with_columns {
         concat!(
             $sql,
             " owner_id, id, backend, key, name, content_type, size, e_tag, status,
-              uploaded_by, created_at, completed_at, support_message_id"
+              uploaded_by, created_at, completed_at, forum_post_id, support_message_id"
             $(, $rest)?
         )
     };
