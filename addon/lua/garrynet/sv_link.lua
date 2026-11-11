@@ -40,6 +40,8 @@ function GarryNet.Link.Link(access_key, callback)
 		return
 	end
 
+	if GarryNet.HTTP.IsInsecure() then GarryNet.Util.Warn(GarryNet.HTTP.InsecureWarning) end
+
 	Busy = true
 	GarryNet.HTTP.Request("POST", "/gnet/server/link", {
 		headers = { Authorization = "Bearer " .. access_key },

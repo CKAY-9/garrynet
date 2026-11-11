@@ -501,11 +501,40 @@ async fn add_responder(conn: &mut PgConnection, ticket_id: i64, user_id: i64) ->
     Ok(())
 }
 
+/// See [`SupportMessage::audience`].
+#[derive(Clone, Copy, Debug, sqlx::FromRow)]
+pub struct MessageAudience {
+    pub ticket_owner: i64,
+    /// Internal notes are for the Support Team only.
+    pub is_internal: bool,
+}
+
+impl MessageAudience {
+    /// Whether a user who isn't on the Support Team may see the message.
+    pub fn visible_to(&self, user_id: i64) -> bool {
+        !self.is_internal && self.ticket_owner == user_id
+    }
+}
+
 impl SupportMessage {
     pub async fn find_by_id(db: &PgPool, id: i64) -> sqlx::Result<Option<Self>> {
         sqlx::query_as(concat!(
             "SELECT ", message_columns!("m"), " FROM support_messages m WHERE m.id = $1"
         ))
+        .bind(id)
+        .fetch_optional(db)
+        .await
+    }
+
+    /// Who may see message `id` besides the Support Team: its ticket's creator, unless the
+    /// message is internal. `None` if there is no such message.
+    pub async fn audience(db: &PgPool, id: i64) -> sqlx::Result<Option<MessageAudience>> {
+        sqlx::query_as(
+            "SELECT t.user_id AS ticket_owner, m.is_internal
+             FROM support_messages m
+             JOIN support_tickets t ON t.id = m.ticket_id
+             WHERE m.id = $1",
+        )
         .bind(id)
         .fetch_optional(db)
         .await
@@ -610,5 +639,19 @@ impl UserRef {
         .bind(ids)
         .fetch_all(db)
         .await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn message_audience() {
+        let public = MessageAudience { ticket_owner: 7, is_internal: false };
+        assert!(public.visible_to(7));
+        assert!(!public.visible_to(8), "only the ticket's creator, not other users");
+        let internal = MessageAudience { ticket_owner: 7, is_internal: true };
+        assert!(!internal.visible_to(7), "internal notes are for the Support Team only");
     }
 }

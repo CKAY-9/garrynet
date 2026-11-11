@@ -3,6 +3,7 @@
 --
 -- status = {
 --     configured = bool,         -- garrynet_api_url is set
+--     insecure = bool,           -- garrynet_api_url is plain HTTP to another machine
 --     linked = bool,
 --     server_id = number|nil,    -- when linked
 --     server_name = string,      -- when linked; "" if unknown
@@ -18,6 +19,7 @@ GarryNet.Status = GarryNet.Status or {}
 
 function GarryNet.Status.Write(status)
 	net.WriteBool(status.configured)
+	net.WriteBool(status.insecure == true)
 	net.WriteBool(status.linked)
 	net.WriteBool(status.busy)
 
@@ -37,6 +39,7 @@ end
 function GarryNet.Status.Read()
 	local status = {}
 	status.configured = net.ReadBool()
+	status.insecure = net.ReadBool()
 	status.linked = net.ReadBool()
 	status.busy = net.ReadBool()
 

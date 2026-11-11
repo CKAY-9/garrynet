@@ -14,6 +14,8 @@ Copy or symlink `addon/` to `garrysmod/addons/garrynet`. In `server.cfg`, set th
 garrynet_api_url "https://api.example.com"
 ```
 
+Use `https://`. The access key and the server's JWT travel in the `Authorization` header, so over plain HTTP anyone on the path can steal them and act as the server (report players, fetch and acknowledge store deliveries). The addon still works with `http://`, but warns about it in the server console (on startup, when the URL changes and when linking), in `garrynet_status` and in the `!gnet` menu. Loopback URLs (`localhost`, `127.x.x.x`, `[::1]`) don't trigger the warning.
+
 Garry's Mod refuses HTTP requests to local and private addresses. When the backend runs on the same machine or network (e.g. in development), start the server with `-allowlocalhttp`.
 
 Link state (server id, JWT and server name) is persisted in `garrysmod/data/garrynet/state.json`. The JWT is a secret and is never sent to clients.

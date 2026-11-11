@@ -291,12 +291,15 @@ impl Storage {
         }
     }
 
-    /// How to serve `key` to a client.
-    pub async fn read_target(&self, backend: Backend, key: &str) -> Result<ReadTarget, ApiError> {
+    /// How to serve `key` to a client. A `private` file is never sent to the bucket's public
+    /// URL, which anyone could reuse, but to a short-lived presigned one.
+    pub async fn read_target(&self, backend: Backend, key: &str, private: bool) -> Result<ReadTarget, ApiError> {
         match self.provider(backend)? {
             Provider::Local(_) => Ok(ReadTarget::Stream),
-            Provider::S3 { public_url: Some(base), .. } => Ok(ReadTarget::Redirect(format!("{base}/{key}"))),
-            Provider::S3 { store, public_url: None } => {
+            Provider::S3 { public_url: Some(base), .. } if !private => {
+                Ok(ReadTarget::Redirect(format!("{base}/{key}")))
+            }
+            Provider::S3 { store, .. } => {
                 let url = store
                     .signed_url(Method::GET, &Path::from(key), READ_TTL)
                     .await

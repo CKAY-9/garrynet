@@ -70,7 +70,7 @@ CLOSED
 Support messages can be edited once and have the previous value in `previous_content`.
 A message can have up to 10 files attached (see [STORAGE.md](STORAGE.md)). The author uploads them first, then sends their file IDs as `attachments` with the message (or with the ticket, for its initial message). Each must be a ready file in the author's own folder that isn't attached to anything else; otherwise 400. Editing a message doesn't change its attachments.
 
-File URLs are public but unguessable, so an attachment can be opened by anyone who is given its link, even though the ticket itself is private.
+Attachments are as private as the ticket: once attached, a file is only served to the ticket's creator and the Support Team (by the auth cookie the browser sends with the request), and an internal note's files only to the Support Team. Anyone else, logged out or not, gets 404, even with the link. See [STORAGE.md](STORAGE.md#get-fileowner_idfile_id).
 
 ```
 id: number

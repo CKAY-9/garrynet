@@ -10,6 +10,7 @@ function GarryNet.GetStatus()
 	local linked = GarryNet.Storage.IsLinked()
 	local status = {
 		configured = GarryNet.HTTP.IsConfigured(),
+		insecure = GarryNet.HTTP.IsInsecure(),
 		linked = linked,
 		busy = GarryNet.Link.IsBusy() or GarryNet.Interval.IsBusy(),
 	}

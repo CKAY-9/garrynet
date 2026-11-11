@@ -17,6 +17,32 @@ function GarryNet.HTTP.IsConfigured()
 	return GarryNet.HTTP.GetBaseUrl() ~= ""
 end
 
+GarryNet.HTTP.InsecureWarning = "garrynet_api_url doesn't use https://, so this server's access key and token "
+	.. "are sent unencrypted and can be stolen in transit. Use an https:// URL unless GarryNet is on a "
+	.. "private network you fully trust."
+
+-- True when the backend is reached over plain HTTP on another machine, where the access key and
+-- server token could be read or altered in transit. Loopback hosts are fine: nothing leaves the box.
+function GarryNet.HTTP.IsInsecure()
+	local url = string.lower(GarryNet.HTTP.GetBaseUrl())
+	if url == "" or string.sub(url, 1, 8) == "https://" then return false end
+
+	local rest = string.match(url, "^[%a][%w+.-]*://(.*)$") or url
+	rest = string.match(rest, "^[^@/]*@(.*)$") or rest -- drop any user:password@
+	local host = string.match(rest, "^(%[[^%]]*%])") or string.match(rest, "^([^/:?#]+)") or ""
+	local loopback_v4 = string.match(host, "^127%.%d+%.%d+%.%d+$") ~= nil
+	return not (host == "localhost" or host == "[::1]" or loopback_v4)
+end
+
+-- Warn in the server console once the URL is known (server.cfg runs after autorun), and again
+-- whenever it's changed to an insecure one.
+local function WarnIfInsecure()
+	if GarryNet.HTTP.IsInsecure() then GarryNet.Util.Warn(GarryNet.HTTP.InsecureWarning) end
+end
+
+hook.Add("InitPostEntity", "GarryNet.HTTP.InsecureWarning", WarnIfInsecure)
+cvars.AddChangeCallback("garrynet_api_url", WarnIfInsecure, "GarryNet.HTTP.InsecureWarning")
+
 -- A human-readable reason a request failed, for logs and the menu.
 local function Describe(status, body, reason)
 	if istable(body) and isstring(body.error) and body.error ~= "" then

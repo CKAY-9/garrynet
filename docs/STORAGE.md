@@ -15,7 +15,7 @@ Environment variables (see `backend/.env.example`):
 - `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`: enable the S3 provider
 - `S3_REGION`: default `us-east-1`; use `auto` for R2
 - `S3_ENDPOINT`: for non-AWS stores, e.g. `https://<account>.r2.cloudflarestorage.com`
-- `S3_PUBLIC_URL`: optional public base URL of the bucket (custom domain or CDN); reads redirect there instead of to presigned URLs
+- `S3_PUBLIC_URL`: optional public base URL of the bucket (custom domain or CDN); reads redirect there instead of to presigned URLs (except for support attachments, which are private; see [GET /file](#get-fileowner_idfile_id))
 
 Each file records the provider it was uploaded to, so switching `STORAGE_PROVIDER` only affects new uploads. Old files keep resolving as long as their provider stays configured. The local provider stays available while its directory exists.
 
@@ -137,10 +137,17 @@ Only the uploader can call this. Checks that the stored object exists and has th
 
 ## GET /file/{owner_id}/{id}
 
-Fetch the requested file. Public, since file IDs are unguessable. Returns 404 until the file is ready.
+Fetch the requested file. Public, since file IDs are unguessable, except for support attachments (below). Returns 404 until the file is ready.
 
 - Local: streamed by the backend with `Content-Type`, `Content-Disposition: inline`, an `ETag` (`If-None-Match` gives 304), `Cache-Control: public, max-age=31536000, immutable`, `X-Content-Type-Options: nosniff` and a sandboxing `Content-Security-Policy`.
 - S3: a 302 redirect to `{S3_PUBLIC_URL}/{key}` if set, otherwise to a presigned URL valid for an hour.
+
+**Support attachments** (files attached to a support message) are private: they're only served to the ticket's creator and users with Support Team, and an internal note's files only to Support Team ([SUPPORT.md](SUPPORT.md)). The requester is identified like any route, by the auth cookie (which the browser sends with `<img>` and link requests, as the frontend and backend share a site) or `Authorization: Bearer`. Everyone else gets 404, not 403, so file IDs can't be probed. Before a file is attached it's still public by its unguessable URL, which only its uploader knows.
+
+They're served differently, so access is checked on every view:
+
+- Local: `Cache-Control: private, no-cache`, so only the viewer's browser caches it and revalidates it (a 304) each time.
+- S3: always a presigned URL, even with `S3_PUBLIC_URL`, and the redirect is `Cache-Control: private, no-store`. With `S3_PUBLIC_URL` the bucket itself is public, though: anyone who learns an object's key (it's in the presigned URL) can read it there directly. If support attachments must stay private, don't make the bucket public.
 
 ## DELETE /file/{owner_id}/{id}
 
