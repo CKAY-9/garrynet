@@ -40,7 +40,7 @@ Usergroups are created, edited and deleted from `/admin/usergroups` (see [ADMIN.
 - GET `/admin/usergroups/{id}`: one usergroup in full.
 - POST `/admin/usergroups`: `{ name, effect, color, permissions, icon_url? }`; returns the new group (201). 409 if the name is taken.
 - PUT `/admin/usergroups/{id}`: same body; replaces the group's details and bumps `last_updated`.
-- DELETE `/admin/usergroups/{id}`: deletes the group; its members leave it (204).
+- DELETE `/admin/usergroups/{id}`: deletes the group; its members leave it (204). Requires holding every permission the group grants (403 otherwise), since deleting it revokes them.
 - GET `/admin/usergroups/{id}/members`: the group's members, `{ id, username, avatar_url, added_at }[]`, by name.
 - POST `/admin/usergroups/{id}/members`: `{ user_id }`; adds the user and returns the member (201). 404 if the user doesn't exist, 409 if they're already a member.
 - DELETE `/admin/usergroups/{id}/members/{user_id}`: removes the user (204). 404 if they aren't a member.

@@ -443,14 +443,17 @@ impl Usergroup {
     }
 
     /// Deletes a group, removing its members from it. Returns the deleted group's name.
-    /// Default groups can't be deleted, nor can a group whose removal would take
-    /// [`Editor::must_keep`] away from the editor.
+    /// Default groups can't be deleted, nor can a group granting permissions the editor
+    /// doesn't hold (deleting it revokes them from its members, like removing them in
+    /// [`Usergroup::update`]), nor one whose removal would take [`Editor::must_keep`] away
+    /// from the editor.
     pub async fn delete(db: &PgPool, id: i64, editor: Editor) -> Result<String, EditError> {
         let mut tx = db.begin().await?;
-        let (name, _) = lock(&mut tx, id).await?;
+        let (name, permissions) = lock(&mut tx, id).await?;
         if is_default_group(&name) {
             return Err(EditError::DefaultGroup);
         }
+        check_held(editor, permissions)?;
         sqlx::query("DELETE FROM usergroups WHERE id = $1")
             .bind(id)
             .execute(&mut *tx)

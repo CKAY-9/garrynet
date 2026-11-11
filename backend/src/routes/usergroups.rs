@@ -107,7 +107,7 @@ async fn update(
 }
 
 /// Deletes a usergroup; its members leave it. Requires Admin Access and Usergroup
-/// Management. The default groups can't be deleted.
+/// Management, and every permission the group grants. The default groups can't be deleted.
 #[delete("/admin/usergroups/{id}")]
 async fn remove(
     state: web::Data<AppState>,
