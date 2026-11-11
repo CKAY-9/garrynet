@@ -10,6 +10,8 @@ Servers authenticate with a rolling JWT: a token is valid for 30 days, and once 
 
 Users log in with Steam. If no GarryNet account exists for the Steam account, one is created, and the user is granted access to it via JWT.
 
+Each login is tied to the browser that started it: GET `/auth/steam` sets a short-lived (10 minutes) `garrynet_login_state` cookie holding a random nonce and puts the same nonce in the OpenID `return_to` (`/auth/steam/callback?state=...`), which Steam signs. The callback only accepts an assertion whose `return_to` carries the cookie's nonce, then clears the cookie. Otherwise someone could send a victim to the callback with an assertion for the attacker's own account and have the victim use it unknowingly (login CSRF). A login that takes longer than 10 minutes, or finishes in another browser, has to be started again.
+
 ## Banned Users
 
 Users whose usergroups clear `Site Access` can only view and use the support pages, so they can still appeal. They keep receiving notifications.

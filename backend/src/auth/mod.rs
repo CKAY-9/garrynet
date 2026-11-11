@@ -46,6 +46,31 @@ pub fn removal_cookie(config: &Config) -> Cookie<'static> {
     cookie
 }
 
+/// Name of the cookie tying a Steam login to the browser that started it.
+pub const LOGIN_STATE_COOKIE: &str = "garrynet_login_state";
+
+/// How long the user has to finish signing in on Steam.
+const LOGIN_STATE_TTL_MINUTES: i64 = 10;
+
+/// The login-state cookie, holding the nonce that must come back in Steam's `return_to`. Only
+/// sent to the callback; `Lax` still sends it on Steam's top-level redirect back.
+pub fn login_state_cookie(config: &Config, nonce: String) -> Cookie<'static> {
+    Cookie::build(LOGIN_STATE_COOKIE, nonce)
+        .path("/auth/steam/callback")
+        .http_only(true)
+        .secure(config.cookie_secure)
+        .same_site(SameSite::Lax)
+        .max_age(time::Duration::minutes(LOGIN_STATE_TTL_MINUTES))
+        .finish()
+}
+
+/// A cookie that overwrites and expires the login-state cookie.
+pub fn login_state_removal_cookie(config: &Config) -> Cookie<'static> {
+    let mut cookie = login_state_cookie(config, String::new());
+    cookie.make_removal();
+    cookie
+}
+
 /// Extracts the JWT from `Authorization: Bearer <token>` (used by the Next.js server) or,
 /// failing that, from the auth cookie (direct browser requests).
 fn token_from_request(req: &HttpRequest) -> Option<String> {
