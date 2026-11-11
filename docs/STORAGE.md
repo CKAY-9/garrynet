@@ -116,7 +116,7 @@ Pending uploads still pending after an hour are deleted, along with any bytes th
 
 ### POST /file/upload
 
-Requires Site Access. Body:
+Requires a login, but not Site Access: banned users can still use support, which includes attaching files to their tickets. Where a file can then be attached is checked when it's attached (forum posts need Site Access). Community files need Admin Access. Body:
 
 ```
 name: string // client file name

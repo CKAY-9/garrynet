@@ -35,7 +35,10 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .service(delete_file);
 }
 
-const UPLOAD: Permissions = Permissions::SITE_ACCESS;
+/// Uploading a user file only needs a login, not Site Access: banned users can still use
+/// support, including attaching screenshots to an appeal. What a file can be attached to is
+/// checked where it's attached (posting on the forum needs Site Access).
+const UPLOAD: Permissions = Permissions::from_bits(0);
 /// Community files are the images set in the admin pages (logos, icons, splashes), which
 /// are managed by different permissions, so uploading one only needs the dashboard itself.
 const UPLOAD_COMMUNITY: Permissions = Permissions::ADMIN_ACCESS;
@@ -120,8 +123,8 @@ struct UploadResponse {
     upload: UploadTarget,
 }
 
-/// Starts an upload: records a pending file and returns where to send its bytes. Requires
-/// Site Access; community files require Admin Access.
+/// Starts an upload: records a pending file and returns where to send its bytes. Requires a
+/// login (not Site Access, see [`UPLOAD`]); community files require Admin Access.
 #[post("/file/upload")]
 async fn create_upload(
     state: web::Data<AppState>,
