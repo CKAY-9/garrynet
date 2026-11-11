@@ -55,7 +55,7 @@ Rules:
 
 ## Permission Bits
 
-- 0x1, Site Access: If clear, acts as a global ban. Users can only view and interact with support pages.
+- 0x1, Site Access: If clear, acts as a global ban. Users can only view and interact with support pages. The backend refuses what a ban forbids (posting, buying, uploading); the frontend's proxy (`frontend/src/proxy.ts`) redirects a banned user's other page requests to `/support`, leaving `/support`, `/notifications` and their receipts (`/store/purchases`) open. That redirect is only a courtesy: the pages it hides are public to logged-out visitors.
 - 0x2, User Posts: If set, users can post on the forums.
 - 0x4, Thread Management: If set, users can delete, lock, sticky, and edit forum threads and posts.
 - 0x8, Category Management: If set, users can delete, create, edit, move, and configure forum categories.

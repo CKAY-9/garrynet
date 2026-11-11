@@ -45,12 +45,18 @@ export type SupportViewer = {
   userId: number | null;
   /** Has Support Team: sees every ticket, internal notes and the status menu; manages FAQs. */
   support: boolean;
+  /** Logged in without Site Access: support is the only part of the site they can use. */
+  banned: boolean;
 };
 
 export async function getSupportViewer(): Promise<SupportViewer> {
   const user = await getCurrentUser();
-  if (!user) return { userId: null, support: false };
-  return { userId: user.id, support: hasPermission(user.permissions, Permission.SupportTeam) };
+  if (!user) return { userId: null, support: false, banned: false };
+  return {
+    userId: user.id,
+    support: hasPermission(user.permissions, Permission.SupportTeam),
+    banned: !hasPermission(user.permissions, Permission.SiteAccess),
+  };
 }
 
 function ticketParams(filters: TicketFilters, state?: "active" | "done"): URLSearchParams {
