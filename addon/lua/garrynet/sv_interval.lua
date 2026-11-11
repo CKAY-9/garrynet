@@ -9,9 +9,21 @@ local TIMER = "GarryNet.Interval"
 
 -- Player sessions by SteamID64. Kept across failed syncs so no playtime is lost while GarryNet
 -- is unreachable; a disconnected player's session is dropped once it has been reported.
---   { name, usergroup, connected_at (unix seconds), counted_at, pending (unreported seconds), online }
+--   { name, usergroup, connected_at (unix seconds), counted_at, pending (unreported seconds), online,
+--     stats (latest gamemode stat values), counters (unreported gamemode counters) }
+-- Gamemode stats come from sv_stats.lua.
 GarryNet.Interval.Sessions = GarryNet.Interval.Sessions or {}
 local Sessions = GarryNet.Interval.Sessions
+
+-- Sessions kept across a Lua refresh may predate the stat fields.
+for _, session in pairs(Sessions) do
+	session.stats = session.stats or {}
+	session.counters = session.counters or {}
+end
+
+-- Most a counter can grow by in one heartbeat; the backend caps it there too. The rest waits for
+-- the next heartbeat.
+local MAX_COUNTER = 1000000
 
 -- True while a heartbeat is in flight. Two at once would report the same playtime twice.
 local InFlight = false
@@ -39,7 +51,7 @@ local function Track(ply)
 	local now = os.time()
 	local session = Sessions[steam_id]
 	if not session or not session.online then
-		session = session or { pending = 0 }
+		session = session or { pending = 0, stats = {}, counters = {} }
 		session.connected_at = now
 		session.counted_at = now
 		session.online = true
@@ -49,6 +61,21 @@ local function Track(ply)
 	session.name = ply:Nick()
 	session.usergroup = ply:GetUserGroup()
 	return session
+end
+
+-- Refresh a session's gamemode stat values. A value the gamemode doesn't have right now (e.g.
+-- DarkRP money before it has loaded) keeps its last known value.
+local function SampleStats(ply, session)
+	for key, value in pairs(GarryNet.Stats.Sample(ply)) do
+		session.stats[key] = value
+	end
+end
+
+-- Add to one of a player's gamemode counters (see GarryNet.Stats.Count).
+function GarryNet.Interval.Count(ply, key, amount)
+	if not isnumber(amount) or amount <= 0 then return end
+	local session = Track(ply)
+	if session then session.counters[key] = (session.counters[key] or 0) + amount end
 end
 
 -- Move playtime since the last count into `pending`.
@@ -66,6 +93,7 @@ hook.Add("PlayerDisconnected", "GarryNet.Interval.Track", function(ply)
 	local session = Sessions[ply:SteamID64()]
 	if session and session.online then
 		Accrue(session, os.time())
+		SampleStats(ply, session)
 		session.online = false
 	end
 end)
@@ -75,25 +103,36 @@ local function GamemodeName()
 end
 
 -- Collect what the backend needs for a sync: the server's gamemode/map and its players.
--- Returns the JSON body and, per SteamID64, the whole minutes it reports (to commit on success).
+-- Returns the JSON body and, per SteamID64, the whole minutes and the counters it reports (to
+-- commit on success).
 function GarryNet.Interval.BuildPayload()
 	local now = os.time()
 	for _, ply in ipairs(player.GetHumans()) do
 		local session = Track(ply)
-		if session then Accrue(session, now) end
+		if session then
+			Accrue(session, now)
+			SampleStats(ply, session)
+		end
 	end
 
 	local players, reported = {}, {}
 	for steam_id, session in pairs(Sessions) do
 		local minutes = math.floor(session.pending / 60)
+		local counters = {}
+		for key, count in pairs(session.counters) do
+			counters[key] = math.min(math.floor(count), MAX_COUNTER)
+		end
 		players[#players + 1] = {
 			steam_id = steam_id,
 			name = session.name,
 			usergroup = session.usergroup,
 			connected_at = session.connected_at,
 			minutes = minutes,
+			-- Left out when empty: util.TableToJSON writes an empty table as [].
+			stats = next(session.stats) and session.stats or nil,
+			counters = next(counters) and counters or nil,
 		}
-		reported[steam_id] = minutes
+		reported[steam_id] = { minutes = minutes, counters = counters }
 	end
 
 	return {
@@ -103,12 +142,16 @@ function GarryNet.Interval.BuildPayload()
 	}, reported
 end
 
--- The heartbeat was accepted: subtract the reported playtime, drop finished sessions.
+-- The heartbeat was accepted: subtract the reported playtime and counters, drop finished sessions.
 local function Commit(reported)
-	for steam_id, minutes in pairs(reported) do
+	for steam_id, report in pairs(reported) do
 		local session = Sessions[steam_id]
 		if session then
-			session.pending = session.pending - minutes * 60
+			session.pending = session.pending - report.minutes * 60
+			for key, count in pairs(report.counters) do
+				local left = (session.counters[key] or 0) - count
+				session.counters[key] = left > 0 and left or nil
+			end
 			if not session.online then Sessions[steam_id] = nil end
 		end
 	end

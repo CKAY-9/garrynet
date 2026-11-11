@@ -62,7 +62,7 @@ ingame_name: string
 last_logon: utc timestamp // equals first_joined until the player returns
 first_joined: utc timestamp // also serves as created_at
 ingame_usergroup: string // defaults to "user" if none is provided
-stats: json // gamemode-specific data, e.g. `darkrp_money`
+stats: json // gamemode-specific data, e.g. `darkrp_money`; updated every heartbeat (see "Gamemode Stats" in ADDON.md)
 time_played: number // in minutes; the addon updates it every minute
 ```
 
