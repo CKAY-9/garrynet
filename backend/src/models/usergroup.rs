@@ -110,6 +110,10 @@ pub enum EditError {
     NotHeld(Permissions),
     /// The change would take [`Editor::must_keep`] permissions away from the editor.
     LocksOut,
+    /// The user being removed holds these permissions, which the editor doesn't.
+    Outranked(Permissions),
+    /// The change would leave the `admin` group without members.
+    LastAdmin,
     Database(sqlx::Error),
 }
 
@@ -124,6 +128,9 @@ impl From<sqlx::Error> for EditError {
 
 /// Name of the group every new user joins on their first login.
 pub const DEFAULT_GROUP: &str = "user";
+
+/// Name of the group with every permission, which must always keep a member.
+pub const ADMIN_GROUP: &str = "admin";
 
 struct DefaultGroup {
     name: &'static str,
@@ -145,7 +152,7 @@ const DEFAULT_GROUPS: [DefaultGroup; 2] = [
         permissions: Permissions::BASIC,
     },
     DefaultGroup {
-        name: "admin",
+        name: ADMIN_GROUP,
         effect: UsergroupEffect::Rainbow,
         color: "#e5484d",
         permissions: Permissions::ALL,
@@ -365,8 +372,9 @@ impl Usergroup {
     }
 
     /// Removes the user from the group on the editor's behalf. The editor must hold every
-    /// permission the group grants, and must keep [`Editor::must_keep`] if they're
-    /// removing themselves.
+    /// permission the group grants and, when removing someone else, every permission that
+    /// user holds (so nobody can demote someone above them). The `admin` group must keep a
+    /// member, and the editor must keep [`Editor::must_keep`] if they're removing themselves.
     pub async fn remove_member_as(
         db: &PgPool,
         group_id: i64,
@@ -374,10 +382,26 @@ impl Usergroup {
         editor: Editor,
     ) -> Result<(), EditError> {
         let mut tx = db.begin().await?;
-        let (_, permissions) = lock(&mut tx, group_id).await?;
+        let (name, permissions) = lock(&mut tx, group_id).await?;
         check_held(editor, permissions)?;
+        if user_id != editor.user_id {
+            let outranking = effective_permissions(&mut tx, user_id).await?.difference(editor.permissions);
+            if !outranking.is_empty() {
+                return Err(EditError::Outranked(outranking));
+            }
+        }
         if !delete_member(&mut tx, group_id, user_id).await? {
             return Err(EditError::NotMember);
+        }
+        // The group's row is locked, so concurrent removals can't both take the last one.
+        if name.eq_ignore_ascii_case(ADMIN_GROUP) {
+            let left: i64 = sqlx::query_scalar("SELECT count(*) FROM usergroup_members WHERE usergroup_id = $1")
+                .bind(group_id)
+                .fetch_one(&mut *tx)
+                .await?;
+            if left == 0 {
+                return Err(EditError::LastAdmin);
+            }
         }
         check_kept(&mut tx, editor).await?;
         touch(&mut tx, group_id).await?;
@@ -501,18 +525,23 @@ fn check_held(editor: Editor, changed: Permissions) -> Result<(), EditError> {
     if not_held.is_empty() { Ok(()) } else { Err(EditError::NotHeld(not_held)) }
 }
 
-/// The editor must still hold [`Editor::must_keep`] after the transaction's changes.
-async fn check_kept(conn: &mut PgConnection, editor: Editor) -> Result<(), EditError> {
+/// The user's effective permissions as the transaction sees them.
+async fn effective_permissions(conn: &mut PgConnection, user_id: i64) -> sqlx::Result<Permissions> {
     let bits: i64 = sqlx::query_scalar(
         "SELECT COALESCE(bit_or(g.permissions), 0)
          FROM usergroups g
          JOIN usergroup_members um ON um.usergroup_id = g.id
          WHERE um.user_id = $1",
     )
-    .bind(editor.user_id)
+    .bind(user_id)
     .fetch_one(conn)
     .await?;
-    if Permissions::from_bits(bits).contains(editor.must_keep) {
+    Ok(Permissions::from_bits(bits))
+}
+
+/// The editor must still hold [`Editor::must_keep`] after the transaction's changes.
+async fn check_kept(conn: &mut PgConnection, editor: Editor) -> Result<(), EditError> {
+    if effective_permissions(conn, editor.user_id).await?.contains(editor.must_keep) {
         Ok(())
     } else {
         Err(EditError::LocksOut)

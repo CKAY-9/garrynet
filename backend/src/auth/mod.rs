@@ -121,7 +121,7 @@ impl AuthServer {
 }
 
 /// The authenticated user. Add it as a handler argument to require login; requests
-/// without a valid JWT are rejected with 401. Extracting it also records the access
+/// without a valid JWT, or with a revoked one, are rejected with 401. Extracting it also records the access
 /// (status ONLINE, `last_seen` = now).
 pub struct AuthUser(pub User);
 
@@ -137,8 +137,9 @@ impl FromRequest for AuthUser {
             let state =
                 state.ok_or_else(|| ApiError::Internal("AppState not registered".into()))?;
             let token = token.ok_or(ApiError::Unauthorized)?;
-            let user_id = state.jwt.verify(&token)?;
-            let user = User::touch(&state.db, user_id)
+            let claims = state.jwt.verify(&token)?;
+            // Also rejects a token revoked since (an old `ver`).
+            let user = User::touch(&state.db, claims.user_id()?, claims.ver)
                 .await?
                 .ok_or(ApiError::Unauthorized)?;
             Ok(AuthUser(user))

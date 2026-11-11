@@ -47,8 +47,18 @@ pub struct Claims {
     /// GarryNet user id.
     pub sub: String,
     pub steam_id: String,
+    /// `users.token_version` when the token was issued; the token is only accepted while it
+    /// still matches. Missing in tokens issued before versions existed, which read as 0.
+    #[serde(default)]
+    pub ver: i64,
     pub iat: i64,
     pub exp: i64,
+}
+
+impl Claims {
+    pub fn user_id(&self) -> Result<i64, ApiError> {
+        self.sub.parse().map_err(|_| ApiError::Unauthorized)
+    }
 }
 
 #[derive(Clone)]
@@ -70,6 +80,7 @@ impl JwtKeys {
         let claims = Claims {
             sub: user.id.to_string(),
             steam_id: user.steam_id.clone(),
+            ver: user.token_version,
             iat: now.timestamp(),
             exp: (now + USER_TOKEN_TTL).timestamp(),
         };
@@ -77,13 +88,14 @@ impl JwtKeys {
             .map_err(|e| ApiError::Internal(format!("failed to sign JWT: {e}")))
     }
 
-    /// Validates the signature and expiry, returning the user id the token was issued for.
-    pub fn verify(&self, token: &str) -> Result<i64, ApiError> {
+    /// Validates the signature and expiry, returning the token's claims. The caller still
+    /// has to check `ver` against the database.
+    pub fn verify(&self, token: &str) -> Result<Claims, ApiError> {
         let mut validation = Validation::new(Algorithm::HS256);
         validation.leeway = 0;
-        let data = decode::<Claims>(token, &self.decoding, &validation)
-            .map_err(|_| ApiError::Unauthorized)?;
-        data.claims.sub.parse().map_err(|_| ApiError::Unauthorized)
+        decode::<Claims>(token, &self.decoding, &validation)
+            .map(|data| data.claims)
+            .map_err(|_| ApiError::Unauthorized)
     }
 
     /// Issues a token for server `server_id` at `servers.token_version` = `version`.
@@ -129,6 +141,7 @@ mod tests {
             status: UserStatus::Online,
             joined: Utc::now(),
             last_seen: Utc::now(),
+            token_version: 3,
         }
     }
 
@@ -138,7 +151,9 @@ mod tests {
     fn round_trip() {
         let keys = JwtKeys::new(SECRET);
         let token = keys.issue(&user()).unwrap();
-        assert_eq!(keys.verify(&token).unwrap(), 42);
+        let claims = keys.verify(&token).unwrap();
+        assert_eq!(claims.user_id().unwrap(), 42);
+        assert_eq!(claims.ver, 3);
     }
 
     #[test]
@@ -155,11 +170,33 @@ mod tests {
         let claims = Claims {
             sub: "42".into(),
             steam_id: "76561197960287930".into(),
+            ver: 0,
             iat: past.timestamp(),
             exp: (past + USER_TOKEN_TTL).timestamp(),
         };
         let token = encode(&Header::default(), &claims, &keys.encoding).unwrap();
         assert!(keys.verify(&token).is_err());
+    }
+
+    #[test]
+    fn tokens_without_a_version_read_as_zero() {
+        #[derive(Serialize)]
+        struct Old {
+            sub: String,
+            steam_id: String,
+            iat: i64,
+            exp: i64,
+        }
+        let keys = JwtKeys::new(SECRET);
+        let now = Utc::now();
+        let old = Old {
+            sub: "42".into(),
+            steam_id: "76561197960287930".into(),
+            iat: now.timestamp(),
+            exp: (now + USER_TOKEN_TTL).timestamp(),
+        };
+        let token = encode(&Header::default(), &old, &keys.encoding).unwrap();
+        assert_eq!(keys.verify(&token).unwrap().ver, 0);
     }
 
     #[test]

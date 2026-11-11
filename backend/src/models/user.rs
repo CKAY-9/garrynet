@@ -85,6 +85,9 @@ pub struct User {
     pub status: UserStatus,
     pub joined: DateTime<Utc>,
     pub last_seen: DateTime<Utc>,
+    /// The JWT version currently accepted for this user; see [`User::revoke_tokens`].
+    #[serde(skip)]
+    pub token_version: i64,
 }
 
 impl User {
@@ -270,16 +273,30 @@ impl User {
         .await
     }
 
-    /// Records that the user accessed a route: marks them online and bumps `last_seen`.
-    /// Returns `None` if the user no longer exists.
-    pub async fn touch(db: &PgPool, id: i64) -> sqlx::Result<Option<User>> {
+    /// Records that the user accessed a route with a token of version `token_version`: marks
+    /// them online and bumps `last_seen`. Returns `None` (changing nothing) if the user no
+    /// longer exists or the token has been revoked.
+    pub async fn touch(db: &PgPool, id: i64, token_version: i64) -> sqlx::Result<Option<User>> {
         sqlx::query_as(
             "UPDATE users SET status = 'ONLINE', last_seen = now()
-             WHERE id = $1
+             WHERE id = $1 AND token_version = $2
              RETURNING *",
         )
         .bind(id)
+        .bind(token_version)
         .fetch_optional(db)
         .await
+    }
+
+    /// Revokes every token issued to the user so far, signing them out everywhere, and marks
+    /// them offline. Returns `false` if there is no such user.
+    pub async fn revoke_tokens(db: &PgPool, id: i64) -> sqlx::Result<bool> {
+        let result = sqlx::query(
+            "UPDATE users SET token_version = token_version + 1, status = 'OFFLINE' WHERE id = $1",
+        )
+        .bind(id)
+        .execute(db)
+        .await?;
+        Ok(result.rows_affected() > 0)
     }
 }

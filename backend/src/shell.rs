@@ -27,6 +27,7 @@ commands:
   usergroup add <USER> <GROUP>              add a user to a usergroup
   usergroup remove <USER> <GROUP>           remove a user from a usergroup
   user show <USER>                          show a user's groups and effective permissions
+  user logout <USER>                        sign a user out everywhere (revokes their tokens)
 
   <USER>  GarryNet user id, or 17-digit SteamID64
   <GROUP> usergroup id or name (case-insensitive; quote names with spaces)";
@@ -119,7 +120,8 @@ pub async fn execute(db: &PgPool, args: &[String]) -> Result<String, CommandErro
         ),
 
         ["user", "show", user] => user_show(db, user).await,
-        ["user", ..] => invalid("usage: user show <USER>"),
+        ["user", "logout", user] => user_logout(db, user).await,
+        ["user", ..] => invalid("usage: user show <USER> | logout <USER>"),
 
         [cmd, ..] => invalid(format!("unknown command `{cmd}`; type `help` for commands")),
     }
@@ -225,6 +227,14 @@ async fn user_show(db: &PgPool, key: &str) -> Result<String, CommandError> {
         user.last_seen.format("%Y-%m-%d %H:%M UTC"),
         if group_names.is_empty() { "none".into() } else { group_names.join(", ") },
     ))
+}
+
+/// Revokes every token issued to the user, e.g. after their account was compromised.
+async fn user_logout(db: &PgPool, key: &str) -> Result<String, CommandError> {
+    let user = resolve_user(db, key).await?;
+    User::revoke_tokens(db, user.id).await?;
+    log::info!("shell: signed {} out everywhere (tokens revoked)", describe(&user));
+    Ok(String::new())
 }
 
 fn describe(user: &User) -> String {

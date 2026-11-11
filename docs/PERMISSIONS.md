@@ -26,7 +26,7 @@ Members are added and removed from the group's page under `/admin/usergroups` (s
 
 To remove: `usergroup remove [USER_ID] [GROUP_NAME/ID]`
 
-`USER_ID` also accepts a SteamID64. Other shell commands: `usergroup list`, `usergroup show [GROUP_NAME/ID]`, `user show [USER_ID]`, and `help`. Membership changes are logged.
+`USER_ID` also accepts a SteamID64. Other shell commands: `usergroup list`, `usergroup show [GROUP_NAME/ID]`, `user show [USER_ID]`, `user logout [USER_ID]` (signs them out everywhere; see [AUTH.md](AUTH.md)), and `help`. Membership changes are logged.
 
 The same commands can be run one-shot without attaching to the running server's terminal, e.g. `backend usergroup add 1 admin` (needs only `DATABASE_URL`).
 
@@ -50,6 +50,8 @@ Rules:
 - `color`: hex (`#rgb`, `#rrggbb` or `#rrggbbaa`). `icon_url`: an http(s) URL or blank.
 - `permissions`: only documented bits. Editors can only grant or revoke permissions they hold themselves (403 otherwise), so Usergroup Management can't be used to escalate.
 - Adding or removing members requires holding every permission the group grants (403 otherwise), so a moderator can't put anyone, themselves included, into `admin`.
+- Removing someone else also requires holding every permission they hold (403 otherwise), so nobody can demote a user above them.
+- The `admin` group must keep at least one member (400 for removing the last one). The shell isn't held to this, so it can still be used to recover.
 - A change that would remove the editor's own `Admin Access` or `Usergroup Management` (editing or deleting one of their groups, or leaving one) is refused with 400.
 - Changes are logged.
 

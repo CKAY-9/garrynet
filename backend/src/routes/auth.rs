@@ -2,7 +2,7 @@ use actix_web::{HttpResponse, get, http::header, post, web};
 
 use crate::{
     auth::{
-        auth_cookie, removal_cookie,
+        AuthUser, auth_cookie, removal_cookie,
         steam::{self, Assertion},
     },
     error::ApiError,
@@ -63,9 +63,15 @@ async fn steam_callback(
     Ok(res)
 }
 
-/// Clears the auth cookie. JWTs are stateless, so this only signs out the current browser.
+/// Signs the user out everywhere: revokes every token issued to them (so a stolen one stops
+/// working too) and clears this browser's auth cookie. Without a valid token it only clears
+/// the cookie.
 #[post("/auth/logout")]
-async fn logout(state: web::Data<AppState>) -> Result<HttpResponse, ApiError> {
+async fn logout(state: web::Data<AppState>, user: Option<AuthUser>) -> Result<HttpResponse, ApiError> {
+    if let Some(AuthUser(user)) = user {
+        User::revoke_tokens(&state.db, user.id).await?;
+        log::info!("user {} logged out; their tokens are revoked", user.id);
+    }
     let mut res = redirect(&state.config.frontend_url);
     res.add_cookie(&removal_cookie(&state.config))
         .map_err(|e| ApiError::Internal(e.to_string()))?;
