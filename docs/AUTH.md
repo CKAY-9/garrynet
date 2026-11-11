@@ -4,6 +4,8 @@ Part of [GarryNet Design](README.md).
 
 All authentication uses JWT. A standard user JWT expires after 24 hours and is stored in an httpOnly cookie.
 
+The cookie is `SameSite=Lax`, which keeps it off cross-site POSTs but not off requests from sibling subdomains (they count as the same site). So a state-changing request (anything but GET, HEAD or OPTIONS) authenticated by the cookie is refused with 403 when its `Origin` isn't the frontend's or the backend's (from `FRONTEND_URL` and `BACKEND_URL`). Requests with `Authorization: Bearer` (the Next.js server, the addon) or without an `Origin` header (not from a browser page) aren't affected.
+
 User tokens are revocable: each carries the user's `token_version`, and a token is only accepted while that still matches. Logging out (POST `/auth/logout`) bumps it, so it signs the user out on every device and a stolen token stops working too. The backend shell can do the same for any user with `user logout [USER_ID]`, e.g. after an account was compromised.
 
 Servers authenticate with a rolling JWT: a token is valid for 30 days, and once it is an hour old the next heartbeat returns a replacement. Linking, unlinking and regenerating the access key revoke all of a server's earlier tokens. See [ADDON.md](ADDON.md#server-tokens).
