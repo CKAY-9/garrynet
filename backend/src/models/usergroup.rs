@@ -2,7 +2,10 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::{PgConnection, PgPool};
 
-use super::Permissions;
+use super::{
+    Permissions,
+    punishment::{self, PunishmentKind},
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
 #[sqlx(type_name = "usergroup_effect", rename_all = "lowercase")]
@@ -274,17 +277,32 @@ impl Usergroup {
     }
 
     /// The user's effective permissions: the OR of all their groups' permissions.
+    ///
+    /// Bans and suspensions in effect take their permissions away (see
+    /// [`PunishmentKind::revokes`]), so every permission check honours them.
     pub async fn permissions_for_user(db: &PgPool, user_id: i64) -> sqlx::Result<Permissions> {
-        let bits: i64 = sqlx::query_scalar(
-            "SELECT COALESCE(bit_or(g.permissions), 0)
-             FROM usergroups g
-             JOIN usergroup_members um ON um.usergroup_id = g.id
-             WHERE um.user_id = $1",
-        )
+        let bits: i64 = sqlx::query_scalar(punishment::in_effect!(
+            "SELECT COALESCE((SELECT bit_or(g.permissions)
+                              FROM usergroups g
+                              JOIN usergroup_members um ON um.usergroup_id = g.id
+                              WHERE um.user_id = $1), 0)
+                    & ~COALESCE((SELECT bit_or(CASE p.kind WHEN 'BAN' THEN $2 ELSE $3 END)
+                                 FROM user_punishments p
+                                 WHERE p.user_id = $1 AND",
+            "), 0)"
+        ))
         .bind(user_id)
+        .bind(PunishmentKind::Ban.revokes())
+        .bind(PunishmentKind::Suspend.revokes())
         .fetch_one(db)
         .await?;
         Ok(Permissions::from_bits(bits))
+    }
+
+    /// The permissions the user's usergroups grant, ignoring punishments: what they'd hold
+    /// if every ban and suspension were lifted. Used to decide who outranks whom.
+    pub async fn group_permissions_for_user(db: &PgPool, user_id: i64) -> sqlx::Result<Permissions> {
+        effective_permissions(&mut *db.acquire().await?, user_id).await
     }
 
     /// Adds the user to the group. Returns `false` if they were already a member. No

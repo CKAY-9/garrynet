@@ -26,7 +26,7 @@ Members are added and removed from the group's page under `/admin/usergroups` (s
 
 To remove: `usergroup remove [USER_ID] [GROUP_NAME/ID]`
 
-`USER_ID` also accepts a SteamID64. Other shell commands: `usergroup list`, `usergroup show [GROUP_NAME/ID]`, `user show [USER_ID]`, `user logout [USER_ID]` (signs them out everywhere; see [AUTH.md](AUTH.md)), and `help`. Membership changes are logged.
+`USER_ID` also accepts a SteamID64. Other shell commands: `usergroup list`, `usergroup show [GROUP_NAME/ID]`, `user show [USER_ID]`, `user logout [USER_ID]` (signs them out everywhere; see [AUTH.md](AUTH.md)), `user unban [USER_ID]` and `user unsuspend [USER_ID]` (see [User Punishment](USERS.md#user-punishment)), and `help`. Membership changes are logged.
 
 The same commands can be run one-shot without attaching to the running server's terminal, e.g. `backend usergroup add 1 admin` (needs only `DATABASE_URL`).
 
@@ -57,12 +57,12 @@ Rules:
 
 ## Permission Bits
 
-- 0x1, Site Access: If clear, acts as a global ban. Users can only view and interact with support pages. The backend refuses what a ban forbids (posting, buying, uploading); the frontend's proxy (`frontend/src/proxy.ts`) redirects a banned user's other page requests to `/support`, leaving `/support`, `/notifications` and their receipts (`/store/purchases`) open. That redirect is only a courtesy: the pages it hides are public to logged-out visitors.
+- 0x1, Site Access: If clear, acts as a global ban. A [ban](USERS.md#user-punishment) clears it (with every other permission) while in effect. Users can only view and interact with support pages. The backend refuses what a ban forbids (posting, buying, uploading); the frontend's proxy (`frontend/src/proxy.ts`) redirects a banned user's other page requests to `/support`, leaving `/support`, `/notifications` and their receipts (`/store/purchases`) open. That redirect is only a courtesy: the pages it hides are public to logged-out visitors.
 - 0x2, User Posts: If set, users can post on the forums.
 - 0x4, Thread Management: If set, users can delete, lock, sticky, and edit forum threads and posts.
 - 0x8, Category Management: If set, users can delete, create, edit, move, and configure forum categories.
 - 0x10, Section Management: If set, users can delete, create, edit, move, and configure forum sections.
-- 0x20, User Management: If set, users can manage users. Today this covers deleting other users' uploaded files; banning and suspending are **Planned** (see [User Punishment](USERS.md#user-punishment)).
+- 0x20, User Management: If set, users can manage users: banning and suspending them, and lifting those (see [User Punishment](USERS.md#user-punishment)), and deleting their uploaded files. Both also require `Admin Access`.
 - 0x40, Admin Access: If set, reveals admin navigation options and permits access to protected admin routes (e.g., `/admin`). Allows editing the loading screen and other sub-components.
 - 0x80, Elevated Control: If set, users can perform **dangerous actions** across the whole site. Today this covers editing a store's grantable usergroups.
 - 0x100, Usergroup Management: If set, users can create, edit, and remove usergroups, and add or remove users from them.
@@ -79,4 +79,4 @@ Actions that can't be undone or that affect the whole site, such as choosing whi
 
 **Users in Multiple Groups**
 
-A user's effective permissions are the combination (bitwise OR) of the permissions of all their usergroups.
+A user's effective permissions are the combination (bitwise OR) of the permissions of all their usergroups, minus what a [ban or suspension](USERS.md#user-punishment) in effect takes away: everything for a ban, `User Posts` and `User Messages` for a suspension.

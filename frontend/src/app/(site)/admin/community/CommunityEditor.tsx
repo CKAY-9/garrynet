@@ -27,6 +27,7 @@ type Draft = {
   splash_background: string;
   external_links: Keyed<{ url: string }>[];
   key_figures: FigureDraft[];
+  ban_from_servers: boolean;
 };
 
 let nextKey = 0;
@@ -40,6 +41,7 @@ function toDraft(c: CommunityDetails): Draft {
     splash_background: c.splash_background ?? "",
     external_links: c.external_links.map((url) => ({ key: key(), url })),
     key_figures: c.key_figures.map((f) => ({ ...f, user_id: f.user_id?.toString() ?? "", key: key() })),
+    ban_from_servers: c.ban_from_servers,
   };
 }
 
@@ -67,6 +69,7 @@ function toDetails(d: Draft): CommunityDetails {
       role: role.trim(),
       description: description.trim(),
     })),
+    ban_from_servers: d.ban_from_servers,
   };
 }
 
@@ -248,6 +251,25 @@ export function CommunityEditor({ community }: { community: Community }) {
         <button type="button" className={styles.add} onClick={addFigure} disabled={draft.key_figures.length >= MAX_KEY_FIGURES}>
           + Add key figure
         </button>
+      </fieldset>
+
+      <fieldset className={styles.group}>
+        <legend className={styles.legend}>Game servers</legend>
+        <label className={styles.checkbox}>
+          <input
+            type="checkbox"
+            checked={draft.ban_from_servers}
+            onChange={(e) => update({ ban_from_servers: e.target.checked })}
+          />
+          <span>
+            <span className={styles.label}>Keep banned users off game servers</span>
+            <span className={styles.hint}>
+              Linked servers running the GarryNet addon refuse players banned on GarryNet when they connect, and kick
+              them if they&apos;re already playing. The ban list is checked every minute, so a new ban can take up to a
+              minute to apply. Suspended users can still play.
+            </span>
+          </span>
+        </label>
       </fieldset>
 
       <div className={styles.actions}>

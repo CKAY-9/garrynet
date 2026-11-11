@@ -3,7 +3,15 @@ import { connection } from "next/server";
 import axios from "axios";
 import { backend } from "./backend";
 import { authHeaders } from "./auth";
-import type { Usergroup, UsergroupBadge, UsergroupMember, UserProfile, UserSearchFilters, UserSearchResult } from "./types";
+import type {
+  Punishment,
+  Usergroup,
+  UsergroupBadge,
+  UsergroupMember,
+  UserProfile,
+  UserSearchFilters,
+  UserSearchResult,
+} from "./types";
 
 /**
  * The public profile of the user with GarryNet id `id`, or `null` if there is no such
@@ -22,6 +30,26 @@ export async function getUserProfile(id: string): Promise<UserProfile | null> {
   } catch (err) {
     if (axios.isAxiosError(err) && err.response?.status === 404) return null;
     throw err;
+  }
+}
+
+/**
+ * The user's punishments, newest first. Staff (Admin Access and User Management) get the
+ * whole history; users get their own punishments in effect. `null` for anyone else, or if
+ * they couldn't be loaded (the profile still renders). Request-time.
+ */
+export async function getUserPunishments(id: number): Promise<Punishment[] | null> {
+  await connection();
+  try {
+    const { data } = await backend.get<Punishment[]>(`/users/${id}/punishments`, { headers: await authHeaders() });
+    return data;
+  } catch (err) {
+    const status = axios.isAxiosError(err) ? err.response?.status : undefined;
+    if (status !== 401 && status !== 403) {
+      // Log only the message: the axios error carries the request config, including the token.
+      console.error(`Failed to load the punishments of user ${id}:`, err instanceof Error ? err.message : err);
+    }
+    return null;
   }
 }
 

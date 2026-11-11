@@ -16,6 +16,6 @@ Each login is tied to the browser that started it: GET `/auth/steam` sets a shor
 
 ## Banned Users
 
-Users whose usergroups clear `Site Access` can only view and use the support pages, so they can still appeal. They keep receiving notifications.
+Users without `Site Access` can only view and use the support pages, so they can still appeal. They keep receiving notifications.
 
-**Planned:** users with an active ban (see [User Punishment](USERS.md#user-punishment)) will be treated the same way, without changing their usergroups.
+A user loses `Site Access` either because none of their usergroups grant it, or because they're banned (see [User Punishment](USERS.md#user-punishment)): a ban takes away every permission while it's in effect, without changing their usergroups. Both are treated the same way, and a ban stops applying on its own when it ends.

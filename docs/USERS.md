@@ -38,20 +38,64 @@ OFFLINE
 
 ## User Punishment
 
-**Planned.** Not implemented yet: there is no punishments table or route. Until then, removing a user's `Site Access` (through their usergroups) works as a ban.
-
-Tracks website bans, suspensions, and warnings. These are separate from Player Punishments, which apply in-game.
+Website bans and suspensions, issued from a user's profile. These are separate from Player Punishments, which apply in-game. Warnings are **Planned**.
 
 ```
 id: number
 user_id: number
+kind: BAN | SUSPEND
 reason: string
-punishment: "ban" | "suspend" | "warn"
-issuer_id: number
+issuer_id?: number // null once the issuer's account is deleted
 created_at: utc timestamp
-ends?: utc timestamp // when this punishment stops being enforced; null/empty if permanent
-active: boolean // true = currently enforced; false = kept for history only
+ends?: utc timestamp // when it stops being enforced; null if permanent (bans only; suspensions always end)
+active: boolean // false once lifted early, or once an expired one is replaced; kept for history
+lifted_by?: number // who lifted it early; null for the backend shell or a deleted account
+lifted_at?: utc timestamp
+lift_reason?: string // optional note from whoever lifted it
 ```
+
+A punishment is **in effect** while it's active and hasn't ended. Expired punishments don't need a sweeper: they stop counting on their own. A user can have at most one ban and one suspension in effect, and both at once.
+
+Punishments work by taking permissions away from the user's [effective permissions](PERMISSIONS.md#users-in-multiple-groups), without changing their usergroups, so every permission check honours them:
+
+- **Ban:** every permission. The user is treated like any user without `Site Access` (see [AUTH.md](AUTH.md#banned-users)): only support, notifications and their receipts. If the community enables it in [Admin > Community](ADMIN.md#admincommunity), the addon also keeps them off the community's game servers (see [ADDON.md](ADDON.md#ban-enforcement)). Permanent or timed.
+- **Suspension:** `User Posts` and `User Messages`. The user can still browse and buy, but can't post on the forums or send messages. Always timed. Suspended users can still join game servers.
+
+### Banning and Suspending
+
+Staff with `Admin Access` and `User Management` see **Ban** and **Suspend** buttons next to "View on Steam" on a user's profile, or **Unban** and **Unsuspend** while one is in effect. Each opens a dialog:
+
+- Ban/Suspend asks for a reason (required, up to 500 characters, shown to the user) and a length: a preset (bans default to permanent, suspensions to 1 day) or "Until a date..." in the staff member's time zone.
+- Unban/Unsuspend shows the current reason and end, and asks for an optional note, kept in the history but not shown to the user.
+
+A ban in effect is public: everyone, logged out included, sees "Banned until ..." (or "permanently"), the reason, and when it was issued ("Banned on November 11, 2026 (3 days ago)") above the bio. Who issued it is never shown publicly. Suspensions aren't public: staff see one in effect (with who issued it), and so does the suspended user (without staff names). Staff also get a collapsible punishment history with who issued and lifted each one.
+
+The user gets an ACCOUNT notification when banned or suspended (with the reason and end) and when it's lifted early (see [NOTIFICATIONS.md](NOTIFICATIONS.md)). Expiry isn't notified. Issuing and lifting are logged.
+
+Rules:
+- Nobody can ban, suspend, unban or unsuspend themselves (400).
+- The target's usergroups must not grant any permission the staff member lacks (403 otherwise), the same rule as removing someone from a usergroup. Punishments are ignored here, so a banned admin still outranks a moderator, who can't unban them.
+- One of each kind at a time: banning someone already banned is 409. To change a ban (e.g. its length), lift it and issue a new one.
+- The end must be in the future.
+
+The backend shell can lift them without these checks, e.g. to recover an admin banned by another: `user unban [USER_ID]` and `user unsuspend [USER_ID]`. `user show [USER_ID]` lists the punishments in effect.
+
+### Routes
+
+- GET `/users/{id}` (the public profile) includes `ban`: `{ reason, created_at, ends }` for a ban in effect, else null. No issuer.
+- GET `/users/{id}/punishments`: the user's punishments, newest first (at most 100). Staff (Admin Access and User Management) get the full history; users get their own punishments in effect, with `issuer` and `lifted_by` null. 403 for anyone else, 404 (staff only) if there's no such user.
+
+    ```json
+    [{
+      "id": 3, "kind": "BAN", "reason": "Aimbot on DarkRP",
+      "created_at": "...", "ends": null, "in_effect": true,
+      "issuer": { "id": 3, "username": "Mod" },
+      "lifted_at": null, "lifted_by": null, "lift_reason": null
+    }]
+    ```
+
+- POST `/users/{id}/punishments`: `{ kind: "BAN" | "SUSPEND", reason, ends?: utc timestamp }`; returns the punishment (201). Requires Admin Access and User Management. 409 if one of that kind is already in effect.
+- POST `/users/{id}/punishments/lift`: `{ kind, reason? }`; lifts the one in effect and returns it. Same requirements. 404 if none is in effect.
 
 ## User Player
 

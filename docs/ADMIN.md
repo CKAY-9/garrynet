@@ -56,6 +56,12 @@ Requires: Admin Access and Usergroup Management
 Admins can edit the community details: name, description, logo, splash background, external links and key figures (add, remove, reorder). Changes apply when saved.
 Requires: Community Management
 
+**Game servers:** "Keep banned users off game servers" (off by default, `ban_from_servers` on `PUT /community`) makes linked servers refuse players banned on GarryNet and kick ones already playing. See [ADDON.md](ADDON.md#ban-enforcement).
+
+## Banning and Suspending
+
+Not an admin page: staff with Admin Access and User Management ban, suspend and lift those from the user's profile. See [USERS.md](USERS.md#banning-and-suspending).
+
 ## /admin/forum
 
 Admins can create and delete forum sections and categories (see [FORUM.md](FORUM.md)). Deleting asks for a second click, since it removes every thread inside.

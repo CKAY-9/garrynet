@@ -1,15 +1,12 @@
-import Link from "next/link";
 import { SiteShell } from "@/components/SiteShell";
-import { StatusPage } from "@/components/StatusPage";
+import SiteForbidden from "./(site)/forbidden";
 
-// Rendered in place of the `(site)` layout, so it brings its own navigation.
+// Rendered in place of the `(site)` layout (only for errors thrown above `(site)`'s own
+// boundary), so it brings its own navigation.
 export default function Forbidden() {
   return (
     <SiteShell>
-      <StatusPage code={403} title="Access denied">
-        <p>Your usergroups don&apos;t have permission to view this page.</p>
-        <Link href="/">Return home</Link>
-      </StatusPage>
+      <SiteForbidden />
     </SiteShell>
   );
 }

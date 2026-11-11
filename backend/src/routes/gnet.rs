@@ -10,8 +10,9 @@ use crate::{
     auth::{AuthServer, authorization},
     error::ApiError,
     models::{
-        Server, UserPlayer,
+        Community, Punishment, Server, UserPlayer,
         player::PlayerSession,
+        punishment::ServerBan,
         store::{AckResult, Fulfillment, FulfillmentStatus, MAX_ATTEMPTS},
     },
     notify,
@@ -28,7 +29,8 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .service(heartbeat)
             .service(unlink)
             .service(fulfillments)
-            .service(acknowledge_fulfillment),
+            .service(acknowledge_fulfillment)
+            .service(bans),
     );
 }
 
@@ -330,6 +332,34 @@ async fn unlink(
     Server::unlink(&state.db, auth.id).await?;
     log::info!("server {} unlinked itself", auth.id);
     Ok(HttpResponse::NoContent().finish())
+}
+
+#[derive(Serialize)]
+struct BanList {
+    /// Whether the community keeps banned users off its game servers. When false, `bans`
+    /// is empty and the addon lets everyone in.
+    enforce: bool,
+    /// Where banned players can appeal (the website's support page), for the kick message.
+    appeal_url: String,
+    bans: Vec<ServerBan>,
+}
+
+/// Users banned on GarryNet right now, by SteamID64, so the addon can refuse them when they
+/// connect (docs/ADDON.md "Ban Enforcement"). Polled every minute.
+#[get("/{id}/bans")]
+async fn bans(
+    state: web::Data<AppState>,
+    auth: AuthServer,
+    id: web::Path<i64>,
+) -> Result<HttpResponse, ApiError> {
+    auth.require_id(id.into_inner())?;
+    let enforce = Community::bans_from_servers(&state.db).await?;
+    let bans = if enforce { Punishment::server_bans(&state.db).await? } else { Vec::new() };
+    Ok(HttpResponse::Ok().json(BanList {
+        enforce,
+        appeal_url: format!("{}/support", state.config.frontend_url),
+        bans,
+    }))
 }
 
 #[cfg(test)]

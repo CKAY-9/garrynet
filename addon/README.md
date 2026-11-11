@@ -3,7 +3,7 @@
 Garry's Mod addon that connects a server to a GarryNet deployment. See [docs/ADDON.md](../docs/ADDON.md),
 [docs/SERVERS.md](../docs/SERVERS.md) and [docs/USER_STORIES.md](../docs/USER_STORIES.md) for the design.
 
-**Status:** linking, unlinking, the per-minute heartbeat (server details, player records, gamemode stats) and store delivery work. Pushing config changes from the website is not implemented yet.
+**Status:** linking, unlinking, the per-minute heartbeat (server details, player records, gamemode stats), store delivery and ban enforcement work. Pushing config changes from the website is not implemented yet.
 
 ## Install
 
@@ -45,6 +45,14 @@ Other admin mods can plug in with `GarryNet.Rewards.SetUsergroupAdapter` (see `s
 State is kept in `garrysmod/data/garrynet/store_grants.json` and `store_pending.json`; don't delete them while purchases
 are being delivered.
 
+## Bans
+
+When "Keep banned users off game servers" is on in the website's Admin > Community, players banned on GarryNet are refused
+when they connect and kicked if they're playing, with the reason, the end of the ban and where to appeal. The ban list is
+fetched every minute, so a new ban takes up to a minute to apply. The last list is kept in
+`garrysmod/data/garrynet/bans.json` and still enforced while GarryNet is unreachable. Suspensions don't apply in-game. See
+[docs/ADDON.md](../docs/ADDON.md#ban-enforcement).
+
 ## Layout
 
 ```
@@ -61,6 +69,7 @@ lua/garrynet/
   sv_stats.lua              gamemode stats: providers, sampling, counters
   sv_store_rewards.lua      store rewards: usergroup adapters (ULX/plain), timed groups, weapons, revoking
   sv_store.lua              store delivery: fetch the queue, apply, acknowledge
+  sv_bans.lua               ban enforcement: fetch the ban list, refuse and kick banned players
   sv_net.lua                net handlers for the menu (superadmin-checked)
   sv_commands.lua           !gnet chat command, garrynet_* console commands
   cl_net.lua                client net handlers and senders

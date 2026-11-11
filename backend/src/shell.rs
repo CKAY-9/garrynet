@@ -15,7 +15,7 @@ use sqlx::PgPool;
 use tokio::sync::mpsc;
 
 use crate::{
-    models::{Permissions, User, Usergroup},
+    models::{Permissions, Punishment, User, Usergroup, punishment::PunishmentKind},
     notify,
 };
 
@@ -26,8 +26,10 @@ commands:
   usergroup show <GROUP>                    show a usergroup and its members
   usergroup add <USER> <GROUP>              add a user to a usergroup
   usergroup remove <USER> <GROUP>           remove a user from a usergroup
-  user show <USER>                          show a user's groups and effective permissions
+  user show <USER>                          show a user's groups, punishments and effective permissions
   user logout <USER>                        sign a user out everywhere (revokes their tokens)
+  user unban <USER>                         lift a user's ban
+  user unsuspend <USER>                     lift a user's suspension
 
   <USER>  GarryNet user id, or 17-digit SteamID64
   <GROUP> usergroup id or name (case-insensitive; quote names with spaces)";
@@ -121,7 +123,9 @@ pub async fn execute(db: &PgPool, args: &[String]) -> Result<String, CommandErro
 
         ["user", "show", user] => user_show(db, user).await,
         ["user", "logout", user] => user_logout(db, user).await,
-        ["user", ..] => invalid("usage: user show <USER> | logout <USER>"),
+        ["user", "unban", user] => user_lift(db, user, PunishmentKind::Ban).await,
+        ["user", "unsuspend", user] => user_lift(db, user, PunishmentKind::Suspend).await,
+        ["user", ..] => invalid("usage: user show <USER> | logout <USER> | unban <USER> | unsuspend <USER>"),
 
         [cmd, ..] => invalid(format!("unknown command `{cmd}`; type `help` for commands")),
     }
@@ -219,13 +223,26 @@ async fn user_show(db: &PgPool, key: &str) -> Result<String, CommandError> {
         .iter()
         .map(|g| format!("{} (id {})", g.name, g.id))
         .collect();
+    let punishments: Vec<String> = Punishment::in_effect_for(db, user.id)
+        .await?
+        .iter()
+        .map(|p| {
+            format!(
+                "{} until {}: {}",
+                p.kind.noun(),
+                p.ends.map_or("forever".to_owned(), |e| e.format("%Y-%m-%d %H:%M UTC").to_string()),
+                p.reason
+            )
+        })
+        .collect();
     Ok(format!(
-        "{}\n  steam id:    {}\n  joined:      {}\n  last seen:   {}\n  usergroups:  {}\n  permissions: {permissions}",
+        "{}\n  steam id:    {}\n  joined:      {}\n  last seen:   {}\n  usergroups:  {}\n  punishments: {}\n  permissions: {permissions}",
         describe(&user),
         user.steam_id,
         user.joined.format("%Y-%m-%d %H:%M UTC"),
         user.last_seen.format("%Y-%m-%d %H:%M UTC"),
         if group_names.is_empty() { "none".into() } else { group_names.join(", ") },
+        if punishments.is_empty() { "none".into() } else { punishments.join("; ") },
     ))
 }
 
@@ -234,6 +251,18 @@ async fn user_logout(db: &PgPool, key: &str) -> Result<String, CommandError> {
     let user = resolve_user(db, key).await?;
     User::revoke_tokens(db, user.id).await?;
     log::info!("shell: signed {} out everywhere (tokens revoked)", describe(&user));
+    Ok(String::new())
+}
+
+/// Lifts the user's ban or suspension. Not held to the website's rank checks, so it can
+/// recover an admin banned by another.
+async fn user_lift(db: &PgPool, key: &str, kind: PunishmentKind) -> Result<String, CommandError> {
+    let user = resolve_user(db, key).await?;
+    let Some(punishment) = Punishment::lift(db, user.id, kind, None, None).await? else {
+        return Ok(format!("{} has no {} in effect", describe(&user), kind.noun()));
+    };
+    log::info!("shell: lifted {} {} of {}", kind.noun(), punishment.id, describe(&user));
+    notify::punishment_lifted(db, &punishment, None).await;
     Ok(String::new())
 }
 

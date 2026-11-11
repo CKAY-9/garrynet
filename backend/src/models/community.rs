@@ -26,6 +26,8 @@ pub struct Community {
     pub splash_background: Option<String>,
     pub external_links: Vec<String>,
     pub key_figures: Json<Vec<KeyFigure>>,
+    /// Whether the addon keeps users banned on GarryNet off the community's game servers.
+    pub ban_from_servers: bool,
     pub created_at: DateTime<Utc>,
     pub last_updated: Option<DateTime<Utc>>,
 }
@@ -38,6 +40,7 @@ pub struct CommunityDetails {
     pub splash_background: Option<String>,
     pub external_links: Vec<String>,
     pub key_figures: Vec<KeyFigure>,
+    pub ban_from_servers: bool,
 }
 
 impl CommunityDetails {
@@ -56,6 +59,7 @@ impl CommunityDetails {
                 role: "GarryNet Developer".to_owned(),
                 description: "Hey, this is the thing I made.".to_owned(),
             }],
+            ban_from_servers: false,
         }
     }
 }
@@ -66,7 +70,7 @@ macro_rules! with_columns {
         concat!(
             $sql,
             " id, name, description, logo_url, splash_background, external_links,
-              key_figures, created_at, last_updated"
+              key_figures, ban_from_servers, created_at, last_updated"
             $(, $rest)?
         )
     };
@@ -80,12 +84,22 @@ impl Community {
             .await
     }
 
+    /// Whether users banned on GarryNet are kept off the game servers. `false` if the
+    /// community hasn't been created.
+    pub async fn bans_from_servers(db: &PgPool) -> sqlx::Result<bool> {
+        Ok(sqlx::query_scalar("SELECT ban_from_servers FROM community LIMIT 1")
+            .fetch_optional(db)
+            .await?
+            .unwrap_or(false))
+    }
+
     /// Creates the community, or returns `None` if one already exists.
     pub async fn create(db: &PgPool, details: &CommunityDetails) -> sqlx::Result<Option<Self>> {
         sqlx::query_as(with_columns!(
             "INSERT INTO community
-                 (name, description, logo_url, splash_background, external_links, key_figures)
-             VALUES ($1, $2, $3, $4, $5, $6)
+                 (name, description, logo_url, splash_background, external_links, key_figures,
+                  ban_from_servers)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)
              ON CONFLICT DO NOTHING
              RETURNING"
         ))
@@ -95,6 +109,7 @@ impl Community {
         .bind(&details.splash_background)
         .bind(&details.external_links)
         .bind(Json(&details.key_figures))
+        .bind(details.ban_from_servers)
         .fetch_optional(db)
         .await
     }
@@ -116,7 +131,8 @@ impl Community {
         sqlx::query_as(with_columns!(
             "UPDATE community
              SET name = $1, description = $2, logo_url = $3, splash_background = $4,
-                 external_links = $5, key_figures = $6, last_updated = now()
+                 external_links = $5, key_figures = $6, ban_from_servers = $7,
+                 last_updated = now()
              RETURNING"
         ))
         .bind(&details.name)
@@ -125,6 +141,7 @@ impl Community {
         .bind(&details.splash_background)
         .bind(&details.external_links)
         .bind(Json(&details.key_figures))
+        .bind(details.ban_from_servers)
         .fetch_optional(db)
         .await
     }

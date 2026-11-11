@@ -19,6 +19,7 @@ local FILES = {
 	"sv_stats.lua",
 	"sv_store_rewards.lua",
 	"sv_store.lua",
+	"sv_bans.lua",
 	"sv_net.lua",
 	"sv_commands.lua",
 

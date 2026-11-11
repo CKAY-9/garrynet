@@ -10,6 +10,7 @@ use sqlx::PgPool;
 use crate::models::{
     User, Usergroup,
     forum::{ForumPost, ForumThread},
+    punishment::{Punishment, PunishmentKind},
     notification::{MAX_BODY, MAX_TITLE, NewNotification, Notification, NotificationType},
     store::{Fulfillment, Receipt},
     support::{AUTO_CLOSE_AFTER_DAYS, SupportStatus, SupportTicket},
@@ -317,6 +318,74 @@ pub async fn usergroup_membership(db: &PgPool, group_id: i64, user_id: i64, adde
         title,
         body,
         Some(format!("/users/{user_id}")),
+    )
+    .await;
+}
+
+/// How a punishment's end reads in a notification: "until 2026-11-20 14:00 UTC".
+fn until(punishment: &Punishment) -> String {
+    match punishment.ends {
+        Some(ends) => format!("until {}", ends.format("%Y-%m-%d %H:%M UTC")),
+        None => "permanently".to_owned(),
+    }
+}
+
+/// The user was banned or suspended. A ban links to support, the only place they can still
+/// go, so they can appeal.
+pub async fn punishment_issued(db: &PgPool, punishment: &Punishment) {
+    let reason = &punishment.reason;
+    let (event, title, body, url) = match punishment.kind {
+        PunishmentKind::Ban => (
+            "banned",
+            "You have been banned",
+            format!(
+                "You are banned {}. Reason: {reason}. You can still use support, for example to appeal.",
+                until(punishment)
+            ),
+            Some("/support".to_owned()),
+        ),
+        PunishmentKind::Suspend => (
+            "suspended",
+            "You have been suspended",
+            format!(
+                "You can't post or send messages {}. Reason: {reason}.",
+                until(punishment)
+            ),
+            None,
+        ),
+    };
+    send(
+        db,
+        &[punishment.user_id],
+        punishment.issuer_id,
+        NotificationType::Account,
+        event,
+        title.to_owned(),
+        body,
+        url,
+    )
+    .await;
+}
+
+/// The user's ban or suspension was lifted early. `by` is `None` for the backend shell.
+pub async fn punishment_lifted(db: &PgPool, punishment: &Punishment, by: Option<i64>) {
+    let (event, title, body) = match punishment.kind {
+        PunishmentKind::Ban => ("unbanned", "Your ban has been lifted", "You can use the whole site again."),
+        PunishmentKind::Suspend => (
+            "unsuspended",
+            "Your suspension has been lifted",
+            "You can post and send messages again.",
+        ),
+    };
+    send(
+        db,
+        &[punishment.user_id],
+        by,
+        NotificationType::Account,
+        event,
+        title.to_owned(),
+        body.to_owned(),
+        None,
     )
     .await;
 }

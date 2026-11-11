@@ -53,6 +53,10 @@ Command("garrynet_status", "Show whether this server is linked to GarryNet.", fu
 	if store then
 		reply(string.format("Last store sync %ds ago: %s", os.time() - store.time, store.message))
 	end
+	local bans = GarryNet.Bans.GetLastSync()
+	if bans then
+		reply(string.format("Last ban list sync %ds ago: %s", os.time() - bans.time, bans.message))
+	end
 	reply("Usergroups are managed with " .. GarryNet.Rewards.Adapter().name .. ".")
 end)
 

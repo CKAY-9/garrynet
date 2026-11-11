@@ -38,6 +38,13 @@ $border: 1px solid rgb(127 127 127 / 0.2);
   overflow-wrap: anywhere;
 }
 
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .steam {
   display: flex;
   align-items: center;
