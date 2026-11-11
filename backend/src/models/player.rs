@@ -35,6 +35,30 @@ impl UserPlayer {
             .await
     }
 
+    /// Clears the stats of every player record on the server if `gamemode` (from a heartbeat,
+    /// before it's stored) differs from the server's current one: stats belong to a
+    /// gamemode, so another gamemode's would be meaningless. Names are compared ignoring
+    /// case, and a server or heartbeat without a gamemode doesn't count as a change. Returns
+    /// how many records were cleared.
+    pub async fn clear_stats_if_gamemode_changed(
+        db: &mut PgConnection,
+        server_id: i64,
+        gamemode: &str,
+    ) -> sqlx::Result<u64> {
+        let result = sqlx::query(
+            "UPDATE user_players p SET stats = '{}'
+             FROM servers s
+             WHERE s.id = $1 AND p.server_id = s.id
+               AND s.gamemode <> '' AND $2 <> '' AND lower(s.gamemode) <> lower($2)
+               AND p.stats <> '{}'",
+        )
+        .bind(server_id)
+        .bind(gamemode)
+        .execute(db)
+        .await?;
+        Ok(result.rows_affected())
+    }
+
     /// Records players reported by the server's addon in a heartbeat. Creates the record on
     /// a first visit, links it to the player's GarryNet account if they have one, adds the
     /// reported playtime, and merges the gamemode stats: reported values replace the stored

@@ -90,6 +90,9 @@ website can label `darkrp_money` as "Money".
 - **Counters** are counted as events happen and only the increase since the last accepted heartbeat is sent; GarryNet
   adds it to the stored total. Like playtime, unreported counts survive failed heartbeats.
 - Sandbox stats are only collected on Sandbox itself, not on gamemodes derived from it such as DarkRP.
+- When a heartbeat reports a different gamemode than the server had (ignoring case), GarryNet clears the stats of every
+  player on that server before recording the heartbeat, so no player keeps the old gamemode's stats. Players online then
+  get the new gamemode's stats straight away; the rest get them on their next visit.
 
 Other addons can add stats for their gamemode:
 

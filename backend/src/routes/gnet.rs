@@ -114,7 +114,7 @@ struct HeartbeatResponse {
 }
 
 /// The per-minute sync: the server's gamemode and map, and its players. The first one after
-/// linking is the server's first heartbeat.
+/// linking is the server's first heartbeat. A new gamemode clears every player's stats first.
 #[post("/{id}/heartbeat")]
 async fn heartbeat(
     state: web::Data<AppState>,
@@ -129,11 +129,19 @@ async fn heartbeat(
     let sessions = sessions(body.players, Utc::now())?;
 
     let mut tx = state.db.begin().await?;
+    // Before the new gamemode is stored, so the old one can be compared.
+    let cleared = UserPlayer::clear_stats_if_gamemode_changed(&mut tx, auth.id, &gamemode).await?;
     UserPlayer::record_sessions(&mut tx, auth.id, &sessions).await?;
     let server = Server::heartbeat(&mut tx, auth.id, &gamemode, &map)
         .await?
         .ok_or(ApiError::Unauthorized)?;
     tx.commit().await?;
+    if cleared > 0 {
+        log::info!(
+            "server {} changed gamemode to {gamemode:?}: cleared the stats of {cleared} player(s)",
+            auth.id
+        );
+    }
 
     Ok(HttpResponse::Ok().json(HeartbeatResponse {
         server,
