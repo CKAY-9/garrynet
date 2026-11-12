@@ -1,0 +1,66 @@
+@use "../shared" as *;
+@use "../../../styles/theme";
+
+// Below the admin header and tabs, so a fixed share of the window rather than all of it.
+.chat {
+  display: flex;
+  flex-direction: column;
+  height: 70vh;
+  height: 70dvh;
+  min-height: 24rem;
+  max-width: 48rem;
+  border: $border;
+  border-radius: 0.75rem;
+  overflow: hidden;
+}
+
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.6rem 0.85rem;
+  border-bottom: $border;
+
+  > a {
+    flex: 0 1 auto;
+  }
+}
+
+.and {
+  opacity: 0.5;
+}
+
+.author {
+  font-weight: 700;
+}
+
+// Deleted or expired: no longer shown to the users.
+.hidden > div {
+  border-style: dashed;
+  opacity: 0.7;
+}
+
+.badge {
+  padding: 0 0.4rem;
+  border-radius: 999px;
+  font-weight: 700;
+}
+
+.deleted {
+  background: rgb(229 72 77 / 0.15);
+  color: #b4232a;
+
+  @include theme.dark {
+    color: #ff8589;
+  }
+}
+
+.expired {
+  background: rgb(180 83 9 / 0.15);
+  color: #b45309;
+
+  @include theme.dark {
+    color: #f5a524;
+  }
+}

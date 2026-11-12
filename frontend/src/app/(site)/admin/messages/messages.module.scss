@@ -1,0 +1,22 @@
+.search {
+  max-width: 30rem;
+}
+
+// Staff should know their reading is on record.
+.logged {
+  margin: 0;
+  max-width: 48rem;
+  padding: 0.6rem 0.85rem;
+  border: 1px solid rgb(245 165 36 / 0.45);
+  border-radius: 0.5rem;
+  background: rgb(245 165 36 / 0.1);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.skeleton {
+  max-width: 48rem;
+  height: 20rem;
+  border-radius: 0.75rem;
+  background: rgb(127 127 127 / 0.1);
+}

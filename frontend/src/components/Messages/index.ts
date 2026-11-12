@@ -1,3 +1,4 @@
+export { AdminThread } from "./AdminThread";
 export { ChatList } from "./ChatList";
 export { IntroDialog } from "./IntroDialog";
 export { NewMessage } from "./NewMessage";

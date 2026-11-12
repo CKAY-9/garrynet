@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { Activity, ActivitySkeleton, Profile, ProfileSkeleton, PunishmentControls, Punishments } from "@/components/Profile";
 import profileStyles from "@/components/Profile/Profile.module.scss";
 import { getCurrentUser } from "@/lib/auth";
-import { chatHref, MESSAGING } from "@/lib/messageEnums";
+import { adminChatsHref, chatHref, MESSAGING } from "@/lib/messageEnums";
 import { Permission, hasPermission } from "@/lib/permissions";
 import type { AuthoredFilters, AuthoredKind, AuthoredSort } from "@/lib/types";
 import { getUserPosts, getUserProfile, getUserPunishments } from "@/lib/users";
@@ -52,6 +52,12 @@ async function UserProfile({ id, searchParams }: { id: string; searchParams: Sea
             {canMessage && (
               <Link className={profileStyles.edit} href={chatHref(user.id)}>
                 Message
+              </Link>
+            )}
+            {/* Reading anyone's messages takes the same permissions (docs/ADMIN.md#adminmessages). */}
+            {staff && (
+              <Link className={profileStyles.edit} href={adminChatsHref(user.id)}>
+                View messages
               </Link>
             )}
             {staff && punishments && (
