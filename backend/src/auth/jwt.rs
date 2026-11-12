@@ -141,6 +141,7 @@ mod tests {
             status: UserStatus::Online,
             joined: Utc::now(),
             last_seen: Utc::now(),
+            private: false,
             token_version: 3,
         }
     }

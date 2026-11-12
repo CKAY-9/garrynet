@@ -4,6 +4,8 @@ import axios from "axios";
 import { backend } from "./backend";
 import { authHeaders } from "./auth";
 import type {
+  AuthoredFilters,
+  AuthoredPage,
   Punishment,
   Usergroup,
   UsergroupBadge,
@@ -15,8 +17,9 @@ import type {
 
 /**
  * The public profile of the user with GarryNet id `id`, or `null` if there is no such
- * user. Request-time (status and last seen change constantly), so render anything that
- * uses this inside a `<Suspense>` boundary.
+ * user. Sent as the current user, so a private profile's details come back for its owner
+ * and staff. Request-time (status and last seen change constantly), so render anything
+ * that uses this inside a `<Suspense>` boundary.
  */
 export async function getUserProfile(id: string): Promise<UserProfile | null> {
   if (!/^\d+$/.test(id)) return null;
@@ -25,7 +28,7 @@ export async function getUserProfile(id: string): Promise<UserProfile | null> {
   await connection();
 
   try {
-    const { data } = await backend.get<UserProfile>(`/users/${id}`);
+    const { data } = await backend.get<UserProfile>(`/users/${id}`, { headers: await authHeaders() });
     return data;
   } catch (err) {
     if (axios.isAxiosError(err) && err.response?.status === 404) return null;
@@ -50,6 +53,33 @@ export async function getUserPunishments(id: number): Promise<Punishment[] | nul
       console.error(`Failed to load the punishments of user ${id}:`, err instanceof Error ? err.message : err);
     }
     return null;
+  }
+}
+
+/** Threads and posts per page of a profile's activity. */
+export const AUTHORED_PAGE_SIZE = 20;
+
+/**
+ * Page `page` (from 1) of the threads and posts user `id` wrote that match `filters`, or
+ * `null` if the viewer may not see them (a private profile). Request-time.
+ */
+export async function getUserPosts(id: number, filters: AuthoredFilters, page: number): Promise<AuthoredPage | null> {
+  await connection();
+
+  const params = new URLSearchParams({
+    limit: String(AUTHORED_PAGE_SIZE),
+    offset: String((page - 1) * AUTHORED_PAGE_SIZE),
+  });
+  for (const [key, value] of Object.entries(filters)) {
+    if (value.trim()) params.set(key, value.trim());
+  }
+
+  try {
+    const { data } = await backend.get<AuthoredPage>(`/users/${id}/posts?${params}`, { headers: await authHeaders() });
+    return data;
+  } catch (err) {
+    if (axios.isAxiosError(err) && err.response?.status === 403) return null;
+    throw err;
   }
 }
 

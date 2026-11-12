@@ -49,7 +49,7 @@ Sell in-game rewards per server: usergroups (permanent or timed), weapons and Da
 
 ### Users and Permissions
 
-Steam login, profiles, online status and user search. Usergroups have permission bits and custom colors, icons and effects. Staff can ban users (support only) or suspend them (no posting) from their profile, permanently or for a set time, and optionally keep banned users off your game servers.
+Steam login, profiles with bios and their threads and posts, private profiles, online status and user search. Usergroups have permission bits and custom colors, icons and effects. Staff can ban users (support only) or suspend them (no posting) from their profile, permanently or for a set time, and optionally keep banned users off your game servers.
 
 <p align="center">
     <img src="./assets/showcase/admin-usergroups.png" alt="Admin usergroups" width="672" height="400" />

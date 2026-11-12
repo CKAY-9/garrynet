@@ -22,3 +22,12 @@ pub use punishment::Punishment;
 pub use server::Server;
 pub use user::User;
 pub use usergroup::Usergroup;
+
+/// `value` with the `LIKE`/`ILIKE` wildcards (`%`, `_`) and the escape character escaped, so
+/// a search matches them literally.
+pub fn escape_like(value: &str) -> String {
+    value
+        .replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_")
+}

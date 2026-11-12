@@ -12,16 +12,48 @@ username: string
 email?: string // optional; Steam does not provide it, so it must be connected later
 avatar_url: string
 steam_id: string
-bio: string
+bio: string // plain text, up to 1000 characters; set by the user at /settings
 reputation: number // total likes minus dislikes across all of the user's forum posts
 status: UserStatus
 joined: utc timestamp
 last_seen: utc timestamp // updated when they access a route/resource
+private: boolean // default false; set by the user at /settings
 ```
 
 Profile details (username, avatar) come from Steam and are refreshed each time the user logs in. Avatars always come from Steam; users can't upload their own.
 
 **Planned:** a "Sync with Steam" button on the profile that refreshes them without logging out and back in.
+
+## Profile Settings
+
+Users manage their own profile at `/settings` (User Settings): their bio and whether their profile is private. Banned users (no `Site Access`) can't; suspended users can. The sidebar links to it under the profile preview, and your own profile has an **Edit profile** button.
+
+A **private** profile hides the user's bio, reputation, threads and posts from everyone but themselves and staff with `Admin Access` and `User Management` (the same staff who ban). Everyone else still sees the avatar, name, usergroups, status, join date, last seen and a ban in effect, plus "This profile is private". Their posts still show in the threads they're in, under their name; privacy only hides the list on the profile. In user search, private users' reputation and post count are hidden, and they sort last when sorting by either.
+
+- PATCH `/users/me`: `{ bio?: string, private?: boolean }`; omitted fields stay as they are. The bio is trimmed. Returns the user like GET `/users/me`. 400 if nothing is given or the bio is too long, 403 without Site Access.
+
+## Profile Activity
+
+A profile lists small previews of the user's threads and posts (their replies), newest first: title, a plain-text excerpt, category, when, and reputation (likes minus dislikes; a thread's is its first post's). Viewers can narrow it to threads or posts, search the title and content, and sort by newest, oldest, or most or least reputation. The filters live in the URL (`/users/{id}?kind=&q=&sort=&page=`), 20 per page.
+
+- GET `/users/{id}/posts?kind=&q=&sort=&limit=&offset=`: no login required, but 403 for a private profile unless it's the viewer's own or the viewer is staff (Admin Access and User Management). 404 if there's no such user. Blank values are ignored.
+    - kind: `thread` (threads they started) or `post` (their replies); both by default
+    - q: case-insensitive part of the thread title or the post content (up to 100 characters)
+    - sort: `new` (default), `old`, `reputation+` (most first; send the `+` as `%2B`) or `reputation-`
+    - limit: 1 to 50, default 20; offset: how many to skip
+
+    ```json
+    {
+      "items": [{
+        "is_thread": true, "post_id": 9, "thread_id": 5, "thread_title": "Server rules",
+        "category_id": 8, "category_name": "Announcements",
+        "excerpt": "# General ...", "created_at": "...", "edited": null, "reputation": 3
+      }],
+      "has_more": false
+    }
+    ```
+
+    `excerpt` is the first 300 characters of the post's Markdown.
 
 ## User Status
 
@@ -82,7 +114,7 @@ The backend shell can lift them without these checks, e.g. to recover an admin b
 
 ### Routes
 
-- GET `/users/{id}` (the public profile) includes `ban`: `{ reason, created_at, ends }` for a ban in effect, else null. No issuer.
+- GET `/users/{id}` (the public profile) includes `ban`: `{ reason, created_at, ends }` for a ban in effect, else null. No issuer. It also includes `private`; a private profile's `bio` and `reputation` are null unless the viewer may see them (see [Profile Settings](#profile-settings)).
 - GET `/users/{id}/punishments`: the user's punishments, newest first (at most 100). Staff (Admin Access and User Management) get the full history; users get their own punishments in effect, with `issuer` and `lifted_by` null. 403 for anyone else, 404 (staff only) if there's no such user.
 
     ```json
@@ -132,6 +164,6 @@ Implemented on the frontend at `/users/search` (see [Site Design](SITE_DESIGN.md
     - sort_by: `reputation+` (most first; send the `+` as `%2B`), `reputation-` (least first), or `posts` (most forum posts first). When omitted, exact and prefix name matches come first, or the order is random if no name is given.
     - limit: 1 to 100, default 24
 
-    Each result has the user's public profile fields (no email or bio), `post_count`, and `usergroups`.
+    Each result has the user's public profile fields (no email or bio), `post_count`, and `usergroups`. Private users' `reputation` and `post_count` are null, and they sort last by reputation or posts.
 
 - GET `/usergroups`: every usergroup's display details (`id`, `name`, `effect`, `color`, `icon_url`), used for the usergroup filter. No login required.

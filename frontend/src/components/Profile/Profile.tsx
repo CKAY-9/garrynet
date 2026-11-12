@@ -13,15 +13,27 @@ const statusLabels: Record<UserStatus, string> = {
   OFFLINE: "Offline",
 };
 
+type Props = {
+  user: UserProfile;
+  /** Beside the Steam link: staff tools, or "Edit profile" on your own. */
+  actions?: ReactNode;
+  /** Above the bio, e.g. a suspension (for staff). */
+  notices?: ReactNode;
+  /** Below the stats: the user's threads and posts. */
+  activity?: ReactNode;
+};
+
 /**
- * A user's profile: avatar, name, status, usergroups, bio and stats. `actions` go beside the
- * Steam link (staff tools); `notices` go above the bio (e.g. a suspension, for staff). A ban
- * in effect is shown to everyone.
+ * A user's profile: avatar, name, status, usergroups, bio and stats. A ban in effect is shown
+ * to everyone. A private profile's bio and reputation only reach its owner and staff (the
+ * backend leaves them out for everyone else), so for others it says it's private instead.
  */
-export function Profile({ user, actions, notices }: { user: UserProfile; actions?: ReactNode; notices?: ReactNode }) {
+export function Profile({ user, actions, notices, activity }: Props) {
   const joined = new Date(user.joined);
   const lastSeen = new Date(user.last_seen);
   const online = user.status === "ONLINE";
+  // Private, and the viewer is neither the user nor staff.
+  const hidden = user.private && user.bio === null;
 
   return (
     <article className={styles.profile}>
@@ -40,6 +52,12 @@ export function Profile({ user, actions, notices }: { user: UserProfile; actions
             <span className={styles.statusDot} aria-hidden />
             {statusLabels[user.status]}
           </span>
+          {user.private && !hidden && (
+            <span className={styles.private} title="Only they and staff see their bio, reputation, threads and posts.">
+              <LockIcon />
+              Private profile
+            </span>
+          )}
           {user.usergroups.length > 0 && (
             <ul className={styles.groups} aria-label="Usergroups">
               {user.usergroups.map((group) => (
@@ -60,15 +78,24 @@ export function Profile({ user, actions, notices }: { user: UserProfile; actions
       {user.ban && <BanNotice ban={user.ban} />}
       {notices}
 
-      <section className={styles.bio}>
-        {user.bio ? <p>{user.bio}</p> : <p className={styles.empty}>No description yet.</p>}
-      </section>
+      {hidden ? (
+        <p className={styles.privateNotice}>
+          <LockIcon />
+          This profile is private. Their bio, reputation, threads and posts are hidden.
+        </p>
+      ) : (
+        <section className={styles.bio}>
+          {user.bio ? <p>{user.bio}</p> : <p className={styles.empty}>No description yet.</p>}
+        </section>
+      )}
 
       <dl className={styles.stats}>
-        <div>
-          <dt>Reputation</dt>
-          <dd>{user.reputation.toLocaleString("en")}</dd>
-        </div>
+        {user.reputation !== null && (
+          <div>
+            <dt>Reputation</dt>
+            <dd>{user.reputation.toLocaleString("en")}</dd>
+          </div>
+        )}
         <div>
           <dt>Joined</dt>
           <dd>
@@ -90,7 +117,28 @@ export function Profile({ user, actions, notices }: { user: UserProfile; actions
           </dd>
         </div>
       </dl>
+
+      {activity}
     </article>
+  );
+}
+
+function LockIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <rect x="4" y="11" width="16" height="10" rx="2" />
+      <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+    </svg>
   );
 }
 

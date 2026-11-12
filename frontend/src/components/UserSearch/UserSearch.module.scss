@@ -237,3 +237,9 @@ $border: 1px solid rgb(127 127 127 / 0.2);
     font-variant-numeric: tabular-nums;
   }
 }
+
+.hidden {
+  font-weight: 500;
+  font-style: italic;
+  opacity: 0.6;
+}

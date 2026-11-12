@@ -3,12 +3,12 @@ import Link from "next/link";
 import { getCurrentUser } from "@/lib/auth";
 import { logoutUrl, steamLoginUrl } from "@/lib/config";
 import { legalHref } from "@/lib/legalPages";
-import { LogoutIcon, SteamIcon } from "@/components/SideNav/icons";
+import { LogoutIcon, SettingsIcon, SteamIcon } from "@/components/SideNav/icons";
 import styles from "./Account.module.scss";
 
 /**
- * "Login with Steam" for logged-out users, otherwise the user's profile link and a logout
- * button. Reads the session cookie, so render it inside a `<Suspense>` boundary.
+ * "Login with Steam" for logged-out users, otherwise the user's profile link, a link to
+ * their settings and a logout button. Reads the session cookie, so render it inside a `<Suspense>` boundary.
  */
 export async function Account() {
   const user = await getCurrentUser();
@@ -40,6 +40,10 @@ export async function Account() {
           height={32}
         />
         <span className={styles.name}>{user.username}</span>
+      </Link>
+      <Link className={styles.settings} href="/settings">
+        <SettingsIcon />
+        Settings
       </Link>
       <form action={logoutUrl} method="post">
         <button className={styles.logout} type="submit">

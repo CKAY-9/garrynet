@@ -12,6 +12,8 @@ export type User = {
   status: UserStatus;
   joined: string;
   last_seen: string;
+  /** Hides the bio, reputation, threads and posts from everyone but the user and staff. */
+  private: boolean;
 };
 
 /** The logged-in user, from `GET /users/me`: their own account plus effective permissions. */
@@ -75,9 +77,12 @@ export type UsergroupDetails = Pick<Usergroup, "name" | "effect" | "color" | "pe
 
 /**
  * A user's public profile, from `GET /users/{id}`. Excludes the email; `status` accounts
- * for inactivity (idle after 5 minutes, offline after 15).
+ * for inactivity (idle after 5 minutes, offline after 15). A private profile's `bio` and
+ * `reputation` are `null` unless the viewer is the user or staff.
  */
-export type UserProfile = Omit<User, "email"> & {
+export type UserProfile = Omit<User, "email" | "bio" | "reputation"> & {
+  bio: string | null;
+  reputation: number | null;
   usergroups: UsergroupBadge[];
   /** The ban in effect, if any; public, but without who issued it. */
   ban: Pick<Punishment, "reason" | "created_at" | "ends"> | null;
@@ -104,13 +109,53 @@ export type Punishment = {
   lift_reason: string | null;
 };
 
-/** A user as listed by `GET /users/search`: public profile basics plus their post count. */
+/**
+ * A user as listed by `GET /users/search`: public profile basics plus their post count.
+ * Private users' `reputation` and `post_count` are `null`.
+ */
 export type UserSearchResult = Pick<
   UserProfile,
   "id" | "username" | "avatar_url" | "reputation" | "status" | "joined" | "last_seen" | "usergroups"
 > & {
-  post_count: number;
+  post_count: number | null;
 };
+
+/** The profile settings a user changes at `/settings`, sent to `PATCH /users/me`. */
+export type ProfileSettings = Pick<User, "bio" | "private">;
+
+/** Which of a user's writing to list on their profile: threads they started, or their replies. */
+export type AuthoredKind = "thread" | "post";
+
+/** Order of a user's threads and posts: newest, oldest, most or least reputation. */
+export type AuthoredSort = "new" | "old" | "reputation+" | "reputation-";
+
+/** Filters for `GET /users/{id}/posts`. Blank values are ignored. */
+export type AuthoredFilters = {
+  kind: AuthoredKind | "";
+  /** Part of the thread title or post content. */
+  q: string;
+  sort: AuthoredSort | "";
+};
+
+/** A thread or reply previewed on its author's profile, from `GET /users/{id}/posts`. */
+export type Authored = {
+  /** The thread's first post, standing for the thread; otherwise a reply. */
+  is_thread: boolean;
+  post_id: number;
+  thread_id: number;
+  thread_title: string;
+  category_id: number;
+  category_name: string;
+  /** The start of the post's Markdown (300 characters at most). */
+  excerpt: string;
+  created_at: string;
+  edited: string | null;
+  /** Likes minus dislikes. */
+  reputation: number;
+};
+
+/** One page of a user's threads and posts. */
+export type AuthoredPage = { items: Authored[]; has_more: boolean };
 
 /** `last_activity` filter: seen within this window (`online` = currently online). */
 export type LastActivity = "online" | "hour" | "day" | "week" | "month";
