@@ -279,6 +279,38 @@ impl File {
         Ok(result.rows_affected() > 0)
     }
 
+    /// Deletes a file only if it's still a ready, unattached user file, so a sweep can't
+    /// race it being attached.
+    pub async fn delete_unattached(db: &PgPool, owner_id: i64, id: &str) -> Result<bool, sqlx::Error> {
+        let result = sqlx::query(concat!(
+            "DELETE FROM files
+             WHERE owner_id = $1 AND id = $2 AND owner_id > 0 AND status = 'READY' AND ", unattached!()
+        ))
+        .bind(owner_id)
+        .bind(id)
+        .execute(db)
+        .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    /// User files that finished uploading more than `hours` ago and still aren't attached
+    /// to anything: never used, e.g. the page was closed before posting. Community files
+    /// are excluded; they're used by URL (logos, icons), which isn't tracked.
+    pub async fn stale_unattached(db: &PgPool, hours: i64) -> Result<Vec<Self>, sqlx::Error> {
+        sqlx::query_as(with_columns!(
+            "SELECT",
+            // The `unattached!()` condition; `with_columns!` only takes literals.
+            " FROM files
+             WHERE owner_id > 0 AND status = 'READY'
+               AND forum_post_id IS NULL AND support_message_id IS NULL AND private_message_id IS NULL
+               AND completed_at < now() - make_interval(hours => $1)
+             ORDER BY completed_at LIMIT 500"
+        ))
+        .bind(hours as i32)
+        .fetch_all(db)
+        .await
+    }
+
     /// Pending files started more than `minutes` ago: abandoned uploads.
     pub async fn stale_pending(db: &PgPool, minutes: i64) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as(with_columns!(

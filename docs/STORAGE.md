@@ -99,7 +99,7 @@ Clients see a file as `{ owner_id, id, url, name, content_type, size, status, up
 - Image links in the admin pages (community logo, splash and key figure pictures, forum section icons, server icons and splashes, store item images): each link input has an Upload button that stores the image as a community file and fills the input with its URL. A link can still be pasted instead.
 - User avatars come from Steam and can't be uploaded.
 
-Files that are uploaded but never attached or used (for example, the page was closed before posting) are not cleaned up yet.
+User files still not attached to anything 24 hours after they finished uploading (for example, the page was closed before posting) are deleted, along with their bytes. The same goes for a file whose post was deleted but which couldn't be deleted with it. Community files are never cleaned up this way: they're used by URL, which isn't tracked.
 
 ## Uploading
 

@@ -11,7 +11,6 @@
 
 > [!NOTE]
 > GarryNet is under active development. The features below work, but expect breaking changes between versions.
-> See [Not yet implemented](#not-yet-implemented) for what's still planned.
 
 ## Features
 
@@ -239,12 +238,6 @@ backend/    API server (Rust, Actix Web, sqlx); migrations in backend/migrations
 docs/       Design docs: data models, routes, permissions, behavior
 frontend/   Website and loading screen (Next.js, TypeScript)
 ```
-
-## Not Yet Implemented
-
-These appear in the design docs but don't exist yet:
-
-- Cleanup of uploaded files that were never attached to anything
 
 ## Contributing
 

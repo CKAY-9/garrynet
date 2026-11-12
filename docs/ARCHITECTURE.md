@@ -26,7 +26,7 @@ GarryNet has three parts: a Rust backend that owns all data, a Next.js frontend 
 - `src/notify.rs`: creating notifications (see [NOTIFICATIONS.md](NOTIFICATIONS.md)).
 - `src/shell.rs`: the admin command shell, available interactively or as `backend <command>` (see [PERMISSIONS.md](PERMISSIONS.md)).
 
-Background tasks run inside the backend process (`src/main.rs`): auto-closing support tickets left waiting on the user, settling stale store purchases with Stripe, deleting abandoned uploads, and removing old notifications.
+Background tasks run inside the backend process (`src/main.rs`): auto-closing support tickets left waiting on the user, settling stale store purchases with Stripe, deleting abandoned uploads and files never attached to anything, and removing old notifications.
 
 ## Frontend
 
