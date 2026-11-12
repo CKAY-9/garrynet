@@ -95,6 +95,21 @@ Part of [GarryNet Design](README.md).
 1. As a logged in user, I want to see my past purchases and whether they were delivered.
 2. I do this by going to `/store/purchases`, which lists receipts and fulfillment status.
 
+**Viewing Purchase History in Server**
+1. As a player in a linked GMod server, I want to run `!gstore`, so that I can view a summary list of my recent transactions
+   - Player should be notified if the server doesn't have a store setup
+2. Typing `!gstore`, opens the *GarryNet Store Menu* that primarily shows the users recent transactions. Details should be kept to necessities.
+
+**Opening a Server's Store from GMod**
+1. As a player in a linked GMod server, I want to run `!gstore`, so that I can get a link to the server's store if available
+2. Opening the *GarryNet Store Menu*, I have a button that opens the link to the server's store
+
+**Notifying Players of Store**
+1. As an superadmin, I want to be able to toggle repeating messages alerting players to the store, so that I can generate revenue
+2. Opening `!gnet` has a switch for Store chat messages, which are sent every 10 (configurable by superadmin) minutes.
+3. The message should be editable by the superadmin
+4. All changes should be able to be saved
+
 **Creating an Item Store**
 1. As a user with `Store Management`, I want to create a store for a registered server, so that I can create store items
 2. I do this by going to `/admin/store`, navigable by admin dashboard

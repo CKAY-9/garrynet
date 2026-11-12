@@ -25,6 +25,8 @@ function GarryNet.GetStatus()
 		status.last_sync = { ago = os.time() - last.time, ok = last.ok, message = last.message }
 	end
 
+	status.store_messages = GarryNet.StoreMessages.GetStatus()
+
 	return status
 end
 
@@ -87,6 +89,13 @@ function GarryNet.NotifyPlayer(ply, message, success)
 	SendNotice(ply, message, success)
 end
 
+-- A neutral chat notice for every player (e.g. the store chat message).
+function GarryNet.NotifyAll(message)
+	local humans = player.GetHumans()
+	if #humans == 0 then return end
+	SendNotice(humans, message, nil)
+end
+
 -- Open the menu on a client.
 function GarryNet.OpenMenu(ply)
 	net.Start(GarryNet.Net.OpenMenu)
@@ -136,6 +145,21 @@ net.Receive(GarryNet.Net.Unlink, function(_, ply)
 		end
 	end)
 	GarryNet.BroadcastStatus() -- busy
+end)
+
+net.Receive(GarryNet.Net.SaveStoreMessages, function(_, ply)
+	if not IsAllowed(ply) then return end
+	local enabled = net.ReadBool()
+	local minutes = net.ReadUInt(16)
+	local message = net.ReadString()
+
+	local success, result = GarryNet.StoreMessages.Save(enabled, minutes, message)
+	GarryNet.SendResult(ply, success, result)
+	if success then
+		GarryNet.Util.Log(Who(ply) .. " saved the store chat messages: " .. (enabled and "on" or "off")
+			.. ", every " .. minutes .. " min")
+		GarryNet.BroadcastStatus()
+	end
 end)
 
 net.Receive(GarryNet.Net.ForceSync, function(_, ply)

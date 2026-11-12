@@ -10,12 +10,29 @@ GarryNet.Config = {
 	-- Chat command that opens the menu (superadmins only).
 	ChatCommand = "!gnet",
 
+	-- Chat command that opens the store menu: the player's recent purchases and a link to the
+	-- server's store (anyone).
+	StoreCommand = "!gstore",
+
+	-- Seconds a player waits between opening the store menu (each one asks GarryNet).
+	StoreMenuCooldown = 5,
+
 	-- Directory (inside garrysmod/data) where link state is persisted.
 	DataDir = "garrynet",
 
 	-- Server access keys look like "gnet_" followed by 64 hex characters (docs/SERVERS.md).
 	AccessKeyPattern = "^gnet_%x+$",
 	AccessKeyLength = 69,
+
+	-- Repeating chat messages advertising the store, set from the !gnet menu and saved in
+	-- garrysmod/data/garrynet/store_messages.json. These are the limits and the defaults.
+	StoreMessages = {
+		DefaultMinutes = 10,
+		MinMinutes = 1,
+		MaxMinutes = 1440,
+		MaxLength = 200, -- characters
+		DefaultMessage = "Support the server and get in-game rewards: type !gstore to visit the store.",
+	},
 
 	-- Store delivery (docs/STORE.md). Server-side only.
 	Store = {
@@ -62,4 +79,6 @@ GarryNet.Net = {
 	Result = "GarryNet.Result", -- server -> client: result of Link/Unlink/ForceSync (success, message)
 	RewardSound = "GarryNet.RewardSound", -- server -> client: play the reward sound
 	Notify = "GarryNet.Notify", -- server -> client: chat notice (superadmins: linked, out of sync; buyers: purchase delivered)
+	StoreMenu = "GarryNet.StoreMenu", -- server -> client: open the store menu (sh_store_menu.lua)
+	SaveStoreMessages = "GarryNet.SaveStoreMessages", -- client -> server: store chat message settings (enabled, minutes, message)
 }

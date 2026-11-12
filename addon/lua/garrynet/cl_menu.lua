@@ -5,26 +5,9 @@
 
 GarryNet.Menu = GarryNet.Menu or {}
 
-local Colors = {
-	Background = Color(12, 22, 48), -- dark blue panel
-	Overlay = Color(0, 0, 0, 150), -- darkening behind the panel
-	Input = Color(20, 34, 70),
-	Border = Color(44, 66, 120),
-	Accent = Color(59, 130, 246),
-	Danger = Color(200, 55, 65),
-	Neutral = Color(40, 58, 100),
-	Text = Color(235, 240, 255),
-	Muted = Color(150, 165, 200),
-	Success = Color(74, 222, 128),
-	Error = Color(248, 113, 113),
-	Warning = Color(250, 204, 21),
-}
-GarryNet.Menu.Colors = Colors
-
-surface.CreateFont("GarryNet.Title", { font = "Roboto", size = 28, weight = 700, extended = true })
-surface.CreateFont("GarryNet.Body", { font = "Roboto", size = 18, weight = 500, extended = true })
-surface.CreateFont("GarryNet.Small", { font = "Roboto", size = 15, weight = 500, extended = true })
-surface.CreateFont("GarryNet.Button", { font = "Roboto", size = 17, weight = 700, extended = true })
+local UI = GarryNet.UI
+local Colors = UI.Colors
+GarryNet.Menu.Colors = Colors -- cl_net.lua's chat notices use these
 
 local WIDTH = 480
 local PAD = 24
@@ -37,33 +20,11 @@ local Refs = {} -- widgets the current view updates in place
 local Result = nil -- { success, message }: outcome of the last action, shown under the buttons
 local PendingUntil = 0 -- RealTime() until which a sent request counts as in flight
 local ConfirmUnlinkUntil = 0 -- RealTime() until which a second Unlink click confirms
+local SaveWaitUntil = 0 -- RealTime() until which saved store chat message settings count as in flight
+local SavePending = false -- the next store chat message settings from the server are what we saved
 
 local function IsBusy()
 	return GarryNet.ClientState.busy or RealTime() < PendingUntil
-end
-
-local function Lighten(c, amount)
-	return Color(math.min(c.r + amount, 255), math.min(c.g + amount, 255), math.min(c.b + amount, 255), c.a)
-end
-
--- Split `text` into lines no wider than `width` in `font`.
-local function WrapLines(text, font, width)
-	surface.SetFont(font)
-	local lines = {}
-	for paragraph in (text .. "\n"):gmatch("(.-)\n") do
-		local line = ""
-		for word in paragraph:gmatch("%S+") do
-			local candidate = line == "" and word or (line .. " " .. word)
-			if line == "" or surface.GetTextSize(candidate) <= width then
-				line = candidate
-			else
-				lines[#lines + 1] = line
-				line = word
-			end
-		end
-		lines[#lines + 1] = line
-	end
-	return lines
 end
 
 -- Rows are laid out top to bottom; a row whose height is 0 is skipped.
@@ -105,7 +66,7 @@ local function TextBlock(parent, font, color, text)
 		if self.text == "" then return 0 end
 		surface.SetFont(self.font)
 		local _, line_h = surface.GetTextSize("Ay")
-		self.lines = WrapLines(self.text, self.font, width)
+		self.lines = UI.WrapLines(self.text, self.font, width)
 		self.line_h = line_h
 		return #self.lines * line_h
 	end
@@ -129,26 +90,7 @@ local function TextBlock(parent, font, color, text)
 	return block
 end
 
-local function Button(parent, label, color, on_click)
-	local button = vgui.Create("DButton", parent)
-	button:SetText(label)
-	button:SetFont("GarryNet.Button")
-	button:SetTextColor(Colors.Text)
-	button.fill = color
-	button.DoClick = on_click
-
-	function button:Paint(w, h)
-		local c = self.fill
-		if not self:IsEnabled() then
-			c = ColorAlpha(c, 90)
-		elseif self:IsHovered() then
-			c = Lighten(c, 25)
-		end
-		draw.RoundedBox(6, 0, 0, w, h, c)
-	end
-
-	return button
-end
+local Button = UI.Button
 
 -- A row of buttons sharing the width equally.
 local function ButtonRow(parent, buttons)
@@ -170,29 +112,7 @@ local function ButtonRow(parent, buttons)
 end
 
 local function Header(parent)
-	local header = vgui.Create("DPanel", parent)
-
-	function header:Paint(w, h)
-		draw.SimpleText("GarryNet", "GarryNet.Title", 0, 0, Colors.Text)
-		draw.SimpleText("Server link", "GarryNet.Small", 0, 32, Colors.Muted)
-		return true
-	end
-
-	local close = vgui.Create("DButton", header)
-	close:SetText("")
-	close:SetSize(24, 24)
-	close.DoClick = function() GarryNet.Menu.Close() end
-	function close:Paint(w, h)
-		local c = self:IsHovered() and Colors.Text or Colors.Muted
-		surface.SetDrawColor(c)
-		surface.DrawLine(6, 6, w - 6, h - 6)
-		surface.DrawLine(w - 6, 6, 6, h - 6)
-	end
-	function header:PerformLayout(w)
-		close:SetPos(w - 24, 4)
-	end
-
-	AddRow(header, 52, 16)
+	AddRow(UI.Header(parent, "Server link", function() GarryNet.Menu.Close() end), 52, 16)
 end
 
 local function ResultBlock(parent)
@@ -228,16 +148,7 @@ local function BuildUnlinked(card)
 		"Register the server on the website (Admin > Servers), then paste the access key it gives you here. Keys only work once.")
 	NotConfiguredWarning(card)
 
-	local entry = vgui.Create("DTextEntry", card)
-	entry:SetFont("GarryNet.Body")
-	function entry:Paint(w, h)
-		draw.RoundedBox(6, 0, 0, w, h, self:HasFocus() and Colors.Accent or Colors.Border)
-		draw.RoundedBox(6, 1, 1, w - 2, h - 2, Colors.Input)
-		if self:GetValue() == "" then
-			draw.SimpleText("gnet_...", "GarryNet.Body", 5, h / 2, Colors.Muted, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
-		end
-		self:DrawTextEntryText(Colors.Text, Colors.Accent, Colors.Text)
-	end
+	local entry = UI.TextEntry(card, "GarryNet.Body", "gnet_...")
 	AddRow(entry, 38)
 	Refs.entry = entry
 
@@ -276,6 +187,145 @@ local function FormatAgo(seconds)
 	return math.floor(seconds / 3600) .. "h ago"
 end
 
+local function FormatIn(seconds)
+	seconds = math.max(0, math.ceil(seconds))
+	if seconds < 60 then return seconds .. "s" end
+	if seconds < 3600 then return math.ceil(seconds / 60) .. "m" end
+	return math.floor(seconds / 3600) .. "h " .. math.floor(seconds % 3600 / 60) .. "m"
+end
+
+local function Divider(parent)
+	local line = vgui.Create("DPanel", parent)
+	function line:Paint(w, h)
+		surface.SetDrawColor(Colors.Border)
+		surface.DrawRect(0, 0, w, h)
+		return true
+	end
+	AddRow(line, 1, 16)
+end
+
+-- Repeating store chat messages: a switch, the interval, the message and Save. Nothing changes
+-- on the server until Save. Returns the view's update function.
+local function StoreMessagesForm(card)
+	local cfg = GarryNet.Config.StoreMessages
+
+	local title = vgui.Create("DPanel", card)
+	local switch = UI.Switch(title)
+	function title:Paint(w, h)
+		draw.SimpleText("Store chat messages", "GarryNet.Body", 0, h / 2, Colors.Text, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+		return true
+	end
+	function title:PerformLayout(w, h)
+		switch:SetPos(w - switch:GetWide(), (h - switch:GetTall()) / 2)
+	end
+	AddRow(title, 24, 6)
+
+	TextBlock(card, "GarryNet.Small", Colors.Muted,
+		"Advertise the store to every player in chat. Only sent while this server has a store on GarryNet.")
+
+	local interval = vgui.Create("DPanel", card)
+	local minutes = UI.TextEntry(interval, "GarryNet.Body")
+	minutes:SetNumeric(true)
+	function interval:Paint(w, h)
+		draw.SimpleText("Send every", "GarryNet.Small", 0, h / 2, Colors.Muted, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+		draw.SimpleText("minutes", "GarryNet.Small", self.after_x or 0, h / 2, Colors.Muted, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+		return true
+	end
+	function interval:PerformLayout(w, h)
+		surface.SetFont("GarryNet.Small")
+		local label_w = surface.GetTextSize("Send every")
+		minutes:SetPos(label_w + 8, 0)
+		minutes:SetSize(64, h)
+		self.after_x = label_w + 8 + 64 + 8
+	end
+	AddRow(interval, 32)
+
+	local message = UI.TextEntry(card, "GarryNet.Small")
+	message:SetMultiline(true)
+	-- Stop typing at the limit (pasting can still go over; Save then explains).
+	function message:AllowInput()
+		return (utf8.len(self:GetValue()) or 0) >= cfg.MaxLength
+	end
+	function message:PaintOver(w, h)
+		local count = utf8.len(self:GetValue()) or 0
+		draw.SimpleText(count .. "/" .. cfg.MaxLength, "GarryNet.Small", w - 6, h - 4,
+			count > cfg.MaxLength and Colors.Error or Colors.Muted, TEXT_ALIGN_RIGHT, TEXT_ALIGN_BOTTOM)
+	end
+	AddRow(message, 64)
+
+	local info = TextBlock(card, "GarryNet.Small", Colors.Muted, "")
+
+	-- The settings as last saved on the server, and the form's values.
+	local saved = nil
+	local function Current()
+		return { enabled = switch:GetChecked(), minutes = tonumber(minutes:GetValue()), message = message:GetValue() }
+	end
+	local function Differs(a, b)
+		return a.enabled ~= b.enabled or a.minutes ~= b.minutes or a.message ~= b.message
+	end
+	local function Fill(s)
+		switch:SetChecked(s.enabled)
+		minutes:SetValue(tostring(s.minutes))
+		message:SetValue(s.message)
+	end
+
+	local save = Button(card, "Save", Colors.Accent, function()
+		if RealTime() < SaveWaitUntil then return end
+		local c = Current()
+		if not c.minutes or c.minutes ~= math.floor(c.minutes) or c.minutes < cfg.MinMinutes or c.minutes > cfg.MaxMinutes then
+			Result = { success = false, message = string.format("The interval must be a whole number of minutes, %d to %d.",
+				cfg.MinMinutes, cfg.MaxMinutes) }
+			UpdateResult()
+			return
+		end
+		if string.Trim(c.message) == "" then
+			Result = { success = false, message = "The message can't be empty." }
+			UpdateResult()
+			return
+		end
+		SaveWaitUntil = RealTime() + 10
+		SavePending = true
+		Result = nil
+		UpdateResult()
+		GarryNet.SendStoreMessages(c.enabled, c.minutes, c.message)
+	end)
+	ButtonRow(card, { save })
+
+	return function()
+		local s = GarryNet.ClientState.store_messages
+		if not s then return end
+
+		if not saved then
+			Fill(s)
+		elseif s ~= saved then
+			-- A new status. After our save is confirmed (the result comes first), it holds what
+			-- we saved, possibly tidied by the server. Otherwise another superadmin's change
+			-- replaces the form unless it has unsaved edits.
+			local ours = SavePending and RealTime() >= SaveWaitUntil
+			if ours or (Differs(s, saved) and not Differs(Current(), saved)) then Fill(s) end
+			if ours then SavePending = false end
+		end
+		saved = s
+
+		local dirty = Differs(Current(), saved)
+		local waiting = RealTime() < SaveWaitUntil
+		save:SetEnabled(dirty and not waiting)
+		save:SetText(waiting and "Saving..." or (dirty and "Save" or "Saved"))
+
+		if dirty then
+			info:SetContent("You have unsaved changes.", Colors.Warning)
+		elseif not s.enabled then
+			info:SetContent("Off.", Colors.Muted)
+		elseif s.skipped ~= "" then
+			info:SetContent("The last message wasn't sent: " .. s.skipped, Colors.Warning)
+		elseif s.next_at then
+			info:SetContent("Next message in " .. FormatIn(s.next_at - RealTime()) .. ".", Colors.Muted)
+		else
+			info:SetContent("")
+		end
+	end
+end
+
 local function BuildLinked(card)
 	local linked_as = TextBlock(card, "GarryNet.Body", Colors.Text, "")
 	local sync = TextBlock(card, "GarryNet.Small", Colors.Muted, "")
@@ -299,9 +349,16 @@ local function BuildLinked(card)
 	end)
 
 	ButtonRow(card, { sync_button, unlink })
+
+	Divider(card)
+	local update_messages = StoreMessagesForm(card)
+
+	-- Under everything, so the outcome of any button shows in the same place.
 	ResultBlock(card)
 
 	return function()
+		update_messages()
+
 		local state = GarryNet.ClientState
 		linked_as:SetContent(string.format("Linked as \"%s\" (#%d)", state.server_name or "", state.server_id or 0))
 
@@ -326,17 +383,7 @@ local function Build()
 	if IsValid(Card) then Card:Remove() end
 	Rows, Refs = {}, {}
 
-	Card = vgui.Create("DPanel", Overlay)
-	function Card:Paint(w, h)
-		-- Accent strip along the top: the accent shows above the background's top edge.
-		draw.RoundedBox(10, 0, 0, w, h, Colors.Accent)
-		draw.RoundedBoxEx(10, 0, 4, w, h - 4, Colors.Background, false, false, true, true)
-		return true
-	end
-	-- Swallow clicks so only clicks outside the card close the menu.
-	Card:SetMouseInputEnabled(true)
-	function Card:OnMousePressed() end
-
+	Card = UI.Card(Overlay)
 	Header(Card)
 	View = GarryNet.ClientState.linked and "linked" or "unlinked"
 	Refs.update = View == "linked" and BuildLinked(Card) or BuildUnlinked(Card)
@@ -371,31 +418,10 @@ function GarryNet.Menu.Open()
 		return
 	end
 
-	Overlay = vgui.Create("EditablePanel")
-	Overlay:SetSize(ScrW(), ScrH())
-	Overlay:MakePopup()
-	Overlay:SetKeyboardInputEnabled(true)
-	Overlay.start_time = SysTime()
+	-- One GarryNet menu at a time.
+	if GarryNet.StoreMenu then GarryNet.StoreMenu.Close() end
 
-	function Overlay:Paint(w, h)
-		Derma_DrawBackgroundBlur(self, self.start_time)
-		surface.SetDrawColor(Colors.Overlay)
-		surface.DrawRect(0, 0, w, h)
-	end
-
-	-- Escape closes the menu instead of (only) opening the game menu.
-	function Overlay:Think()
-		if input.IsKeyDown(KEY_ESCAPE) then
-			if gui.IsGameUIVisible() then gui.HideGameUI() end
-			GarryNet.Menu.Close()
-		end
-	end
-
-	-- Clicking outside the card closes the menu.
-	function Overlay:OnMousePressed()
-		GarryNet.Menu.Close()
-	end
-
+	Overlay = UI.Overlay(GarryNet.Menu.Close)
 	Build()
 end
 
@@ -416,6 +442,8 @@ end
 -- Show an action result (success/failure message) inside the menu.
 function GarryNet.Menu.ShowResult(success, message)
 	PendingUntil = 0
+	SaveWaitUntil = 0
+	if not success then SavePending = false end
 	Result = { success = success, message = message }
 	UpdateResult()
 	if Refs.update then Refs.update() end

@@ -13,7 +13,7 @@ use crate::{
         Community, Punishment, Server, UserPlayer,
         player::PlayerSession,
         punishment::ServerBan,
-        store::{AckResult, Fulfillment, FulfillmentStatus, MAX_ATTEMPTS},
+        store::{AckResult, Fulfillment, FulfillmentStatus, InGamePurchase, ItemStore, MAX_ATTEMPTS, Receipt},
     },
     notify,
     routes::validate::{bad, text},
@@ -30,6 +30,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .service(unlink)
             .service(fulfillments)
             .service(acknowledge_fulfillment)
+            .service(player_store)
             .service(bans),
     );
 }
@@ -161,7 +162,7 @@ fn sessions(players: Vec<PlayerBody>, now: DateTime<Utc>) -> Result<Vec<PlayerSe
         .into_iter()
         .map(|p| {
             let steam_id = p.steam_id.trim();
-            if steam_id.len() != 17 || !steam_id.bytes().all(|b| b.is_ascii_digit()) {
+            if !steam_id64(steam_id) {
                 return Err(bad(format!("invalid steam_id {steam_id:?}")));
             }
             let connected_at = p
@@ -182,6 +183,10 @@ fn sessions(players: Vec<PlayerBody>, now: DateTime<Utc>) -> Result<Vec<PlayerSe
             })
         })
         .collect()
+}
+
+fn steam_id64(steam_id: &str) -> bool {
+    steam_id.len() == 17 && steam_id.bytes().all(|b| b.is_ascii_digit())
 }
 
 fn truncate(value: &str, max: usize) -> String {
@@ -319,6 +324,70 @@ async fn acknowledge_fulfillment(
         }
     }
     Ok(HttpResponse::Ok().json(fulfillment))
+}
+
+#[derive(Deserialize)]
+struct PlayerStoreQuery {
+    /// Whose purchases to list. Without it, only the store is returned (e.g. to check there
+    /// is one before advertising it in chat).
+    steam_id: Option<String>,
+}
+
+/// How many purchases the in-game store menu lists.
+const IN_GAME_PURCHASES: i64 = 10;
+
+#[derive(Serialize)]
+struct StoreLink {
+    id: i64,
+    /// The store's override name, or the server's.
+    name: String,
+    /// The store's page on the website.
+    url: String,
+}
+
+#[derive(Serialize)]
+struct PlayerStore {
+    /// `None` when the server has no store, or it's disabled.
+    store: Option<StoreLink>,
+    /// The player's purchases on this server, newest first.
+    purchases: Vec<InGamePurchase>,
+}
+
+/// What a player's `!gstore` menu shows (docs/ADDON.md "!gstore"): a link to the server's
+/// store and their recent purchases on this server. Only this server's purchases, which it
+/// already sees as fulfillments.
+#[get("/{id}/store")]
+async fn player_store(
+    state: web::Data<AppState>,
+    auth: AuthServer,
+    id: web::Path<i64>,
+    query: web::Query<PlayerStoreQuery>,
+) -> Result<HttpResponse, ApiError> {
+    auth.require_id(id.into_inner())?;
+    let steam_id = query.steam_id.as_deref().map(str::trim).filter(|s| !s.is_empty());
+    if let Some(steam_id) = steam_id
+        && !steam_id64(steam_id)
+    {
+        return Err(bad(format!("invalid steam_id {steam_id:?}")));
+    }
+    let purchases = async {
+        match steam_id {
+            Some(steam_id) => Receipt::recent_in_game(&state.db, auth.id, steam_id, IN_GAME_PURCHASES).await,
+            None => Ok(Vec::new()),
+        }
+    };
+    let (store, server, purchases) = tokio::try_join!(
+        ItemStore::find_by_server(&state.db, auth.id),
+        Server::find_by_id(&state.db, auth.id),
+        purchases,
+    )?;
+    let server = server.ok_or(ApiError::Unauthorized)?;
+    let store = store.filter(|s| s.enabled).map(|s| StoreLink {
+        id: s.id,
+        name: s.override_name.unwrap_or(server.name),
+        url: format!("{}/store/{}", state.config.frontend_url, s.id),
+    });
+    Ok(HttpResponse::Ok().json(PlayerStore { store, purchases }))
 }
 
 /// Unlinks the server at the addon's request, revoking its token.

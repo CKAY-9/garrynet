@@ -4,7 +4,7 @@ Part of [GarryNet Design](README.md). Servers and access keys are defined in [SE
 
 The GarryNet Garry's Mod addon is responsible for communicating with GarryNet. It will update player data, fetch unrealized store requests, config changes, etc.
 
-**Status:** linking, unlinking, the per-minute heartbeat (server details, player records and gamemode stats), store delivery and ban enforcement work. Config changes are not implemented yet.
+**Status:** linking, unlinking, the per-minute heartbeat (server details, player records and gamemode stats), store delivery, the `!gstore` store menu, store chat messages and ban enforcement work. Config changes are not implemented yet.
 
 ## Installation and Configuration
 
@@ -29,6 +29,7 @@ Files live in `addon/lua/garrynet/`, and are loaded in order by `addon/lua/autor
 | `sh_config.lua` | Constants, the `garrynet_api_url` convar, net message names |
 | `sh_util.lua` | Logging, access key format check |
 | `sh_status.lua` | Link status sent to the menu (read/write over net) |
+| `sh_store_menu.lua` | Store menu contents sent to a player (read/write over net) |
 | `sv_storage.lua` | Persisted server id and JWT |
 | `sv_http.lua` | HTTP wrapper for `/gnet/server/...` requests, JWT rotation |
 | `sv_link.lua` | Link (access key to JWT), unlink, out-of-sync handling |
@@ -38,9 +39,13 @@ Files live in `addon/lua/garrynet/`, and are loaded in order by `addon/lua/autor
 | `sv_store.lua` | Store delivery: fetch the fulfillment queue, apply, acknowledge |
 | `sv_bans.lua` | Ban enforcement: fetch the ban list, refuse and kick banned players |
 | `sv_net.lua` | Net handlers for the menu; every one checks for superadmin |
-| `sv_commands.lua` | `!gnet` chat command, `garrynet_*` console commands |
+| `sv_store_menu.lua` | `!gstore`: fetch a player's purchases and the store link, send them the menu |
+| `sv_store_messages.lua` | Repeating store chat messages: settings, timer |
+| `sv_commands.lua` | `!gnet` and `!gstore` chat commands, `garrynet_*` console commands |
+| `cl_ui.lua` | The menus' shared look: colors, fonts, overlay, card, buttons |
 | `cl_net.lua` | Client net handlers and senders, chat notices |
 | `cl_menu.lua` | The `!gnet` menu |
+| `cl_store_menu.lua` | The `!gstore` menu |
 
 ## !gnet
 
@@ -51,6 +56,22 @@ Prompt the superadmin for the generated server access key (`gnet_` followed by 6
 
 **Linked**
 Shows the server's GarryNet name and id, and the last sync. "Sync now" forces an interval update; "Unlink" (click twice to confirm) revokes the JWT and forgets it locally.
+Below that are the [store chat messages](#store-chat-messages) settings.
+
+### Store chat messages
+
+A superadmin can have a chat message advertising the store sent to every player on a timer. The `!gnet` menu (when
+linked) has a switch to turn them on, the interval in minutes (default 10, 1 to 1440) and the message (at most 200
+characters; line breaks become spaces). Nothing changes until "Save"; the menu says when there are unsaved changes.
+Settings are saved in `garrysmod/data/garrynet/store_messages.json` and survive restarts. Defaults and limits are
+`StoreMessages` in `sh_config.lua`.
+
+- Before each message the addon asks GarryNet whether the server has an enabled store (`GET /gnet/server/{id}/store`
+  without `steam_id`). If it doesn't, or GarryNet can't be reached, the message is skipped and the menu and
+  `garrynet_status` say why. Nothing is sent while the server is empty.
+- The menu shows when the next message goes out. Saving restarts the countdown only when messages are turned on or
+  the interval changes, so editing the message doesn't put the next one off.
+- Messages appear in chat with the `[GarryNet]` prefix.
 
 ### Confirmation
 
@@ -66,6 +87,20 @@ These run from the server console, or from a superadmin's own console:
 - `garrynet_sync`: send a heartbeat now
 - `garrynet_store_sync`: fetch and deliver store purchases now
 - `garrynet_store_grants <SteamID64>`: a player's store usergroups and weapons
+
+## !gstore
+
+Any player can execute `!gstore` in chat to open the *GarryNet Store Menu*, in the same style as `!gnet`. It lists
+their 10 most recent purchases on this server, newest first, each with the item name, price, date, and one status:
+Delivered, Awaiting delivery, Delivery failed, Refunded, Disputed or Revoked. A line under the list explains when
+something is still awaiting delivery or failed. "Open store" opens the server's store page on the website
+(`gui.OpenURL`) and closes the menu.
+
+- Purchases are matched by the player's SteamID64 (the one captured at checkout), and only this server's are shown.
+- If the server isn't linked, has no store, or its store is disabled, the player gets a chat notice ("This server
+  doesn't have a store set up.") instead of the menu. If GarryNet can't be reached, they're told to try again and the
+  error is logged in the server console.
+- Each opening asks GarryNet (nothing is cached), so players can open it once every `StoreMenuCooldown` (5) seconds.
 
 ## Intervals
 
@@ -170,6 +205,22 @@ failing the heartbeat. A player's record is created on their first visit and lin
   "enforce": true,
   "appeal_url": "https://example.com/support",
   "bans": [{ "steam_id": "76561197960287931", "reason": "Aimbot on DarkRP", "ends": 1795000000 }]
+}
+```
+
+**GET `/gnet/server/{SERVER_ID}/store?steam_id=`**: `Authorization: Bearer <JWT>`. What a player's `!gstore` menu
+shows: the server's store (`null` if it has none or it's disabled) and the player's 10 most recent purchases on this
+server, newest first, matched by the fulfillment's SteamID64. Without `steam_id`, `purchases` is empty (used to check
+there's a store before a store chat message). `price` is in the currency's minor unit, `status` is the
+receipt's, `delivery` the fulfillment's, and `purchased_at` is unix seconds. 400 if `steam_id` isn't a SteamID64.
+
+```json
+{
+  "store": { "id": 1, "name": "DarkRP Store", "url": "https://example.com/store/1" },
+  "purchases": [
+    { "id": 7, "item_name": "VIP (30 days)", "price": 499, "currency": "usd", "status": "PAID",
+      "delivery": "FULFILLED", "purchased_at": 1762900000 }
+  ]
 }
 ```
 

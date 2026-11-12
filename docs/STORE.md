@@ -333,6 +333,7 @@ Everything is JSON; errors are `{ "error": "..." }`. "Manage" means Admin Access
 
 - GET `/gnet/server/{id}/fulfillments?steam_id=`: fulfillments to deliver, retry or revoke, oldest first
 - POST `/gnet/server/{id}/fulfillments/{fulfillment_id}/ack`: `{ result: "fulfilled" | "failed" | "revoked", error? }`
+- GET `/gnet/server/{id}/store?steam_id=`: the store's name and link (`null` if it has none or it's disabled) and the player's 10 most recent purchases on the server (none without `steam_id`), for the in-game `!gstore` menu and store chat messages
 
 The admin dashboard's store statistics (`GET /admin/stats`) are `store.purchases_week` and
 `store.income_week` (per currency, excluding refunds).

@@ -13,6 +13,13 @@
 --         ok = bool,
 --         message = string,
 --     },
+--     store_messages = {         -- repeating store chat messages (sv_store_messages.lua)
+--         enabled = bool,
+--         minutes = number,      -- between messages
+--         message = string,
+--         next_in = number|nil,  -- seconds until the next one, when enabled
+--         skipped = string,      -- why the last one wasn't sent; "" if it was
+--     },
 -- }
 
 GarryNet.Status = GarryNet.Status or {}
@@ -34,6 +41,14 @@ function GarryNet.Status.Write(status)
 		net.WriteBool(status.last_sync.ok)
 		net.WriteString(status.last_sync.message or "")
 	end
+
+	local messages = status.store_messages
+	net.WriteBool(messages.enabled)
+	net.WriteUInt(messages.minutes, 16)
+	net.WriteString(messages.message)
+	net.WriteBool(messages.next_in ~= nil)
+	if messages.next_in then net.WriteUInt(math.Clamp(math.floor(messages.next_in), 0, 2 ^ 31), 32) end
+	net.WriteString(messages.skipped or "")
 end
 
 function GarryNet.Status.Read()
@@ -55,6 +70,14 @@ function GarryNet.Status.Read()
 			message = net.ReadString(),
 		}
 	end
+
+	status.store_messages = {
+		enabled = net.ReadBool(),
+		minutes = net.ReadUInt(16),
+		message = net.ReadString(),
+	}
+	if net.ReadBool() then status.store_messages.next_in = net.ReadUInt(32) end
+	status.store_messages.skipped = net.ReadString()
 
 	return status
 end
