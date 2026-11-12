@@ -32,6 +32,10 @@ A **private** profile hides the user's bio, reputation, threads and posts from e
 
 - PATCH `/users/me`: `{ bio?: string, private?: boolean }`; omitted fields stay as they are. The bio is trimmed. Returns the user like GET `/users/me`. 400 if nothing is given or the bio is too long, 403 without Site Access.
 
+## Messaging
+
+Viewers with `User Messages` see a **Message** button on other users' profiles (not their own), next to "View on Steam". It opens `/messages/{user_id}` (see [PRIVATE_MESSAGES.md](PRIVATE_MESSAGES.md)). The button is shown even when the profile is private: `private` doesn't affect messaging. The recipient still needs `User Messages` and Site Access to receive one, so messaging a suspended or banned user is refused.
+
 ## Profile Activity
 
 A profile lists small previews of the user's threads and posts (their replies), newest first: title, a plain-text excerpt, category, when, and reputation (likes minus dislikes; a thread's is its first post's). Viewers can narrow it to threads or posts, search the title and content, and sort by newest, oldest, or most or least reputation. The filters live in the URL (`/users/{id}?kind=&q=&sort=&page=`), 20 per page.

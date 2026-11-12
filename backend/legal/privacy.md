@@ -16,6 +16,7 @@
 - Your profile bio.
 - Forum posts, threads, likes and dislikes, and the reputation they earn you.
 - Support tickets and their replies.
+- Private messages you send and receive, with their attachments. They are not end-to-end encrypted, and our staff can read them (see "Who can see it" below).
 - Files and images you upload.
 
 **When you play on our servers**
@@ -55,6 +56,7 @@ We don't use advertising or tracking cookies. [Remove this line, or list them he
 
 - Your profile, forum posts and playtime statistics are public.
 - Support tickets are visible to you and our support team.
+- Private messages are visible to you and the person you wrote to. Staff who manage users can also read them, including ones you or the other person deleted and ones set to disappear, so don't send anything you wouldn't want staff to see.
 - Purchases are visible to you and staff who manage the store.
 - We share payment information with Stripe to process payments.
 - Our hosting provider ([Hosting Provider]) stores the data on our behalf.
@@ -63,7 +65,7 @@ We don't sell your data.
 
 ## How long we keep it
 
-We keep your account and the content you post until you ask us to delete it. Player records are kept while the servers they belong to exist. Purchase records are kept for as long as we need them for accounting and legal reasons.
+We keep your account and the content you post until you ask us to delete it. Deleting a chat only hides it from you, and disappearing messages are only hidden from you and the other person after 24 hours; both stay available to staff. Player records are kept while the servers they belong to exist. Purchase records are kept for as long as we need them for accounting and legal reasons.
 
 ## Your rights
 

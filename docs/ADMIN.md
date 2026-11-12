@@ -18,6 +18,7 @@ There should be a navigation bar within the dashboard where they can navigate to
 - `/admin/legal`
 - `/admin/forum`
 - `/admin/store`
+- `/admin/messages`
 
 Every admin page requires Admin Access, plus the permission listed under each page below. The navigation only shows the pages the user can open.
 
@@ -66,6 +67,16 @@ Requires: Community Management
 
 - While a document is still GarryNet's default template, a notice asks the admin to fill in the placeholders and review it.
 - "Load default template" puts the shipped template in the editor. Nothing changes until it's saved.
+
+## /admin/messages
+
+Staff can read any user's private messages (see [PRIVATE_MESSAGES.md](PRIVATE_MESSAGES.md)).
+Requires: User Management (and Admin Access, like every admin page)
+
+- Search for a user by name or id to list their chats.
+- Opening a chat shows its messages and attachments read-only, newest at the bottom, 25 at a time with older ones loading on scroll. Messages that either user deleted, or that expired as temporary messages, are still shown, marked "deleted" or "expired".
+- Staff can't send, edit or delete messages here.
+- Every view of a user's chats or of a chat is logged.
 
 ## Banning and Suspending
 

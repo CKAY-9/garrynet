@@ -16,7 +16,7 @@ Should display the user's avatar, name, description, status, when they joined an
 
 Display all usergroups they're a part of as "chips" (small, reusable components). They should implement the usergroup's effect attribute.
 
-Should have a link to their steam profile. On your own profile an "Edit profile" button beside it opens `/settings`. Staff with Admin Access and User Management also get Ban/Unban and Suspend/Unsuspend buttons beside it, and see the user's punishments. A ban in effect (reason, when it was issued and when it ends, but not who issued it) is shown to everyone (see [USERS.md](USERS.md#banning-and-suspending)).
+Should have a link to their steam profile. On your own profile an "Edit profile" button beside it opens `/settings`. On someone else's profile, viewers with `User Messages` get a "Message" button that opens `/messages/{user_id}` (see [PRIVATE_MESSAGES.md](PRIVATE_MESSAGES.md)). Staff with Admin Access and User Management also get Ban/Unban and Suspend/Unsuspend buttons beside it, and see the user's punishments. A ban in effect (reason, when it was issued and when it ends, but not who issued it) is shown to everyone (see [USERS.md](USERS.md#banning-and-suspending)).
 
 Below the stats, small previews of the user's threads and posts, with filters (threads or posts, a title/content search, and sorting by newest, oldest or reputation) and Previous/Next pages (see [USERS.md](USERS.md#profile-activity)).
 
@@ -48,6 +48,7 @@ More general redirects are higher up, e.g.,
 Below the community name is a user search box. Submitting it opens `/users/search?name=...`.
 
 User specific redirects are at the bottom, e.g.
+- "Messages" link with an unread badge (users with `User Messages` only, above the Notification bell). The badge is fetched on page load and then about every 60 seconds while the tab is visible. See [Private Messages](PRIVATE_MESSAGES.md#frontend).
 - Notification bell with an unread badge (logged-in users only, above the Profile Preview). It opens a dropdown of recent notifications; see [Notifications](NOTIFICATIONS.md#frontend). On wide screens the dropdown is a flyout beside the sidebar; in the mobile overlay it opens inline.
 - Profile Preview
 - "Settings" link (gear icon), to `/settings`
@@ -60,6 +61,10 @@ User specific redirects are at the bottom, e.g.
 Instead of being on the side, users now press a hamburger icon which reveals an overlayed navigation.
 
 It should take up the whole screen, have overflow scroll if necessary, and slightly transparent/blur background.
+
+## Messages Pages
+
+`/messages` lists a user's chats with unread dots and a "New Message" button. `/messages/{user_id}` is the chat with that user: a header with their details and a delete button, the 25 most recent messages (older ones load when scrolling up), a composer, and a grayed-out disclaimer that messages aren't private. A popup shows the disclaimer before a user's first message. See [PRIVATE_MESSAGES.md](PRIVATE_MESSAGES.md).
 
 ## Users Page
 
