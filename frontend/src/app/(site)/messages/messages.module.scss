@@ -1,0 +1,36 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  max-width: 48rem;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+
+  h1 {
+    margin: 0;
+    font-size: clamp(1.5rem, 3.5vw, 2rem);
+  }
+
+  p {
+    margin: 0;
+    opacity: 0.75;
+  }
+}
+
+.skeleton {
+  height: 20rem;
+  border-radius: 0.75rem;
+  background: rgb(127 127 127 / 0.1);
+}

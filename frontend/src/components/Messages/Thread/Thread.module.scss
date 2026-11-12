@@ -1,0 +1,182 @@
+@use "../shared" as *;
+@use "../../../styles/theme";
+
+// Fills the content area (1.5rem padding above and below; 3.5rem above on narrow screens,
+// for the hamburger button) so only the messages scroll.
+.chat {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 3rem);
+  height: calc(100dvh - 3rem);
+  min-height: 26rem;
+  max-width: 48rem;
+  border: $border;
+  border-radius: 0.75rem;
+  overflow: hidden;
+}
+
+@media (max-width: 52rem) {
+  .chat {
+    height: calc(100vh - 5rem);
+    height: calc(100dvh - 5rem);
+  }
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.6rem 0.85rem;
+  border-bottom: $border;
+}
+
+.back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 0.4rem;
+  color: inherit;
+  font-size: 1.2rem;
+  text-decoration: none;
+  opacity: 0.7;
+
+  &:hover {
+    background: rgb(127 127 127 / 0.12);
+    opacity: 1;
+  }
+}
+
+.who {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 0;
+  color: inherit;
+  text-decoration: none;
+
+  &:hover .name {
+    text-decoration: underline;
+  }
+}
+
+.name {
+  overflow: hidden;
+  font-size: 1.05rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scroller {
+  flex: 1;
+  min-height: 8rem;
+  overflow-y: auto;
+  // The view is kept in place by hand when older messages are prepended (see Thread.tsx).
+  overflow-anchor: none;
+  overscroll-behavior: contain;
+  padding: 0 1rem 1rem;
+}
+
+// Fixed height, so its text coming and going doesn't move the messages.
+.older {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 2.5rem;
+  font-size: 0.8rem;
+  opacity: 0.6;
+}
+
+.textButton {
+  margin-left: 0.25rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: $accent;
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.messages {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.message {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  max-width: min(36rem, 85%);
+}
+
+.mine {
+  align-self: flex-end;
+  align-items: flex-end;
+
+  .bubble {
+    border-color: rgb(59 130 246 / 0.35);
+    border-bottom-right-radius: 0.25rem;
+    background: rgb(59 130 246 / 0.12);
+  }
+}
+
+.theirs {
+  align-self: flex-start;
+  align-items: flex-start;
+
+  .bubble {
+    border-bottom-left-radius: 0.25rem;
+  }
+}
+
+.bubble {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: $border;
+  border-radius: 0.9rem;
+  background: rgb(127 127 127 / 0.08);
+}
+
+.content {
+  line-height: 1.5;
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0 0.25rem;
+  font-size: 0.72rem;
+  opacity: 0.6;
+}
+
+.temporary {
+  color: #b45309;
+  font-weight: 600;
+
+  @include theme.dark {
+    color: #f5a524;
+  }
+}
+
+.empty {
+  margin: 2rem 0 0;
+  text-align: center;
+  opacity: 0.65;
+}
+
+.notice {
+  padding: 0 1rem 0.75rem;
+}

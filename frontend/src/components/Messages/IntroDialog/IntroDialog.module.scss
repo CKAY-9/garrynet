@@ -1,0 +1,44 @@
+@use "../shared" as *;
+
+.disclaimer {
+  margin: 0;
+  font-size: 0.8rem;
+  opacity: 0.55;
+}
+
+.locked {
+  margin: 0;
+  font-size: 0.85rem;
+  opacity: 0.8;
+}
+
+.textButton {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: $accent;
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.dialog {
+  @include dialog;
+}
+
+.body {
+  @include dialog-body;
+}
+
+.actions {
+  @include dialog-actions;
+}
+
+.primary {
+  @include primary-button;
+}
+
+.secondary {
+  @include button;
+}

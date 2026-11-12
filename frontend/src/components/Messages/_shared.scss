@@ -1,0 +1,105 @@
+// Shared by the Messages component styles: `@use "../shared" as *;`
+
+$border: 1px solid rgb(127 127 127 / 0.2);
+$accent: #3b82f6;
+$danger: #e5484d;
+
+@mixin button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.5rem 1rem;
+  border: $border;
+  border-radius: 0.4rem;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color 0.15s, transform 0.1s;
+
+  &:hover:not(:disabled) {
+    background: rgb(127 127 127 / 0.12);
+  }
+
+  &:active:not(:disabled) {
+    transform: translateY(1px);
+  }
+
+  &:disabled {
+    cursor: default;
+    opacity: 0.45;
+  }
+}
+
+@mixin primary-button {
+  @include button;
+  border-color: $accent;
+  background: $accent;
+  color: #fff;
+
+  &:hover:not(:disabled) {
+    background: #2f6fd8;
+  }
+}
+
+@mixin danger-button {
+  @include button;
+  border-color: $danger;
+  background: $danger;
+  color: #fff;
+
+  &:hover:not(:disabled) {
+    background: #c93b40;
+  }
+}
+
+// A native <dialog> opened with showModal(), as on profiles (Profile/Punishments.module.scss).
+@mixin dialog {
+  width: min(30rem, calc(100vw - 2rem));
+  padding: 0;
+  border: $border;
+  border-radius: 0.75rem;
+  background: var(--background);
+  color: var(--foreground);
+
+  &::backdrop {
+    background: rgb(0 0 0 / 0.5);
+  }
+}
+
+@mixin dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  padding: 1.25rem;
+
+  h2 {
+    margin: 0;
+    font-size: 1.2rem;
+    overflow-wrap: anywhere;
+  }
+
+  p {
+    margin: 0;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    opacity: 0.85;
+    overflow-wrap: anywhere;
+  }
+}
+
+@mixin dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+@mixin error {
+  margin: 0;
+  color: $danger;
+  font-size: 0.9rem;
+}
