@@ -65,7 +65,11 @@ Terms of service, a privacy policy and a refund policy, linked from every page, 
 
 ### Notifications
 
-In-site notifications for ticket replies, purchases and deliveries, forum replies, usergroup changes, and bans and suspensions.
+In-site notifications for ticket replies, purchases and deliveries, forum replies, private messages, usergroup changes, and bans and suspensions.
+
+### Private Messages
+
+Users with the `User Messages` permission can message each other with Markdown and up to 3 attachments. Messages can be set to disappear after 24 hours, and either user can delete a chat from their own side. Messages aren't private from staff, who can read them from the admin dashboard.
 
 ## How It Fits Together
 
@@ -240,10 +244,6 @@ frontend/   Website and loading screen (Next.js, TypeScript)
 
 These appear in the design docs but don't exist yet:
 
-- Website warnings and in-game player punishments
-- Private messages
-- Pushing config changes from the website to the addon
-- A light/dark theme toggle (the site currently follows your system theme)
 - Cleanup of uploaded files that were never attached to anything
 
 ## Contributing

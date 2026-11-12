@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
-import { Avatar } from "@/components/Avatar";
+import { useState, type FormEvent } from "react";
 import { AttachmentPicker, useAttachments } from "@/components/Upload";
+import { UserPicker } from "@/components/UserPicker";
 import { MAX_MESSAGE_ATTACHMENTS } from "@/lib/files";
 import {
   MAX_ASSOCIATED_USERS,
@@ -13,7 +13,7 @@ import {
   ticketCategoryLabels,
 } from "@/lib/supportEnums";
 import type { TicketCategory, UserRef } from "@/lib/types";
-import { createTicket, findUsers } from "./actions";
+import { createTicket } from "./actions";
 import { ErrorText, useAction } from "./TicketTools";
 import styles from "./Support.module.scss";
 
@@ -78,7 +78,12 @@ export function NewTicketForm() {
       </label>
       <div className={styles.field}>
         <span className={styles.label}>Users involved (optional)</span>
-        <UserPicker selected={associated} onChange={setAssociated} />
+        <UserPicker
+          selected={associated}
+          onChange={setAssociated}
+          max={MAX_ASSOCIATED_USERS}
+          hint="For user reports and the like: pick the users this ticket is about."
+        />
       </div>
       <label className={styles.field}>
         <span className={styles.label}>Message (Markdown supported)</span>
@@ -104,83 +109,5 @@ export function NewTicketForm() {
         <ErrorText error={error} />
       </div>
     </form>
-  );
-}
-
-/** Searches users by name and lets the user pick several; the picked ones show as chips. */
-function UserPicker({ selected, onChange }: { selected: UserRef[]; onChange: (users: UserRef[]) => void }) {
-  const [query, setQuery] = useState("");
-  const [results, setResults] = useState<UserRef[]>([]);
-  const [searching, setSearching] = useState(false);
-  const [failed, setFailed] = useState(false);
-
-  // Search a moment after typing stops.
-  useEffect(() => {
-    const name = query.trim();
-    if (!name) return;
-    let cancelled = false;
-    const timer = setTimeout(async () => {
-      setSearching(true);
-      const res = await findUsers(name);
-      if (cancelled) return;
-      setSearching(false);
-      setFailed(!res.ok);
-      setResults(res.ok ? res.data : []);
-    }, 300);
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [query]);
-
-  const full = selected.length >= MAX_ASSOCIATED_USERS;
-  const visible = query.trim() ? results.filter((u) => !selected.some((s) => s.id === u.id)) : [];
-
-  function add(user: UserRef) {
-    if (full) return;
-    onChange([...selected, user]);
-    setQuery("");
-  }
-
-  return (
-    <div className={styles.picker}>
-      {selected.length > 0 && (
-        <ul className={styles.chips} aria-label="Selected users">
-          {selected.map((u) => (
-            <li key={u.id} className={styles.chip}>
-              <Avatar name={u.username} url={u.avatar_url || null} size={20} shape="circle" />
-              {u.username}
-              <button type="button" aria-label={`Remove ${u.username}`} onClick={() => onChange(selected.filter((s) => s.id !== u.id))}>
-                ×
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-      <input
-        type="search"
-        className={styles.input}
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        placeholder={full ? `Up to ${MAX_ASSOCIATED_USERS} users` : "Search users by name..."}
-        aria-label="Search users"
-        disabled={full}
-        autoComplete="off"
-      />
-      {query.trim() && (
-        <ul className={styles.results} aria-label="Matching users">
-          {visible.map((u) => (
-            <li key={u.id}>
-              <button type="button" onClick={() => add(u)}>
-                <Avatar name={u.username} url={u.avatar_url || null} size={24} shape="circle" />
-                {u.username} <span className={styles.id}>#{u.id}</span>
-              </button>
-            </li>
-          ))}
-          {visible.length === 0 && <li>{searching ? "Searching..." : failed ? "Couldn't search users." : "No users found."}</li>}
-        </ul>
-      )}
-      <p className={styles.hint}>For user reports and the like: pick the users this ticket is about.</p>
-    </div>
   );
 }

@@ -11,6 +11,7 @@ export const adminPages: { href: string; label: string; permission: number; any?
   { href: "/admin/loading-screen", label: "Loading Screen", permission: Permission.ServerManagement },
   { href: "/admin/community", label: "Community", permission: Permission.CommunityManagement },
   { href: "/admin/legal", label: "Legal", permission: Permission.CommunityManagement },
+  { href: "/admin/messages", label: "Messages", permission: Permission.UserManagement },
   {
     href: "/admin/forum",
     label: "Forum",

@@ -1,11 +1,11 @@
 //! Notifications (docs/NOTIFICATIONS.md): one row per recipient, telling them something
 //! happened and linking to where they can act on it. `crate::notify` creates them.
 
-use std::fmt;
-
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Postgres, QueryBuilder};
+
+use super::cursor::{Cursor, paginate};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
 #[sqlx(type_name = "notification_type", rename_all = "SCREAMING_SNAKE_CASE")]
@@ -14,6 +14,8 @@ pub enum NotificationType {
     Support,
     Store,
     Forum,
+    /// Private messages.
+    Message,
     /// Punishments, usergroup changes.
     Account,
     /// Anything else, e.g. admin messages.
@@ -59,31 +61,6 @@ pub struct NewNotification {
     pub title: String,
     pub body: Option<String>,
     pub url: Option<String>,
-}
-
-/// Where a page of notifications ended: the `created_at` and `id` of its last row. Sent to
-/// clients as an opaque string.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Cursor {
-    created_at: DateTime<Utc>,
-    id: i64,
-}
-
-impl Cursor {
-    pub fn parse(value: &str) -> Option<Self> {
-        let (micros, id) = value.split_once('-')?;
-        Some(Self {
-            created_at: DateTime::from_timestamp_micros(micros.parse().ok()?)?,
-            id: id.parse().ok()?,
-        })
-    }
-}
-
-impl fmt::Display for Cursor {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Postgres timestamps have microsecond precision, so this round-trips exactly.
-        write!(f, "{}-{}", self.created_at.timestamp_micros(), self.id)
-    }
 }
 
 /// Which of a user's notifications to list.
@@ -154,12 +131,7 @@ impl Notification {
         // One extra row tells us whether there is a next page.
         q.push(" ORDER BY created_at DESC, id DESC LIMIT ").push_bind(filter.limit + 1);
         let mut notifications: Vec<Notification> = q.build_query_as().fetch_all(db).await?;
-        let has_more = notifications.len() as i64 > filter.limit;
-        notifications.truncate(filter.limit as usize);
-        let next_cursor = notifications
-            .last()
-            .filter(|_| has_more)
-            .map(|last| Cursor { created_at: last.created_at, id: last.id }.to_string());
+        let next_cursor = paginate(&mut notifications, filter.limit, |n| Cursor { created_at: n.created_at, id: n.id });
         Ok(NotificationPage { notifications, next_cursor })
     }
 
@@ -248,24 +220,5 @@ impl Notification {
         .execute(db)
         .await?;
         Ok(expired.rows_affected() + over_limit.rows_affected())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn cursors() {
-        let cursor = Cursor {
-            created_at: DateTime::from_timestamp_micros(1_794_000_000_123_456).unwrap(),
-            id: 42,
-        };
-        assert_eq!(cursor.to_string(), "1794000000123456-42");
-        assert_eq!(Cursor::parse(&cursor.to_string()), Some(cursor));
-        assert_eq!(Cursor::parse(""), None);
-        assert_eq!(Cursor::parse("42"), None);
-        assert_eq!(Cursor::parse("abc-1"), None);
-        assert_eq!(Cursor::parse("1794000000123456-"), None);
     }
 }

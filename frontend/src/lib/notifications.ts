@@ -57,9 +57,10 @@ export async function getUnreadCount(): Promise<number> {
 
 /**
  * Runs a read for a route handler and answers with its JSON, or with the backend's status
- * and `{ error }` when it fails (401 when logged out). Never cached: it is per user.
+ * and `{ error }` when it fails (401 when logged out). Never cached: it is per user. `what`
+ * names the data in the log when the backend can't be reached.
  */
-export async function jsonResponse(read: () => Promise<unknown>): Promise<Response> {
+export async function jsonResponse(read: () => Promise<unknown>, what = "notifications"): Promise<Response> {
   const headers = { "Cache-Control": "private, no-store" };
   try {
     return Response.json(await read(), { headers });
@@ -70,7 +71,7 @@ export async function jsonResponse(read: () => Promise<unknown>): Promise<Respon
       return Response.json({ error: typeof error === "string" ? error : "request failed" }, { status, headers });
     }
     // Log only the message: the axios error carries the request config, including the token.
-    console.error("Failed to read notifications:", err instanceof Error ? err.message : err);
+    console.error(`Failed to read ${what}:`, err instanceof Error ? err.message : err);
     return Response.json({ error: "couldn't reach the server" }, { status: 502, headers });
   }
 }

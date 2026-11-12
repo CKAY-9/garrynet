@@ -32,6 +32,7 @@ NotificationType:
 SUPPORT
 STORE
 FORUM
+MESSAGE // private messages
 ACCOUNT // punishments, usergroup changes
 SYSTEM // anything else, e.g. admin messages
 ```
@@ -52,6 +53,7 @@ The backend creates notifications from the following events. The person who caus
 | Purchase refunded or fulfillment revoked | buyer | STORE | `/store/purchases` |
 | Reply to a thread | thread author | FORUM | `/forum/threads/{id}` |
 | Thread locked, or a post or thread deleted, by a moderator | post/thread author | FORUM | `/forum/threads/{id}` (none if deleted) |
+| Private message received | recipient | MESSAGE | `/messages/{author_id}` |
 | Banned | the user | ACCOUNT | `/support` |
 | Suspended | the user | ACCOUNT | none |
 | Ban or suspension lifted early | the user | ACCOUNT | none |
@@ -95,5 +97,5 @@ Left out on purpose; add them only when needed:
 - Email, Discord or in-game delivery. The addon could later show a "you have N unread" line, but that is a separate feature.
 - Per-user preferences. A later addition is one mute toggle per `NotificationType`, applied when the notification is created. `ACCOUNT` and support replies should never be mutable.
 - Saved or "acknowledged" notifications (`acknowledged_by` in the first draft). Read and delete cover it.
-- Mentions and Private Messages. Both need their own design first (see [Private Messages](README.md#private-messages)); each would add one event row above and no new schema.
+- Mentions. They need their own design first; each would add one event row above and no new schema.
 - Real-time updates over websockets or server-sent events. Polling is enough at this scale.

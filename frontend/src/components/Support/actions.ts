@@ -12,8 +12,6 @@ import type {
   SupportStatus,
   SupportTicket,
   TicketDetails,
-  UserRef,
-  UserSearchResult,
 } from "@/lib/types";
 
 /** Opens a ticket, then shows it. The backend validates it and enforces the 5-ticket limit. */
@@ -70,17 +68,6 @@ export async function setTicketStatus(ticketId: number, status: SupportStatus): 
     });
     refresh();
     return data;
-  });
-}
-
-/** Users whose name contains `name`, for the "associated users" picker. At most 8. */
-export async function findUsers(name: string): Promise<ActionResult<UserRef[]>> {
-  const trimmed = name.trim();
-  if (!trimmed) return { ok: true, data: [] };
-  return runAction("search users", async () => {
-    const params = new URLSearchParams({ name: trimmed, limit: "8" });
-    const { data } = await backend.get<UserSearchResult[]>(`/users/search?${params}`);
-    return data.map(({ id, username, avatar_url }) => ({ id, username, avatar_url }));
   });
 }
 

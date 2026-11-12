@@ -1,4 +1,5 @@
 pub mod community;
+pub mod cursor;
 pub mod file;
 pub mod forum;
 pub mod legal;
@@ -6,6 +7,7 @@ pub mod loading_screen;
 pub mod notification;
 pub mod permissions;
 pub mod player;
+pub mod private_message;
 pub mod punishment;
 pub mod server;
 pub mod store;

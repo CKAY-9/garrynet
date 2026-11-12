@@ -188,3 +188,72 @@ follow them
    - If they are privated, I need to be an admin to see it
 2. Going to a user's profile, `/users/${id}`, shows their details, and displays small previews of their posts and threads
 3. I should be able to refine what I'm seeing by Post or Thread, title, content, reputation ascending/descending
+
+## Private Messages
+
+**Viewing Existing Messages**
+1. As a logged-in user with `User Messages` permissions, I want to view my previous chats, so that I can engage with them
+2. Going to `/messages` lists all previous chats with users
+
+**Sending a Message to Someone New**
+1. As a logged-in user with `User Messages` permissions, I want to create a new chat with a user, so that we can easily communicate
+2. Going to `/messages` shows the user's chats, as well as a "New Message" button
+3. User is able to search for a user by name or id, and send an initial message.
+
+**Deleting a Chat**
+1. Going into a chat has a header, where the other user's details are, that also has buttons
+2. There is a trash can icon for deleting the chat, which creates a pop-up for user confirmation
+3. Deleting it hides the existing messages from me only. The other user still sees the chat and isn't notified
+4. Users are able to communicate again if they want: messages sent afterwards start a fresh chat
+
+**Receiving a Message**
+1. As a logged-in user with `User Messages` permissions, when someone sends me a message, I want to be alerted to it
+2. A notification is created when someone messages the user, directing them to the new chat, `/messages/{author_id}`
+3. Several messages from the same user collapse into one unread notification
+
+**Seeing Unread Messages**
+1. As a user with `User Messages` permissions, I want to see which chats have messages I haven't read
+2. The side navigation's Messages link shows an unread badge, and `/messages` shows an unread count on each chat with unread messages
+3. Opening the chat marks its messages as read and clears the count
+
+**Sending a First Message**
+1. As a user with `User Messages` permissions who has never sent a message, I want to be told that messages aren't really private
+2. Opening the message page shows a popup explaining that staff can read messages, which I confirm. Until I do, the message box stays locked; closing the popup with "Not now" leaves a "Read and confirm" link to reopen it
+3. Once I've sent a message, the popup no longer appears, and a visible, grayed-out disclaimer is shown on the message page instead
+4. Deleting chats doesn't bring the popup back
+
+**Sending a Message with Attachments**
+1. As a user with `User Messages` permissions, I want to attach files to a message, so that I can share screenshots and clips
+2. The message box supports markdown, up to 5,000 characters, and up to 3 attachments
+3. Trying to attach a fourth file is refused
+4. Only the sender, the recipient and staff with `Admin Access` and `User Management` can open the attachments
+
+**Sending a Disappearing Message**
+1. As a user with `User Messages` permissions, I want to mark a message as temporary, so that it doesn't stay in the chat
+2. The message box has a "Disappearing message (24h)" toggle
+3. After 24 hours the message is hidden from both me and the recipient
+4. Staff can still see it, marked as expired
+
+**Loading Older Messages**
+1. As a user with `User Messages` permissions, I want to read a long conversation
+2. Opening a chat, `/messages/{user_id}`, loads the 25 most recent messages
+3. Scrolling upwards loads 25 more at a time until the start of the chat
+
+**Messaging from a Profile**
+1. As a user with `User Messages` permissions, I want to message someone while viewing their profile
+2. Their profile, `/users/{id}`, has a "Message" button, which isn't shown on my own profile
+3. It opens the chat with them, `/messages/{id}`, even if they've never messaged me
+4. Their profile being private doesn't change this
+
+**Messaging a Suspended or Banned User**
+1. As a user with `User Messages` permissions, I try to message someone who is suspended or banned
+2. They can't receive messages while the punishment is in effect, so sending is refused and my message isn't delivered
+3. Messages already in the chat stay visible to both of us
+
+**Viewing a User's Messages**
+1. As an admin with `Admin Access` and `User Management`, I want to read a user's chats, so that I can look into reports and abuse
+2. I do this by going to `/admin/messages`, navigable by admin dashboard
+3. I search for a user by name or id, and their chats are listed
+4. Opening a chat shows the messages read-only, including ones either user deleted and expired disappearing messages, which are marked as such
+5. Each time I view a user's chats or a chat, it is logged, and the pages tell me so
+6. A user's profile, `/users/{id}`, has a "View messages" link that opens their chats

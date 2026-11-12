@@ -1,4 +1,4 @@
-import { AccountIcon, ForumsIcon, StoreIcon, SupportIcon, SystemIcon } from "@/components/SideNav/icons";
+import { AccountIcon, ForumsIcon, MessagesIcon, StoreIcon, SupportIcon, SystemIcon } from "@/components/SideNav/icons";
 import { notificationTypeLabels } from "@/lib/notificationEnums";
 import { fullFormat, timeAgo } from "@/lib/time";
 import type { NotificationType } from "@/lib/types";
@@ -9,6 +9,7 @@ const typeIcons: Record<NotificationType, () => React.ReactElement> = {
   SUPPORT: SupportIcon,
   STORE: StoreIcon,
   FORUM: ForumsIcon,
+  MESSAGE: MessagesIcon,
   ACCOUNT: AccountIcon,
   SYSTEM: SystemIcon,
 };

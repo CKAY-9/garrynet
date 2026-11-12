@@ -12,9 +12,11 @@ use crate::models::{
     forum::{ForumPost, ForumThread},
     punishment::{Punishment, PunishmentKind},
     notification::{MAX_BODY, MAX_TITLE, NewNotification, Notification, NotificationType},
+    private_message::PrivateMessage,
     store::{Fulfillment, Receipt},
     support::{AUTO_CLOSE_AFTER_DAYS, SupportStatus, SupportTicket},
 };
+use crate::routes::markdown::plain_text;
 
 /// Writes the notification for every recipient except `actor`.
 #[allow(clippy::too_many_arguments)]
@@ -45,7 +47,7 @@ async fn send(
 }
 
 /// `text` cut to `max` characters, ending in an ellipsis if anything was cut.
-fn clip(text: &str, max: usize) -> String {
+pub fn clip(text: &str, max: usize) -> String {
     if text.chars().count() <= max {
         return text.to_owned();
     }
@@ -137,6 +139,22 @@ pub async fn ticket_auto_closed(db: &PgPool, ticket: &SupportTicket) {
         format!("Ticket closed: {}", ticket.title),
         format!("Your ticket was closed automatically after {AUTO_CLOSE_AFTER_DAYS} days without a reply from you."),
         ticket_url(ticket),
+    )
+    .await;
+}
+
+/// A private message was sent: tells its recipient, linking to the chat. Repeats from the
+/// same author collapse into one unread notification.
+pub async fn private_message(db: &PgPool, message: &PrivateMessage, author: &User) {
+    send(
+        db,
+        &[message.recipient_id],
+        Some(author.id),
+        NotificationType::Message,
+        "message.received",
+        format!("New message from {}", author.username),
+        plain_text(&message.content),
+        Some(format!("/messages/{}", author.id)),
     )
     .await;
 }

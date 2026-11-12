@@ -68,6 +68,24 @@ export const AdminIcon = () => (
   </Icon>
 );
 
+/** Envelope; private messages and the MESSAGE notification type. */
+export const MessagesIcon = () => (
+  <Icon>
+    <rect x="2" y="4" width="20" height="16" rx="2" />
+    <path d="M22 7l-10 6L2 7" />
+  </Icon>
+);
+
+/** Trash can; deleting something. */
+export const TrashIcon = () => (
+  <Icon width={18} height={18}>
+    <path d="M3 6h18" />
+    <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+    <path d="M10 11v6M14 11v6" />
+  </Icon>
+);
+
 export const BellIcon = () => (
   <Icon>
     <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />

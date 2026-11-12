@@ -1,0 +1,24 @@
+@use "../shared" as *;
+
+.trigger {
+  @include primary-button;
+}
+
+.dialog {
+  @include dialog;
+  // Room for the search results without the dialog jumping in size.
+  min-height: 12rem;
+}
+
+.body {
+  @include dialog-body;
+}
+
+.actions {
+  @include dialog-actions;
+}
+
+.cancel {
+  @include button;
+  font-weight: 400;
+}

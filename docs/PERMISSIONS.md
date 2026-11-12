@@ -66,7 +66,7 @@ Rules:
 - 0x40, Admin Access: If set, reveals admin navigation options and permits access to protected admin routes (e.g., `/admin`). Allows editing the loading screen and other sub-components.
 - 0x80, Elevated Control: If set, users can perform **dangerous actions** across the whole site. Today this covers editing a store's grantable usergroups.
 - 0x100, Usergroup Management: If set, users can create, edit, and remove usergroups, and add or remove users from them.
-- 0x200, User Messages: If set, users can privately message other users. **Planned**: reserved for [Private Messages](README.md#private-messages), which aren't implemented.
+- 0x200, User Messages: If set, users can privately message other users (see [Private Messages](PRIVATE_MESSAGES.md)). The recipient needs it too. Removed by a suspension.
 - 0x400, Server Management: If set, users can create, edit, remove, and link/unlink Garry's Mod servers.
 - 0x800, Community Management: If set, users can edit community details.
 - 0x1000, Support Team: If set, users can access other users' tickets and help. Only together with Site Access: a banned team member is a regular user in support.

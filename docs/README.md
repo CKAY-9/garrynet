@@ -11,6 +11,7 @@ These documents are the design reference: each one describes a feature's behavio
 - [FORUM.md](FORUM.md): sections, categories, threads, posts
 - [SUPPORT.md](SUPPORT.md): support tickets, messages, FAQs
 - [STORE.md](STORE.md): item stores, items, purchases, receipts, fulfillment
+- [PRIVATE_MESSAGES.md](PRIVATE_MESSAGES.md): user-to-user messages, chats, temporary messages
 - [STORAGE.md](STORAGE.md): file uploads, local and S3-compatible storage
 - [NOTIFICATIONS.md](NOTIFICATIONS.md): in-site notifications, events and retention
 - [SERVERS.md](SERVERS.md): Garry's Mod servers and the loading screen
@@ -73,4 +74,4 @@ See [STORE.md](STORE.md). Uses Stripe Checkout; the addon delivers purchases in-
 
 ## Private Messages
 
-**Planned.** Not implemented yet. The `User Messages` permission bit is reserved for it.
+See [PRIVATE_MESSAGES.md](PRIVATE_MESSAGES.md). Users with the `User Messages` permission can message each other; staff with User Management can read messages.

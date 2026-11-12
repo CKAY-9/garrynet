@@ -1,0 +1,84 @@
+@use "../shared" as *;
+@use "../../../styles/theme";
+
+.composer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.85rem 1rem;
+  border-top: $border;
+}
+
+.textarea {
+  width: 100%;
+  min-height: 4.5rem;
+  max-height: 40vh;
+  padding: 0.5rem 0.65rem;
+  border: $border;
+  border-radius: 0.4rem;
+  background: rgb(127 127 127 / 0.06);
+  color: inherit;
+  font: inherit;
+  line-height: 1.5;
+  resize: vertical;
+  transition: border-color 0.15s, background 0.15s;
+
+  &:hover:not(:disabled) {
+    border-color: rgb(127 127 127 / 0.45);
+  }
+
+  &:focus {
+    outline: none;
+    border-color: $accent;
+    background: rgb(59 130 246 / 0.06);
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  opacity: 0.6;
+  font-variant-numeric: tabular-nums;
+}
+
+.countNear {
+  color: #b45309;
+  font-weight: 600;
+
+  @include theme.dark {
+    color: #f5a524;
+  }
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.send {
+  @include primary-button;
+  padding-inline: 1.4rem;
+}
+
+.checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.error {
+  @include error;
+  flex: 1 1 100%;
+}

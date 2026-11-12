@@ -19,9 +19,11 @@ export const UPLOAD_TYPES = [
   "text/plain",
 ];
 
-/** Limits enforced by the backend (src/routes/forum.rs, src/routes/support.rs). */
+/** Limits enforced by the backend (src/routes/forum.rs, src/routes/support.rs, src/routes/messages.rs). */
 export const MAX_POST_ATTACHMENTS = 5;
 export const MAX_MESSAGE_ATTACHMENTS = 10;
+/** Per private message. */
+export const MAX_PM_ATTACHMENTS = 3;
 
 /** Where the browser fetches a file. */
 export function fileUrl(file: Pick<Attachment, "owner_id" | "id">): string {

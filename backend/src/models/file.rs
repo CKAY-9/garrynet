@@ -36,16 +36,19 @@ pub struct File {
     /// The support message it's attached to. Such files are only served to the ticket's
     /// creator (not for internal notes) and the Support Team.
     pub support_message_id: Option<i64>,
+    /// The private message it's attached to. Such files are only served to the message's
+    /// author, its recipient and staff with Admin Access and User Management.
+    pub private_message_id: Option<i64>,
 }
 
 impl File {
-    /// Whether it's attached to a forum post or support message.
+    /// Whether it's attached to a forum post, support message or private message.
     pub fn is_attached(&self) -> bool {
-        self.forum_post_id.is_some() || self.support_message_id.is_some()
+        self.forum_post_id.is_some() || self.support_message_id.is_some() || self.private_message_id.is_some()
     }
 }
 
-/// A file attached to a forum post or support message, as clients see it. Its URL is
+/// A file attached to a forum post, support message or private message, as clients see it. Its URL is
 /// `/file/{owner_id}/{id}`.
 #[derive(Clone, Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Attachment {
@@ -61,6 +64,25 @@ pub struct Attachment {
 pub enum AttachTo {
     ForumPost(i64),
     SupportMessage(i64),
+    PrivateMessage(i64),
+}
+
+/// SQL matching files that aren't attached to anything.
+macro_rules! unattached {
+    () => {
+        "forum_post_id IS NULL AND support_message_id IS NULL AND private_message_id IS NULL"
+    };
+}
+
+/// The `File::attach` query setting `$column`.
+macro_rules! attach_sql {
+    ($column:literal) => {
+        concat!(
+            "UPDATE files SET ", $column, " = $1
+             WHERE owner_id = $2 AND id = ANY($3) AND status = 'READY' AND ", unattached!(), "
+             RETURNING owner_id, id, name, content_type, size"
+        )
+    };
 }
 
 /// A JSON array of the files whose `$column` is `$id` (an SQL expression), oldest first;
@@ -95,7 +117,8 @@ macro_rules! with_columns {
         concat!(
             $sql,
             " owner_id, id, backend, key, name, content_type, size, e_tag, status,
-              uploaded_by, created_at, completed_at, forum_post_id, support_message_id"
+              uploaded_by, created_at, completed_at, forum_post_id, support_message_id,
+              private_message_id"
             $(, $rest)?
         )
     };
@@ -156,11 +179,10 @@ impl File {
         if ids.is_empty() {
             return Ok(true);
         }
-        let count: i64 = sqlx::query_scalar(
+        let count: i64 = sqlx::query_scalar(concat!(
             "SELECT count(*) FROM files
-             WHERE owner_id = $1 AND id = ANY($2) AND status = 'READY'
-               AND forum_post_id IS NULL AND support_message_id IS NULL",
-        )
+             WHERE owner_id = $1 AND id = ANY($2) AND status = 'READY' AND ", unattached!()
+        ))
         .bind(owner_id)
         .bind(ids)
         .fetch_one(db)
@@ -181,20 +203,9 @@ impl File {
             return Ok(Vec::new());
         }
         let (sql, target_id) = match target {
-            AttachTo::ForumPost(id) => (
-                "UPDATE files SET forum_post_id = $1
-                 WHERE owner_id = $2 AND id = ANY($3) AND status = 'READY'
-                   AND forum_post_id IS NULL AND support_message_id IS NULL
-                 RETURNING owner_id, id, name, content_type, size",
-                id,
-            ),
-            AttachTo::SupportMessage(id) => (
-                "UPDATE files SET support_message_id = $1
-                 WHERE owner_id = $2 AND id = ANY($3) AND status = 'READY'
-                   AND forum_post_id IS NULL AND support_message_id IS NULL
-                 RETURNING owner_id, id, name, content_type, size",
-                id,
-            ),
+            AttachTo::ForumPost(id) => (attach_sql!("forum_post_id"), id),
+            AttachTo::SupportMessage(id) => (attach_sql!("support_message_id"), id),
+            AttachTo::PrivateMessage(id) => (attach_sql!("private_message_id"), id),
         };
         let mut attached: Vec<Attachment> = sqlx::query_as(sql)
             .bind(target_id)

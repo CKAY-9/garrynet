@@ -10,7 +10,10 @@ use serde_json::json;
 use crate::{
     auth::AuthUser,
     error::ApiError,
-    models::notification::{Cursor, Notification, NotificationFilter, NotificationType},
+    models::{
+        cursor::Cursor,
+        notification::{Notification, NotificationFilter, NotificationType},
+    },
     routes::validate::{bad, parse_enum, present},
     state::AppState,
 };

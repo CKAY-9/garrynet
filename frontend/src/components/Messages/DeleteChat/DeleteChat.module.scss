@@ -1,0 +1,47 @@
+@use "../shared" as *;
+
+.trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border: $border;
+  border-radius: 0.4rem;
+  background: none;
+  color: inherit;
+  opacity: 0.75;
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s, opacity 0.15s;
+
+  &:hover {
+    background: rgb(229 72 77 / 0.1);
+    color: $danger;
+    opacity: 1;
+  }
+}
+
+.dialog {
+  @include dialog;
+}
+
+.body {
+  @include dialog-body;
+}
+
+.actions {
+  @include dialog-actions;
+}
+
+.cancel {
+  @include button;
+  font-weight: 400;
+}
+
+.confirm {
+  @include danger-button;
+}
+
+.error {
+  @include error;
+}
