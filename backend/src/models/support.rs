@@ -205,6 +205,7 @@ macro_rules! user_json {
         )
     };
 }
+pub(crate) use user_json;
 
 macro_rules! ticket_columns {
     ($t:literal) => {

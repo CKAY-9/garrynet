@@ -5,7 +5,7 @@
 
 use std::ops::Range;
 
-use pulldown_cmark::{Event, Options, Parser, Tag};
+use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd};
 
 use crate::{
     error::ApiError,
@@ -56,6 +56,29 @@ pub fn local_images_only(field: &str, source: &str, files_base: &str) -> Result<
         }
     }
     Ok(())
+}
+
+/// The text of Markdown `source` without its syntax, on one line, for places that show
+/// plain text (notification bodies, chat previews). Images become their alt text, and
+/// escaped HTML shows as the literal text it was escaped to.
+pub fn plain_text(source: &str) -> String {
+    let mut out = String::with_capacity(source.len());
+    for event in Parser::new_ext(source, options()) {
+        match event {
+            Event::Text(text) | Event::Code(text) => out.push_str(&text),
+            Event::SoftBreak | Event::HardBreak => out.push(' '),
+            Event::End(
+                TagEnd::Paragraph
+                | TagEnd::Heading(_)
+                | TagEnd::Item
+                | TagEnd::CodeBlock
+                | TagEnd::BlockQuote(_)
+                | TagEnd::TableCell,
+            ) => out.push(' '),
+            _ => {}
+        }
+    }
+    out.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 /// Byte ranges of raw HTML (blocks and inline tags), in source order.
@@ -175,6 +198,16 @@ mod tests {
         assert!(!ok("![x](//evil.example/pixel.png)"));
         assert!(!ok("![x](/file/1/abc)"), "relative to the frontend, not ours");
         assert!(!ok("![x][p]\n\n[p]: https://evil.example/pixel.png"));
+    }
+
+    #[test]
+    fn plain() {
+        assert_eq!(plain_text("**Hi** _there_, `code`"), "Hi there, code");
+        assert_eq!(plain_text("# Title\n\nline one\nline two\n\n- a\n- b"), "Title line one line two a b");
+        assert_eq!(plain_text("[a link](https://example.com) ![a cat](https://x/c.png)"), "a link a cat");
+        assert_eq!(plain_text(&md("<b>hi</b>").unwrap()), "<b>hi</b>");
+        assert_eq!(plain_text("```\nlet x = 1;\n```\nafter"), "let x = 1; after");
+        assert_eq!(plain_text("   "), "");
     }
 
     #[test]
