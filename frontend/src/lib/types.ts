@@ -837,6 +837,39 @@ export type MessageThread = {
   next_cursor: string | null;
 };
 
+/** A private message as staff see it: still listed after either user deleted it or it expired. */
+export type AdminMessage = PrivateMessage & {
+  /** The author deleted the chat after it was sent. */
+  deleted_by_author: boolean;
+  /** The recipient deleted the chat after it was sent. */
+  deleted_by_recipient: boolean;
+  /** Either of the above. */
+  deleted: boolean;
+  /** Temporary and over 24 hours old, so hidden from both users. */
+  expired: boolean;
+};
+
+/**
+ * A page of `GET /messages/admin/{user_id}/chats`: every chat of `user`, including ones they
+ * deleted and ones whose messages expired. Most recent first.
+ */
+export type AdminChatPage = {
+  /** Whose chats these are. */
+  user: UserRef;
+  items: Chat[];
+  next_cursor: string | null;
+};
+
+/** A page of `GET /messages/admin/{user_id}/with/{other_id}`, newest first, deleted and expired messages included. */
+export type AdminMessageThread = {
+  /** The user whose chats are being read. */
+  user: UserRef;
+  /** The other user in the chat. */
+  other: UserRef;
+  items: AdminMessage[];
+  next_cursor: string | null;
+};
+
 /** Where and how to send a pending file's bytes. */
 export type UploadTarget = {
   method: "PUT";

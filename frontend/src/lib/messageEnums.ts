@@ -11,6 +11,9 @@ import { Permission } from "./permissions";
  */
 export const MESSAGING = Permission.SiteAccess | Permission.UserMessages;
 
+/** What reading anyone's messages at `/admin/messages` takes, as on the backend (`VIEW_ANY`). */
+export const READ_ANY_MESSAGES = Permission.AdminAccess | Permission.UserManagement;
+
 /** Limits enforced by the backend (src/routes/messages.rs). */
 export const MAX_CONTENT = 5_000;
 /** Messages and chats loaded at a time (the backend allows 1 to 100). */
@@ -36,3 +39,6 @@ export function parseLimit(value: string | null): number | undefined {
 
 /** The chat with a user. */
 export const chatHref = (userId: number) => `/messages/${userId}`;
+
+/** Staff: a user's chats. */
+export const adminChatsHref = (userId: number) => `/admin/messages/${userId}`;

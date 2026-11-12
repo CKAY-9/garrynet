@@ -4,16 +4,39 @@ import Link from "next/link";
 import { useState } from "react";
 import { Avatar } from "@/components/Avatar";
 import { Ago } from "@/components/Notifications/parts";
-import { chatHref, PAGE_SIZE, pageParams } from "@/lib/messageEnums";
+import { PAGE_SIZE, pageParams } from "@/lib/messageEnums";
 import { badgeText } from "@/lib/notificationEnums";
 import type { Chat, ChatPage } from "@/lib/types";
 import styles from "./ChatList.module.scss";
 
+type Props = {
+  /** The first page, from the server render. */
+  initial: Pick<ChatPage, "items" | "next_cursor">;
+  /** Whose chats these are. */
+  viewerId: number;
+  /** Route handler serving later pages. */
+  endpoint?: string;
+  /** Each chat links to `{chatBase}/{other user's id}`. */
+  chatBase?: string;
+  /** Marks the last message when `viewerId` wrote it. */
+  selfLabel?: string;
+  /** Shown when there are no chats. */
+  empty?: string;
+};
+
 /**
- * The current user's chats, most recent first: the first page from the server, then "Load
- * more". Each shows the other user, the last message and how many are unread.
+ * Chats, most recent first: the first page from the server, then "Load more". Each shows the
+ * other user, the last message and how many are unread. The defaults are the current user's
+ * own list on `/messages`; staff reuse it for anyone's on `/admin/messages/{user_id}`.
  */
-export function ChatList({ initial, viewerId }: { initial: ChatPage; viewerId: number }) {
+export function ChatList({
+  initial,
+  viewerId,
+  endpoint = "/api/messages",
+  chatBase = "/messages",
+  selfLabel = "You",
+  empty = "No chats yet. Use New message to start one.",
+}: Props) {
   const [chats, setChats] = useState(initial.items);
   const [cursor, setCursor] = useState(initial.next_cursor);
   const [loading, setLoading] = useState(false);
@@ -25,9 +48,9 @@ export function ChatList({ initial, viewerId }: { initial: ChatPage; viewerId: n
     setError(null);
     let failure = "Couldn't load more chats. Try again.";
     try {
-      const res = await fetch(`/api/messages?${pageParams(cursor, PAGE_SIZE)}`, { cache: "no-store" });
+      const res = await fetch(`${endpoint}?${pageParams(cursor, PAGE_SIZE)}`, { cache: "no-store" });
       if (res.ok) {
-        const page = (await res.json()) as ChatPage;
+        const page = (await res.json()) as Pick<ChatPage, "items" | "next_cursor">;
         setChats((list) => mergeChats(list, page.items));
         setCursor(page.next_cursor);
         return;
@@ -46,11 +69,11 @@ export function ChatList({ initial, viewerId }: { initial: ChatPage; viewerId: n
       <ul className={styles.rows}>
         {chats.map((chat) => (
           <li key={chat.user.id}>
-            <ChatRow chat={chat} viewerId={viewerId} />
+            <ChatRow chat={chat} viewerId={viewerId} href={`${chatBase}/${chat.user.id}`} selfLabel={selfLabel} />
           </li>
         ))}
         {chats.length === 0 && !cursor && (
-          <li className={styles.empty}>No chats yet. Use New message to start one.</li>
+          <li className={styles.empty}>{empty}</li>
         )}
       </ul>
       {error && (
@@ -67,10 +90,10 @@ export function ChatList({ initial, viewerId }: { initial: ChatPage; viewerId: n
   );
 }
 
-function ChatRow({ chat, viewerId }: { chat: Chat; viewerId: number }) {
+function ChatRow({ chat, viewerId, href, selfLabel }: { chat: Chat; viewerId: number; href: string; selfLabel: string }) {
   const unread = chat.unread_count > 0;
   return (
-    <Link href={chatHref(chat.user.id)} className={`${styles.row} ${unread ? styles.unread : ""}`}>
+    <Link href={href} className={`${styles.row} ${unread ? styles.unread : ""}`}>
       <Avatar name={chat.user.username} url={chat.user.avatar_url || null} size={40} shape="circle" />
       <span className={styles.main}>
         <span className={styles.top}>
@@ -80,7 +103,7 @@ function ChatRow({ chat, viewerId }: { chat: Chat; viewerId: number }) {
           </span>
         </span>
         <span className={styles.preview}>
-          {chat.last_author_id === viewerId && <span className={styles.you}>You: </span>}
+          {chat.last_author_id === viewerId && <span className={styles.you}>{selfLabel}: </span>}
           {chat.preview}
         </span>
       </span>
