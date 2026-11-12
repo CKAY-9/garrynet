@@ -429,8 +429,47 @@ async fn chats(
     Ok(Page::new(rows, limit, Chat::cursor))
 }
 
+/// See [`PrivateMessage::participants`].
+#[derive(Clone, Copy, Debug, sqlx::FromRow)]
+pub struct Participants {
+    pub author_id: i64,
+    pub recipient_id: i64,
+}
+
+impl Participants {
+    /// Whether the user is one of the two, so may see the message (and its files) whatever
+    /// they've deleted or whether it expired.
+    pub fn includes(&self, user_id: i64) -> bool {
+        self.author_id == user_id || self.recipient_id == user_id
+    }
+}
+
+impl PrivateMessage {
+    /// The two users of message `id`, for its attachments' read rule. `None` if there is no
+    /// such message.
+    pub async fn participants(db: &PgPool, id: i64) -> sqlx::Result<Option<Participants>> {
+        sqlx::query_as("SELECT author_id, recipient_id FROM private_messages WHERE id = $1")
+            .bind(id)
+            .fetch_optional(db)
+            .await
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    #[test]
+    fn participants() {
+        let p = Participants {
+            author_id: 3,
+            recipient_id: 7,
+        };
+        assert!(p.includes(3));
+        assert!(p.includes(7));
+        assert!(!p.includes(4), "only the two users in the chat");
+    }
+
     #[test]
     fn expiry() {
         assert_eq!(

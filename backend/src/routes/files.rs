@@ -19,6 +19,7 @@ use crate::{
     models::{
         File, Permissions,
         file::{COMMUNITY_OWNER, FileStatus, NewFile},
+        private_message::PrivateMessage,
         support::SupportMessage,
     },
     routes::validate::bad,
@@ -47,6 +48,8 @@ const MANAGE_COMMUNITY: Permissions = Permissions::ADMIN_ACCESS.union(Permission
 const MANAGE_USERS: Permissions = Permissions::ADMIN_ACCESS.union(Permissions::USER_MANAGEMENT);
 /// Reading any support attachment, as `routes::support` lets the team read any ticket.
 use crate::routes::support::SUPPORT_TEAM;
+/// Reading any private message attachment, as `routes::messages` lets staff read any chat.
+use crate::routes::messages::VIEW_ANY as VIEW_ANY_MESSAGES;
 
 /// Content types that can be uploaded. Nothing a browser would run as a document (HTML,
 /// SVG, ...): files are served from the backend's own origin.
@@ -307,9 +310,10 @@ async fn complete(state: &AppState, file: File, backend: Backend) -> Result<Http
 }
 
 /// Serves a file: streamed from local storage, or a redirect to the cloud provider. Public
-/// (file IDs are unguessable), except files attached to a support message: those are only
-/// served to the ticket's creator (not for internal notes) and the Support Team, by the
-/// auth cookie or token, and anyone else gets 404.
+/// (file IDs are unguessable), except files attached to a support message or private
+/// message. Those are only served, by the auth cookie or token, to the ticket's creator
+/// (not for internal notes) and the Support Team, or to the message's author and
+/// recipient and staff with Admin Access and User Management; anyone else gets 404.
 #[get("/file/{owner_id}/{file_id}")]
 async fn get_file(
     state: web::Data<AppState>,
@@ -321,9 +325,14 @@ async fn get_file(
         .await?
         .filter(|file| file.status == FileStatus::Ready)
         .ok_or(ApiError::NotFound("file"))?;
-    let private = file.support_message_id.is_some();
+    let private = file.support_message_id.is_some() || file.private_message_id.is_some();
     if let Some(message_id) = file.support_message_id
         && !may_read_support_file(&state, &req, message_id).await?
+    {
+        return Err(ApiError::NotFound("file"));
+    }
+    if let Some(message_id) = file.private_message_id
+        && !may_read_private_message_file(&state, &req, message_id).await?
     {
         return Err(ApiError::NotFound("file"));
     }
@@ -397,6 +406,29 @@ async fn may_read_support_file(state: &AppState, req: &HttpRequest, message_id: 
     Ok(user.require(&state.db, SUPPORT_TEAM).await.is_ok())
 }
 
+/// Whether the requester may read a file attached to private message `message_id`: its
+/// author or recipient (even if they deleted the chat or the message expired), or staff
+/// with Admin Access and User Management. Like [`may_read_support_file`], the login is
+/// only looked up here.
+async fn may_read_private_message_file(
+    state: &AppState,
+    req: &HttpRequest,
+    message_id: i64,
+) -> Result<bool, ApiError> {
+    let Some(participants) = PrivateMessage::participants(&state.db, message_id).await? else {
+        return Ok(false);
+    };
+    let user = match AuthUser::extract(req).await {
+        Ok(user) => user,
+        Err(ApiError::Unauthorized) => return Ok(false),
+        Err(e) => return Err(e),
+    };
+    if participants.includes(user.0.id) {
+        return Ok(true);
+    }
+    Ok(user.require(&state.db, VIEW_ANY_MESSAGES).await.is_ok())
+}
+
 /// Validates the files a user wants to attach to something they're posting: at most `max`
 /// of them, each a ready, not yet attached file in their own folder. Returns their IDs
 /// without duplicates, for `File::attach`.
@@ -438,9 +470,9 @@ pub async fn delete_all(state: &AppState, files: Vec<File>) {
 
 /// Deletes a file. Community files need Admin Access and Community Management, whoever
 /// uploaded them: they may be in use as a logo or splash. A user file can be deleted by its
-/// uploader until it's attached to a forum post or support message (it's then deleted with
-/// it, so a ticket's evidence can't be pulled after staff have seen it), and at any time by
-/// users with Admin Access and User Management.
+/// uploader until it's attached to a forum post, support message or private message (it's
+/// then deleted with it, if ever, so a ticket's evidence can't be pulled after staff have
+/// seen it), and at any time by users with Admin Access and User Management.
 #[delete("/file/{owner_id}/{file_id}")]
 async fn delete_file(
     state: web::Data<AppState>,
