@@ -9,6 +9,8 @@ GarryNet.ClientState = GarryNet.ClientState or {
 local function SetState(status)
 	-- last_sync.ago is relative to when the server sent it; anchor it to our clock.
 	if status.last_sync then status.last_sync.at = RealTime() - status.last_sync.ago end
+	local messages = status.store_messages
+	if messages and messages.next_in then messages.next_at = RealTime() + messages.next_in end
 	GarryNet.ClientState = status
 end
 
@@ -47,6 +49,10 @@ net.Receive(GarryNet.Net.Notify, function()
 	ChatNotice(message, color)
 end)
 
+net.Receive(GarryNet.Net.StoreMenu, function()
+	GarryNet.StoreMenu.Open(GarryNet.StoreMenuData.Read())
+end)
+
 net.Receive(GarryNet.Net.RewardSound, function()
 	local path = GarryNet.Config.Store.RewardSound
 	if path ~= "" then surface.PlaySound(path) end
@@ -61,6 +67,14 @@ end
 
 function GarryNet.SendUnlink()
 	net.Start(GarryNet.Net.Unlink)
+	net.SendToServer()
+end
+
+function GarryNet.SendStoreMessages(enabled, minutes, message)
+	net.Start(GarryNet.Net.SaveStoreMessages)
+	net.WriteBool(enabled)
+	net.WriteUInt(minutes, 16)
+	net.WriteString(message)
 	net.SendToServer()
 end
 

@@ -11,6 +11,7 @@ local FILES = {
 	"sh_config.lua",
 	"sh_util.lua",
 	"sh_status.lua",
+	"sh_store_menu.lua",
 
 	"sv_storage.lua",
 	"sv_http.lua",
@@ -21,10 +22,14 @@ local FILES = {
 	"sv_store.lua",
 	"sv_bans.lua",
 	"sv_net.lua",
+	"sv_store_menu.lua",
+	"sv_store_messages.lua",
 	"sv_commands.lua",
 
+	"cl_ui.lua",
 	"cl_net.lua",
 	"cl_menu.lua",
+	"cl_store_menu.lua",
 }
 
 function GarryNet.Include(file)

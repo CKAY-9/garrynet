@@ -1,8 +1,16 @@
--- Chat command: a superadmin saying !gnet gets the GarryNet menu.
--- Console commands do the same from the server console (e.g. a dedicated server with nobody on).
+-- Chat commands: a superadmin saying !gnet gets the GarryNet menu; anyone saying !gstore gets
+-- the store menu. Console commands do what !gnet does from the server console (e.g. a dedicated
+-- server with nobody on).
 
 hook.Add("PlayerSay", "GarryNet.Commands.ChatCommand", function(ply, text)
-	if string.lower(string.Trim(text)) ~= GarryNet.Config.ChatCommand then return end
+	local command = string.lower(string.Trim(text))
+
+	if command == GarryNet.Config.StoreCommand then
+		GarryNet.StoreMenu.Open(ply)
+		return "" -- hide the command from chat
+	end
+
+	if command ~= GarryNet.Config.ChatCommand then return end
 
 	if not ply:IsSuperAdmin() then
 		ply:ChatPrint("[GarryNet] Only superadmins can use " .. GarryNet.Config.ChatCommand .. ".")
@@ -56,6 +64,13 @@ Command("garrynet_status", "Show whether this server is linked to GarryNet.", fu
 	local bans = GarryNet.Bans.GetLastSync()
 	if bans then
 		reply(string.format("Last ban list sync %ds ago: %s", os.time() - bans.time, bans.message))
+	end
+	local messages = GarryNet.StoreMessages.GetStatus()
+	if messages.enabled then
+		reply(string.format("Store chat messages: every %d min%s", messages.minutes,
+			messages.skipped ~= "" and (", last one not sent: " .. messages.skipped) or "."))
+	else
+		reply("Store chat messages: off.")
 	end
 	reply("Usergroups are managed with " .. GarryNet.Rewards.Adapter().name .. ".")
 end)

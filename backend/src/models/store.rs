@@ -270,6 +270,23 @@ pub struct ReceiptView {
     pub fulfillment: Option<Json<Fulfillment>>,
 }
 
+/// A purchase as a player sees it in-game (the addon's `!gstore` menu): just enough to tell
+/// what they bought and whether it arrived.
+#[derive(Clone, Debug, Serialize, sqlx::FromRow)]
+pub struct InGamePurchase {
+    /// The receipt's id.
+    pub id: i64,
+    pub item_name: String,
+    /// Minor units, what was charged.
+    pub price: i64,
+    pub currency: String,
+    pub status: ReceiptStatus,
+    /// The fulfillment's status.
+    pub delivery: FulfillmentStatus,
+    /// Unix seconds.
+    pub purchased_at: i64,
+}
+
 /// Filters for the finance receipt list. All optional; together they must all match.
 #[derive(Debug, Default)]
 pub struct ReceiptFilter {
@@ -445,6 +462,14 @@ impl ItemStore {
     pub async fn find_by_id(db: &PgPool, id: i64) -> sqlx::Result<Option<StoreSummary>> {
         sqlx::query_as(select_summary!("WHERE s.id = $1"))
             .bind(id)
+            .fetch_optional(db)
+            .await
+    }
+
+    /// The server's store, enabled or not.
+    pub async fn find_by_server(db: &PgPool, server_id: i64) -> sqlx::Result<Option<ItemStore>> {
+        sqlx::query_as(concat!("SELECT ", store_columns!("s"), " FROM item_stores s WHERE s.server_id = $1"))
+            .bind(server_id)
             .fetch_optional(db)
             .await
     }
@@ -1058,6 +1083,26 @@ impl Receipt {
             .bind(buyer_id)
             .fetch_all(db)
             .await
+    }
+
+    /// The most recent `limit` purchases delivered (or to be delivered) to a SteamID64 on a
+    /// server, newest first. Matched by the fulfillment's SteamID rather than the buyer's
+    /// account, since that's who the rewards go to in-game.
+    pub async fn recent_in_game(db: &PgPool, server_id: i64, steam_id: &str, limit: i64) -> sqlx::Result<Vec<InGamePurchase>> {
+        sqlx::query_as(
+            "SELECT r.id, r.item_name, r.price, r.currency, r.status, f.status AS delivery,
+                    extract(epoch FROM r.purchased_at)::BIGINT AS purchased_at
+             FROM store_fulfillments f
+             JOIN store_receipts r ON r.id = f.receipt_id
+             WHERE f.server_id = $1 AND f.steam_id = $2
+             ORDER BY r.purchased_at DESC, r.id DESC
+             LIMIT $3",
+        )
+        .bind(server_id)
+        .bind(steam_id)
+        .bind(limit)
+        .fetch_all(db)
+        .await
     }
 
     /// Receipts matching every filter, newest first.
