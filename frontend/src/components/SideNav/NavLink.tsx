@@ -11,6 +11,10 @@ type Props = {
   children: ReactNode;
   /** Highlight the link on any route under this path instead of under `href`. */
   activePrefix?: string;
+  /** Shown after the label, e.g. an unread count. */
+  badge?: ReactNode;
+  /** Overrides the accessible name, e.g. to include the unread count. */
+  "aria-label"?: string;
 };
 
 /**
@@ -33,15 +37,17 @@ function ActiveNavLink(props: Props) {
   return <NavLinkView {...props} active={active} />;
 }
 
-function NavLinkView({ href, icon, children, active }: Props & { active: boolean }) {
+function NavLinkView({ href, icon, children, active, badge, "aria-label": ariaLabel }: Props & { active: boolean }) {
   return (
     <Link
       className={`${styles.link} ${active ? styles.active : ""}`}
       href={href}
       aria-current={active ? "page" : undefined}
+      aria-label={ariaLabel}
     >
       <span className={styles.icon}>{icon}</span>
       {children}
+      {badge}
     </Link>
   );
 }

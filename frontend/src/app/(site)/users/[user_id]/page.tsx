@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { Activity, ActivitySkeleton, Profile, ProfileSkeleton, PunishmentControls, Punishments } from "@/components/Profile";
 import profileStyles from "@/components/Profile/Profile.module.scss";
 import { getCurrentUser } from "@/lib/auth";
+import { chatHref, MESSAGING } from "@/lib/messageEnums";
 import { Permission, hasPermission } from "@/lib/permissions";
 import type { AuthoredFilters, AuthoredKind, AuthoredSort } from "@/lib/types";
 import { getUserPosts, getUserProfile, getUserPunishments } from "@/lib/users";
@@ -30,6 +31,7 @@ async function UserProfile({ id, searchParams }: { id: string; searchParams: Sea
 
   const self = viewer?.id === user.id;
   const staff = viewer !== null && hasPermission(viewer.permissions, MANAGE_USERS);
+  const canMessage = !self && viewer !== null && hasPermission(viewer.permissions, MESSAGING);
   // Staff see the history; users see their own punishments in effect.
   const punishments = staff || self ? await getUserPunishments(user.id) : null;
   const current = (kind: "BAN" | "SUSPEND") => punishments?.find((p) => p.in_effect && p.kind === kind) ?? null;
@@ -45,14 +47,23 @@ async function UserProfile({ id, searchParams }: { id: string; searchParams: Sea
           <Link className={profileStyles.edit} href="/settings">
             Edit profile
           </Link>
-        ) : staff && punishments ? (
-          <PunishmentControls
-            userId={user.id}
-            username={user.username}
-            ban={current("BAN")}
-            suspension={current("SUSPEND")}
-          />
-        ) : null
+        ) : (
+          <>
+            {canMessage && (
+              <Link className={profileStyles.edit} href={chatHref(user.id)}>
+                Message
+              </Link>
+            )}
+            {staff && punishments && (
+              <PunishmentControls
+                userId={user.id}
+                username={user.username}
+                ban={current("BAN")}
+                suspension={current("SUSPEND")}
+              />
+            )}
+          </>
+        )
       }
       notices={punishments ? <Punishments punishments={punishments} staff={staff} /> : null}
       activity={

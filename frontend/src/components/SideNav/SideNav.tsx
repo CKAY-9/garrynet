@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { Account, AccountSkeleton } from "@/components/Account";
+import { NavMessages } from "@/components/Messages";
 import { NavNotifications } from "@/components/Notifications";
 import Link from "next/link";
 import { getCurrentUser } from "@/lib/auth";
@@ -50,7 +51,10 @@ export function SideNav() {
         </ul>
       </div>
       <div className={styles.user}>
-        {/* Both read the session cookie, so they stream in behind their boundaries. */}
+        {/* These read the session cookie, so they stream in behind their boundaries. */}
+        <Suspense>
+          <NavMessages />
+        </Suspense>
         <Suspense>
           <NavNotifications />
         </Suspense>
