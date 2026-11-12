@@ -244,9 +244,6 @@ frontend/   Website and loading screen (Next.js, TypeScript)
 
 These appear in the design docs but don't exist yet:
 
-- Website warnings and in-game player punishments
-- Pushing config changes from the website to the addon
-- A light/dark theme toggle (the site currently follows your system theme)
 - Cleanup of uploaded files that were never attached to anything
 
 ## Contributing
