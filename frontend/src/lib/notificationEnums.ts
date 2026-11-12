@@ -5,12 +5,13 @@ import type { NotificationFilters, NotificationType } from "./types";
  * small helpers the bell and the page share. Safe to import from client components.
  */
 
-export const notificationTypes: NotificationType[] = ["SUPPORT", "STORE", "FORUM", "ACCOUNT", "SYSTEM"];
+export const notificationTypes: NotificationType[] = ["SUPPORT", "STORE", "FORUM", "MESSAGE", "ACCOUNT", "SYSTEM"];
 
 export const notificationTypeLabels: Record<NotificationType, string> = {
   SUPPORT: "Support",
   STORE: "Store",
   FORUM: "Forum",
+  MESSAGE: "Message",
   ACCOUNT: "Account",
   SYSTEM: "System",
 };

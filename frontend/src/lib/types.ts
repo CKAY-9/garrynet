@@ -737,7 +737,7 @@ export type DiscountDetails = Pick<StoreDiscount, "discount" | "message" | "star
 
 // Storage (docs/STORAGE.md)
 
-/** A file attached to a forum post or support message. See `fileUrl` in `@/lib/files`. */
+/** A file attached to a forum post, support message or private message. See `fileUrl` in `@/lib/files`. */
 export type Attachment = {
   /** The user whose folder it's in, or -1 for community files. */
   owner_id: number;
@@ -760,7 +760,7 @@ export type StoredFile = Attachment & {
 
 // Notifications (docs/NOTIFICATIONS.md)
 
-export type NotificationType = "SUPPORT" | "STORE" | "FORUM" | "ACCOUNT" | "SYSTEM";
+export type NotificationType = "SUPPORT" | "STORE" | "FORUM" | "ACCOUNT" | "SYSTEM" | "MESSAGE";
 
 /** One of the current user's notifications. `title` and `body` are plain text: never render them as Markdown or HTML. */
 export type Notification = {
@@ -789,6 +789,52 @@ export type NotificationPage = {
 export type NotificationFilters = {
   unread: boolean;
   type: NotificationType | "";
+};
+
+// Private messages (docs/PRIVATE_MESSAGES.md)
+
+/** A private message. Content is sanitized Markdown. */
+export type PrivateMessage = {
+  id: number;
+  author_id: number;
+  recipient_id: number;
+  content: string;
+  /** Hidden from both users 24 hours after `created_at`. */
+  temporary: boolean;
+  /** `null` until the recipient opens the chat. */
+  read_at: string | null;
+  created_at: string;
+  /** At most 3. */
+  attachments: Attachment[];
+};
+
+/** One entry of the chat list: the other user and the chat's last message. */
+export type Chat = {
+  /** The other user. */
+  user: UserRef;
+  last_message_id: number;
+  last_author_id: number;
+  /** The start of the last message, as plain text. */
+  preview: string;
+  last_at: string;
+  /** Messages the other user sent that the current user hasn't read. */
+  unread_count: number;
+};
+
+/** A page of `GET /messages/chats`, most recent first. `next_cursor` is `null` on the last page. */
+export type ChatPage = {
+  items: Chat[];
+  next_cursor: string | null;
+  /** Whether the user has ever sent a message; until then the pages explain that staff can read them. */
+  has_sent: boolean;
+};
+
+/** A page of `GET /messages/with/{user_id}`, newest first. `next_cursor` is `null` on the last page. */
+export type MessageThread = {
+  /** The other user. */
+  user: UserRef;
+  items: PrivateMessage[];
+  next_cursor: string | null;
 };
 
 /** Where and how to send a pending file's bytes. */

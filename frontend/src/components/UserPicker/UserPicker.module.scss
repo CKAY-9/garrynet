@@ -1,0 +1,120 @@
+$border: 1px solid rgb(127 127 127 / 0.2);
+$accent: #3b82f6;
+
+.picker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.input {
+  width: 100%;
+  padding: 0.5rem 0.65rem;
+  border: $border;
+  border-radius: 0.4rem;
+  background: rgb(127 127 127 / 0.06);
+  color: inherit;
+  font: inherit;
+  transition: border-color 0.15s, background 0.15s;
+
+  &:hover {
+    border-color: rgb(127 127 127 / 0.45);
+  }
+
+  &:focus {
+    outline: none;
+    border-color: $accent;
+    background: rgb(59 130 246 / 0.06);
+  }
+
+  &:disabled {
+    opacity: 0.6;
+  }
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.15rem 0.3rem;
+  border: $border;
+  border-radius: 999px;
+  font-size: 0.85rem;
+
+  button {
+    padding: 0 0.35rem;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    line-height: 1;
+    opacity: 0.6;
+    cursor: pointer;
+
+    &:hover {
+      opacity: 1;
+    }
+  }
+}
+
+.results {
+  margin: 0;
+  padding: 0.25rem;
+  list-style: none;
+  border: $border;
+  border-radius: 0.5rem;
+  background: var(--background);
+  max-height: 14rem;
+  overflow-y: auto;
+
+  button {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    padding: 0.4rem 0.6rem;
+    border: 0;
+    border-radius: 0.35rem;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+
+    &:hover {
+      background: rgb(127 127 127 / 0.12);
+    }
+  }
+
+  li {
+    padding: 0.4rem 0.6rem;
+    font-size: 0.85rem;
+    opacity: 0.7;
+
+    &:has(button) {
+      padding: 0;
+      opacity: 1;
+    }
+  }
+}
+
+.id {
+  font-weight: 400;
+  opacity: 0.5;
+  font-variant-numeric: tabular-nums;
+}
+
+.hint {
+  margin: 0;
+  font-size: 0.8rem;
+  opacity: 0.65;
+}
