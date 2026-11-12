@@ -19,8 +19,8 @@ recipient_id: number // can't equal author_id
 content: string // markdown, required, up to 5,000 characters
 attachments: { owner_id, id, name, content_type, size }[] // max 3
 temporary: boolean // default false; set by the sender, see Temporary Messages
-deleted_by_author: boolean // default false; the author deleted the chat
-deleted_by_recipient: boolean // default false; the recipient deleted the chat
+deleted_by_author: boolean // default false; the author deleted the chat (not returned to users)
+deleted_by_recipient: boolean // default false; the recipient deleted the chat (not returned to users)
 read_at?: utc timestamp // null = the recipient hasn't opened it yet
 created_at: utc timestamp
 ```
@@ -38,13 +38,17 @@ Messages aren't really private: staff with Admin Access and User Management can 
 
 Whether the popup shows isn't stored. The chat list returns `has_sent`, which is true if the user is the author of any message, including deleted and expired ones. Deleting a chat can't bring the popup back.
 
+The popup opens when a user who hasn't sent a message arrives on `/messages` or a chat. Confirming it ("I understand") is remembered for that browser tab only, so it opens again after a reload or in a new tab until the user has sent a message. Escape doesn't dismiss it. "Not now" closes it but leaves the composer locked, with a "Read and confirm" link to open it again.
+
 ## Chats
 
-A user's chat list holds one entry per other user they have messages with, newest first. Each shows the other user, a preview of the last message, when it was sent and how many messages are unread.
+A user's chat list holds one entry per other user they have messages with, newest first. Each shows the other user, a preview of the last message, when it was sent and how many messages are unread. The list loads 25 chats at a time with a "Load more" button.
 
 Selecting a chat loads the 25 most recent messages, oldest at the top. Scrolling upwards loads 25 more at a time. This is cursor pagination over `(created_at, id)`, so messages arriving while the user scrolls can't shift or repeat a page.
 
-A message is **unread** until the recipient opens the chat, which sets `read_at` on everything the other user sent them. The side navigation shows an unread badge, and the chat list a dot on unread chats.
+A message is **unread** until the recipient opens the chat, which sets `read_at` on everything the other user sent them. The side navigation shows an unread badge, and the chat list highlights unread chats with their unread count. The count and badge only include messages the user can still see (not deleted or expired ones).
+
+Reading isn't done by the page render: the open chat's client calls the mark-read route when it loads with unread messages from the other user, and again whenever a poll brings in new ones.
 
 ### Deleting a Chat
 
@@ -69,7 +73,7 @@ The sender can mark a message as **temporary** ("disappearing") when writing it.
 Requires the sender to have Site Access and `User Messages`. Rules:
 
 - The recipient must exist and can't be the sender: 404 for an unknown user, 400 for yourself.
-- The recipient must also have Site Access and `User Messages` (effective permissions, so suspended and banned users count). Otherwise a generic 403 that doesn't say why.
+- The recipient must also have Site Access and `User Messages` (effective permissions, so suspended and banned users count). Otherwise a 403 ("missing permission: a recipient who can receive messages") that doesn't say whether they are suspended, banned or simply lack the permission.
 - Content is 1 to 5,000 characters and up to 3 attachments (400 otherwise).
 - At most 10 messages per 30 seconds per sender; 429 with `Retry-After` beyond that.
 
@@ -77,7 +81,7 @@ The recipient gets a notification (see below). It is written after the message c
 
 ### Notifications
 
-Sending creates a `MESSAGE` notification for the recipient (event `message.received`) linking to `/messages/{author_id}`. Several messages from the same user collapse into one unread notification, as described in [NOTIFICATIONS.md](NOTIFICATIONS.md#rules). The title names the author and the body is the start of the message as plain text. The author is never notified of their own messages.
+Sending creates a `MESSAGE` notification for the recipient (event `message.received`) linking to `/messages/{author_id}`. Several messages from the same user collapse into one unread notification, as described in [NOTIFICATIONS.md](NOTIFICATIONS.md#rules). The title is "New message from {username}" and the body is the start of the message as plain text (Markdown stripped, clipped like every notification body). The author is never notified of their own messages.
 
 ### Attachment Privacy
 
@@ -89,33 +93,50 @@ Login is required for all of them. The first six also require Site Access and `U
 
 | Route | Purpose |
 |---|---|
-| GET `/messages/chats` | My chat list, newest first, with `has_sent`. Query: `limit` (1 to 100, default 25), `cursor` |
-| GET `/messages/with/{user_id}` | My messages with that user, newest first. Query: `limit` (1 to 100, default 25), `cursor` (from the previous page's `next_cursor`) |
+| GET `/messages/chats` | My chat list, newest first. Query: `limit` (1 to 100, default 25), `cursor` |
+| GET `/messages/with/{user_id}` | My messages with that user, newest first. Query: `limit` (1 to 100, default 25), `cursor` (from the previous page's `next_cursor`). 404 for an unknown user |
 | POST `/messages/with/{user_id}` | Send a message: `{ content, attachments?, temporary? }`. Returns the message (201) |
-| POST `/messages/with/{user_id}/read` | Mark what they sent me as read. Idempotent |
+| POST `/messages/with/{user_id}/read` | Mark what they sent me as read. Idempotent. Returns `{ updated }`, how many were unread |
 | DELETE `/messages/with/{user_id}` | Delete the chat for me only (204) |
 | GET `/messages/unread-count` | `{ count }`, for the navigation badge |
-| GET `/messages/admin/{user_id}/chats` | Admin: that user's chats, including deleted and expired ones |
-| GET `/messages/admin/{user_id}/with/{other_id}` | Admin: one chat between two users, including deleted and expired messages. Same pagination |
+| GET `/messages/admin/{user_id}/chats` | Admin: that user's chats, including deleted and expired ones. 404 for an unknown user |
+| GET `/messages/admin/{user_id}/with/{other_id}` | Admin: one chat between two users, including deleted and expired messages. Same pagination. 404 if either user is unknown |
 
-Reads return `{ items, next_cursor }` like [notifications](NOTIFICATIONS.md#routes); `next_cursor` is null on the last page. A bad `cursor` or out-of-range `limit` is 400.
+Paged reads share the `{ items, next_cursor }` pagination of [notifications](NOTIFICATIONS.md#routes), but notifications name their list `notifications` while these always use `items`. `next_cursor` is null on the last page. A bad `cursor` or out-of-range `limit` is 400. The responses are:
+
+- **Chats**: `{ items, next_cursor, has_sent }`. Each chat is `{ user: { id, username, avatar_url }, last_message_id, last_author_id, preview, last_at, unread_count }`. `preview` is the last message as plain text, at most 120 characters, ending in "…" when cut. `user` is the other user.
+- **Thread**: `{ user, items, next_cursor }`, `user` being the other user and `items` the messages as in [Private Message](#private-message) (without the `deleted_by_*` flags), newest first.
+- **Send**: the created message (201). **Mark read**: `{ updated }`. **Delete**: 204 with no body.
+- **Admin chats**: `{ user, items, next_cursor }`, `user` being whose chats these are. The items are the same chats as above; they have no per-chat deleted or expired flags, such chats are just included.
+- **Admin thread**: `{ user, other, items, next_cursor }`. Each item is a message plus `deleted_by_author`, `deleted_by_recipient`, `deleted` (either of them) and `expired`.
+
+Mark read and delete don't look up the other user: with an unknown id they change nothing and answer 200 `{ "updated": 0 }` and 204. Reading a thread with yourself as `{user_id}` returns an empty one (the frontend shows a 404 page).
 
 ## Admins
 
 Staff with Admin Access and User Management can pick a user and read their chats at `/admin/messages` (see [ADMIN.md](ADMIN.md#adminmessages)). This is read-only: staff can't send, edit or delete messages on someone's behalf.
 
-- The admin views show everything: messages either side deleted, and temporary ones past 24 hours. Each message carries `deleted` and `expired` flags so the page can mark them.
-- Every admin view of a user's chats or a chat is logged with the staff member and the users involved. This is the only audit trail.
+- The admin views show everything: messages either side deleted, and temporary ones past 24 hours. Each message in a chat carries `deleted_by_author`, `deleted_by_recipient`, `deleted` and `expired` so the page can mark them. The chat list just includes such chats.
+- Viewing never marks anything read.
+- Every admin view of a user's chats or a chat is logged with the staff member and the users involved. This is the only audit trail (a server log line, not stored in the database). The admin pages remind staff of this.
 - Staff can read private messages, and the privacy policy template says so (see [LEGAL.md](LEGAL.md)).
 
 ## Frontend
 
-- `/messages`: my chats with unread dots and a "New Message" button, which opens a user search by name or id (reusing the support ticket user search) and then the chat. Requires `User Messages`.
-- `/messages/{user_id}`: the chat. A header with the other user and a delete (trash can) button, the messages, and a composer with markdown text, up to 3 attachments and a "disappearing (24h)" toggle. The first send shows the popup, and the grayed-out disclaimer stays afterwards.
-- Newer messages are fetched about every 15 seconds while the tab is visible. There are no websockets or push (see [Not included](#not-included)).
-- Side navigation: a "Messages" link with an unread badge, shown to users with `User Messages` (see [SITE_DESIGN.md](SITE_DESIGN.md#side-navigation)).
-- User profiles: a "Message" button for viewers with `User Messages` who aren't the profile's owner (see [USERS.md](USERS.md#messaging)).
-- `/admin/messages`: the staff view described above.
+The pages, the side navigation link and the profile button all require Site Access and `User Messages`, so suspended and banned users don't see them.
+
+- `/messages`: my chats, most recent first, with an unread count on chats with unread messages, a "Load more" button and a "New message" button, which opens a user search by name or id (reusing the support ticket user search) and then the chat. The popup described above opens here too until it is confirmed.
+- `/messages/{user_id}`: the chat. A header with a back link, the other user and a delete (trash can) button with a confirmation, the messages (oldest at the top, mine on the right) and a composer. An unknown user, or your own id, is a 404 page.
+  - The composer takes markdown text, up to 3 attachments and a "Disappearing message (24h)" toggle. It shows a character counter (out of 5,000) and Ctrl/Cmd+Enter sends. It stays locked until the intro popup is confirmed (see [Messages Aren't Private](#messages-arent-private)); the grayed-out disclaimer replaces the popup afterwards.
+  - Opening the chat shows the 25 most recent messages and scrolls to the newest. Older ones load when the top comes into view (and as needed to fill a short chat), without moving the view; a failure shows a "Try again" link, and the start of the chat is marked. The view follows new messages only while it is already at the bottom.
+  - Newer messages are fetched about every 15 seconds while the tab is visible, and straight away when it becomes visible again. There are no websockets or push (see [Not included](#not-included)).
+- Side navigation: a "Messages" link with an unread badge, shown to users with Site Access and `User Messages` (see [SITE_DESIGN.md](SITE_DESIGN.md#side-navigation)). The badge is loaded with the page, then refreshed about every 60 seconds while the tab is visible and whenever the user reads or sends in a chat.
+- User profiles: a "Message" button for viewers with Site Access and `User Messages` who aren't the profile's owner (see [USERS.md](USERS.md#messaging)), and a "View messages" link to `/admin/messages/{user_id}` for staff with Admin Access and User Management (see [USERS.md](USERS.md#messaging)).
+- Admin pages (read-only; see [ADMIN.md](ADMIN.md#adminmessages)):
+  - `/admin/messages`: search for a user by name or id.
+  - `/admin/messages/{user_id}`: that user's chats, with "Load more". Each links to the chat below.
+  - `/admin/messages/{user_id}/{other_id}`: the chat between the two users, with the same scroll-up loading. There is no composer and no polling. `{user_id}`'s messages are on the right. Each message shows who wrote it, when, and labels: "Deleted by {name}" (or "Deleted by both users"), "Expired", "Temporary" (not yet expired) and "Unread". An unknown user, or the same user twice, is a 404 page.
+  - Each page shows a "Views are logged" notice.
 
 ## Not included
 

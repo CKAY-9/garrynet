@@ -73,10 +73,11 @@ Requires: Community Management
 Staff can read any user's private messages (see [PRIVATE_MESSAGES.md](PRIVATE_MESSAGES.md)).
 Requires: User Management (and Admin Access, like every admin page)
 
-- Search for a user by name or id to list their chats.
-- Opening a chat shows its messages and attachments read-only, newest at the bottom, 25 at a time with older ones loading on scroll. Messages that either user deleted, or that expired as temporary messages, are still shown, marked "deleted" or "expired".
-- Staff can't send, edit or delete messages here.
-- Every view of a user's chats or of a chat is logged.
+- `/admin/messages`: search for a user by name or id.
+- `/admin/messages/{user_id}`: that user's chats, 25 at a time with "Load more", including chats they deleted and chats whose messages have expired. Staff with User Management also get a "View messages" link on every other user's profile that opens this page.
+- `/admin/messages/{user_id}/{other_id}`: opening a chat shows its messages and attachments read-only, newest at the bottom, 25 at a time with older ones loading on scroll. Messages that either user deleted, or that expired as temporary messages, are still shown, labelled "Deleted by {name}" (or "Deleted by both users") or "Expired". Temporary messages not yet expired are labelled "Temporary", and ones the recipient hasn't opened "Unread".
+- Staff can't send, edit or delete messages here, and viewing never marks messages as read.
+- Every view of a user's chats or of a chat is logged, and each page carries a "Views are logged" notice.
 
 ## Banning and Suspending
 

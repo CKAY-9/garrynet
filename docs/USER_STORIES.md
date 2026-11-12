@@ -213,12 +213,12 @@ follow them
 
 **Seeing Unread Messages**
 1. As a user with `User Messages` permissions, I want to see which chats have messages I haven't read
-2. The side navigation's Messages link shows an unread badge, and `/messages` shows a dot on each chat with unread messages
-3. Opening the chat marks its messages as read and clears the dot
+2. The side navigation's Messages link shows an unread badge, and `/messages` shows an unread count on each chat with unread messages
+3. Opening the chat marks its messages as read and clears the count
 
 **Sending a First Message**
 1. As a user with `User Messages` permissions who has never sent a message, I want to be told that messages aren't really private
-2. Opening the message page shows a popup explaining that staff can read messages, which I confirm
+2. Opening the message page shows a popup explaining that staff can read messages, which I confirm. Until I do, the message box stays locked; closing the popup with "Not now" leaves a "Read and confirm" link to reopen it
 3. Once I've sent a message, the popup no longer appears, and a visible, grayed-out disclaimer is shown on the message page instead
 4. Deleting chats doesn't bring the popup back
 
@@ -226,11 +226,11 @@ follow them
 1. As a user with `User Messages` permissions, I want to attach files to a message, so that I can share screenshots and clips
 2. The message box supports markdown, up to 5,000 characters, and up to 3 attachments
 3. Trying to attach a fourth file is refused
-4. Only the sender, the recipient and staff with `User Management` can open the attachments
+4. Only the sender, the recipient and staff with `Admin Access` and `User Management` can open the attachments
 
 **Sending a Disappearing Message**
 1. As a user with `User Messages` permissions, I want to mark a message as temporary, so that it doesn't stay in the chat
-2. The message box has a "disappearing (24h)" toggle
+2. The message box has a "Disappearing message (24h)" toggle
 3. After 24 hours the message is hidden from both me and the recipient
 4. Staff can still see it, marked as expired
 
@@ -255,4 +255,5 @@ follow them
 2. I do this by going to `/admin/messages`, navigable by admin dashboard
 3. I search for a user by name or id, and their chats are listed
 4. Opening a chat shows the messages read-only, including ones either user deleted and expired disappearing messages, which are marked as such
-5. Each time I view a user's chats, it is logged
+5. Each time I view a user's chats or a chat, it is logged, and the pages tell me so
+6. A user's profile, `/users/{id}`, has a "View messages" link that opens their chats

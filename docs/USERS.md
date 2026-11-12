@@ -34,7 +34,7 @@ A **private** profile hides the user's bio, reputation, threads and posts from e
 
 ## Messaging
 
-Viewers with `User Messages` see a **Message** button on other users' profiles (not their own), next to "View on Steam". It opens `/messages/{user_id}` (see [PRIVATE_MESSAGES.md](PRIVATE_MESSAGES.md)). The button is shown even when the profile is private: `private` doesn't affect messaging. The recipient still needs `User Messages` and Site Access to receive one, so messaging a suspended or banned user is refused.
+Viewers with Site Access and `User Messages` see a **Message** button on other users' profiles (not their own), next to "View on Steam". It opens `/messages/{user_id}` (see [PRIVATE_MESSAGES.md](PRIVATE_MESSAGES.md)). The button is shown even when the profile is private: `private` doesn't affect messaging. The recipient still needs `User Messages` and Site Access to receive one, so messaging a suspended or banned user is refused. Staff with Admin Access and User Management also see a **View messages** link on other users' profiles, which opens that user's chats at `/admin/messages/{user_id}` (see [ADMIN.md](ADMIN.md#adminmessages)).
 
 ## Profile Activity
 

@@ -65,7 +65,7 @@ Terms of service, a privacy policy and a refund policy, linked from every page, 
 
 ### Notifications
 
-In-site notifications for ticket replies, purchases and deliveries, forum replies, usergroup changes, and bans and suspensions.
+In-site notifications for ticket replies, purchases and deliveries, forum replies, private messages, usergroup changes, and bans and suspensions.
 
 ### Private Messages
 
