@@ -209,40 +209,71 @@ fn spawn_purchase_sweeper(state: AppState) {
 /// Upload targets expire after 15 minutes; a file still pending this long was abandoned.
 const STALE_UPLOAD_MINUTES: i64 = 60;
 
-/// Deletes abandoned uploads (rows and any bytes that did arrive), every 10 minutes.
+/// A user file still unattached this long after its upload was never used. Generous, since
+/// a post can take a while to write after its files are uploaded.
+const UNATTACHED_FILE_HOURS: i64 = 24;
+
+/// Deletes abandoned uploads and unused files (rows and their bytes), every 10 minutes.
 fn spawn_upload_sweeper(db: PgPool, storage: Storage) {
     actix_web::rt::spawn(async move {
         let mut tick = tokio::time::interval(Duration::from_secs(10 * 60));
         loop {
             tick.tick().await;
-            let stale = match File::stale_pending(&db, STALE_UPLOAD_MINUTES).await {
-                Ok(stale) => stale,
-                Err(e) => {
-                    log::error!("failed to find abandoned uploads: {e}");
-                    continue;
-                }
-            };
-            let mut removed = 0;
-            for file in stale {
-                match File::delete_pending(&db, file.owner_id, &file.id).await {
-                    Ok(true) => {}
-                    Ok(false) => continue, // completed meanwhile
-                    Err(e) => {
-                        log::error!("failed to delete abandoned upload {}/{}: {e}", file.owner_id, file.id);
-                        continue;
-                    }
-                }
-                removed += 1;
-                let Some(backend) = storage::Backend::parse(&file.backend) else { continue };
-                if let Err(e) = storage.delete(backend, &file.key).await {
-                    log::error!("failed to delete object {} of abandoned upload: {e}", file.key);
-                }
-            }
-            if removed > 0 {
-                log::info!("deleted {removed} abandoned upload(s)");
-            }
+            sweep_files(&db, &storage, Sweep::Abandoned).await;
+            sweep_files(&db, &storage, Sweep::Unattached).await;
         }
     });
+}
+
+/// What the upload sweeper deletes.
+#[derive(Clone, Copy)]
+enum Sweep {
+    /// Uploads still pending after `STALE_UPLOAD_MINUTES`.
+    Abandoned,
+    /// User files still not attached to anything `UNATTACHED_FILE_HOURS` after uploading.
+    Unattached,
+}
+
+async fn sweep_files(db: &PgPool, storage: &Storage, sweep: Sweep) {
+    let what = match sweep {
+        Sweep::Abandoned => "abandoned upload",
+        Sweep::Unattached => "unattached file",
+    };
+    let stale = match sweep {
+        Sweep::Abandoned => File::stale_pending(db, STALE_UPLOAD_MINUTES).await,
+        Sweep::Unattached => File::stale_unattached(db, UNATTACHED_FILE_HOURS).await,
+    };
+    let stale = match stale {
+        Ok(stale) => stale,
+        Err(e) => {
+            log::error!("failed to find {what}s: {e}");
+            return;
+        }
+    };
+    let mut removed = 0;
+    for file in stale {
+        // Guarded, so a file completed or attached meanwhile is kept.
+        let deleted = match sweep {
+            Sweep::Abandoned => File::delete_pending(db, file.owner_id, &file.id).await,
+            Sweep::Unattached => File::delete_unattached(db, file.owner_id, &file.id).await,
+        };
+        match deleted {
+            Ok(true) => {}
+            Ok(false) => continue,
+            Err(e) => {
+                log::error!("failed to delete {what} {}/{}: {e}", file.owner_id, file.id);
+                continue;
+            }
+        }
+        removed += 1;
+        let Some(backend) = storage::Backend::parse(&file.backend) else { continue };
+        if let Err(e) = storage.delete(backend, &file.key).await {
+            log::error!("failed to delete object {} of {what}: {e}", file.key);
+        }
+    }
+    if removed > 0 {
+        log::info!("deleted {removed} {what}(s)");
+    }
 }
 
 /// One-shot command mode. Only needs `DATABASE_URL`.
