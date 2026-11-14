@@ -90,7 +90,7 @@ Both the browser and your Garry's Mod servers must be able to reach the backend,
 
 - A [Steam Web API key](https://steamcommunity.com/dev/apikey)
 - **Docker** with Docker Compose, **or** PostgreSQL 17, Rust 1.85+ and Node.js 22
-- A domain with HTTPS for production (a reverse proxy such as Caddy or nginx in front of the frontend and backend)
+- A domain for the site and one for the backend (e.g. `example.com` and `api.example.com`). With Docker, Caddy serves both with HTTPS; a manual setup needs its own reverse proxy
 - Optional: a [Stripe](https://stripe.com) account, to take payments in the store
 - Optional: an S3-compatible bucket (AWS S3, Cloudflare R2, MinIO) for uploads; local disk is the default
 
@@ -98,7 +98,7 @@ Both the browser and your Garry's Mod servers must be able to reach the backend,
 
 ### Docker (recommended)
 
-1. **Clone** the repository onto your web server:
+1. **Clone** the repository onto your web server, and point DNS records for both domains at it with ports 80 and 443 open:
     ```sh
     git clone https://github.com/CKAY-9/garrynet.git
     cd garrynet
@@ -112,27 +112,38 @@ Both the browser and your Garry's Mod servers must be able to reach the backend,
 
     `DATABASE_URL` and `BIND_ADDR` are set by Compose, so you can leave them alone.
 3. **Configure the frontend.** Copy `frontend/.env.example` to `frontend/.env` and set `NEXT_PUBLIC_API_URL` to the backend's public URL (the same as `BACKEND_URL`). `API_URL` is set by Compose.
-4. **Set a database password.** Copy `.env.example` to `.env` in the repository root and set:
+4. **Set the domains and a database password.** Copy `.env.example` to `.env` in the repository root and set:
     ```sh
+    SITE_DOMAIN=example.com
+    API_DOMAIN=api.example.com
     POSTGRES_PASSWORD=<a strong password>
     ```
-    Without it the password defaults to `garrynet`. You can also set `POSTGRES_USER`, `POSTGRES_DB`, `BACKEND_PORT` (default 8080) and `FRONTEND_PORT` (default 3000) here.
+    Without a password it defaults to `garrynet`. You can also set `POSTGRES_USER`, `POSTGRES_DB` and the rate limit (see [Reverse proxy](#reverse-proxy)) here.
 5. **Start it:**
     ```sh
     docker compose up -d --build
     ```
-    The frontend listens on port 3000 and the backend on 8080. Point your reverse proxy at them.
+    Caddy gets HTTPS certificates for both domains on first start. Only Caddy publishes ports (80 and 443); the frontend and backend are reached through it.
 6. **Make yourself an admin.** Log in on the website with Steam once, then:
     ```sh
     docker compose exec backend backend usergroup add <your SteamID64> admin
     ```
     Reload the page and the Admin section appears in the navigation.
 
-`NEXT_PUBLIC_API_URL` is baked into the frontend at build time, so re-run with `--build` after changing it. Uploaded files are kept in the `uploads` volume, and the database in `db-data`.
+`NEXT_PUBLIC_API_URL` is baked into the frontend at build time, so re-run with `--build` after changing it. Uploaded files are kept in the `uploads` volume, the database in `db-data`, and Caddy's certificates in `caddy-data`.
+
+#### Reverse proxy
+
+Caddy ([Caddyfile](./Caddyfile)) is built with the [rate limit plugin](https://github.com/mholt/caddy-ratelimit) (`caddy/Dockerfile`). On both domains it:
+
+- **Sets security headers:** `Content-Security-Policy: frame-ancestors 'self'`, `X-Frame-Options: SAMEORIGIN`, `X-Content-Type-Options: nosniff` and `Referrer-Policy: strict-origin-when-cross-origin`, unless the frontend or backend already set them, and removes the `Server` header.
+- **Rate limits each client IP:** at most `RATE_LIMIT_EVENTS` (default 600) requests per `RATE_LIMIT_WINDOW` (default `1m`), counted separately for the site and the API. Next.js build assets (`/_next/static/`) aren't counted. Game servers' `/gnet/` requests have their own limit, `RATE_LIMIT_GNET_EVENTS` (default 1200), since servers on one host share an IP. Requests over the limit get `429 Too Many Requests` with `Retry-After`. Set these in the root `.env` and run `docker compose up -d` to apply them.
+
+If another proxy or CDN (e.g. Cloudflare) sits in front of Caddy, add its IP ranges as [`trusted_proxies`](https://caddyserver.com/docs/caddyfile/options#trusted-proxies) in the Caddyfile's global options. Otherwise every visitor counts against the proxy's IP.
 
 ### Demo
 
-To run a public demo, with Stripe in test mode and everything non-admins create cleared daily, use `docker-compose.demo.yml`. It adds Caddy for HTTPS. See [docs/DEMO.md](./docs/DEMO.md#deploying).
+To run a public demo, with Stripe in test mode and everything non-admins create cleared daily, add `docker-compose.demo.yml`. See [docs/DEMO.md](./docs/DEMO.md#deploying).
 
 ```sh
 docker compose -f docker-compose.yml -f docker-compose.demo.yml up -d --build

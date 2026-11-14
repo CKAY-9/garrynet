@@ -1,15 +1,82 @@
-# Reverse proxy for docker-compose.demo.yml: HTTPS certificates are issued and renewed
-# automatically. SITE_DOMAIN and API_DOMAIN come from the root `.env`, e.g.
+# Reverse proxy for docker-compose.yml: HTTPS certificates are issued and renewed
+# automatically, responses get security headers, and each client IP is rate limited.
+# SITE_DOMAIN and API_DOMAIN come from the root `.env`, e.g.
 #   SITE_DOMAIN=gnet.example.com
 #   API_DOMAIN=api.gnet.example.com
 # Both must already resolve (DNS A/AAAA records) to this machine, with ports 80 and 443 open.
+#
+# Rate limits (RATE_LIMIT_* in the root `.env`, defaults in docker-compose.yml) are per
+# client IP over a sliding window; requests over the limit get 429 with Retry-After.
+# {client_ip} is the connecting address. Behind another proxy or CDN (e.g. Cloudflare), add
+# its ranges as `trusted_proxies` in the global options below, or every visitor shares the
+# proxy's limit.
+
+{
+	# rate_limit is a plugin directive (caddy/Dockerfile), so it needs a place in the order.
+	order rate_limit before basic_auth
+}
+
+(security_headers) {
+	header {
+		?Content-Security-Policy "frame-ancestors 'self'"
+		?X-Frame-Options SAMEORIGIN
+		?X-Content-Type-Options nosniff
+		?Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+}
+
+# Responses Caddy makes itself (429 from the rate limit, 502 while a service restarts) skip
+# the site's handlers, so they get the headers here.
+(errors) {
+	handle_errors {
+		import security_headers
+		respond "{err.status_code} {err.status_text}" {err.status_code}
+	}
+}
 
 {$SITE_DOMAIN} {
+	import security_headers
+	import errors
+	rate_limit {
+		zone site {
+			# Build assets are immutable, and one page load fetches dozens of them.
+			match {
+				not path /_next/static/*
+			}
+			key {client_ip}
+			events {$RATE_LIMIT_EVENTS}
+			window {$RATE_LIMIT_WINDOW}
+		}
+	}
 	encode zstd gzip
 	reverse_proxy frontend:3000
 }
 
 {$API_DOMAIN} {
+	import security_headers
+	import errors
+	rate_limit {
+		zone api {
+			match {
+				not path /gnet/*
+			}
+			key {client_ip}
+			events {$RATE_LIMIT_EVENTS}
+			window {$RATE_LIMIT_WINDOW}
+		}
+		# Game servers (docs/ADDON.md) get their own, larger limit: every player joining
+		# after a map change triggers requests from the server's one IP, and servers on the
+		# same host share it.
+		zone gnet {
+			match {
+				path /gnet/*
+			}
+			key {client_ip}
+			events {$RATE_LIMIT_GNET_EVENTS}
+			window {$RATE_LIMIT_WINDOW}
+		}
+	}
 	encode zstd gzip
 	reverse_proxy backend:8080
 }

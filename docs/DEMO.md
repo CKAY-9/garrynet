@@ -2,7 +2,7 @@
 
 Part of [GarryNet Design](README.md).
 
-A public demo lets anyone log in and try every feature without real payments, and without what they post piling up. Demo mode is turned on with `DEMO_MODE=true` in the backend's environment. `docker-compose.demo.yml` sets it, and puts the site behind Caddy with HTTPS (see [Deploying](#deploying)).
+A public demo lets anyone log in and try every feature without real payments, and without what they post piling up. Demo mode is turned on with `DEMO_MODE=true` in the backend's environment. `docker-compose.demo.yml` sets it, on top of the regular Docker deployment (see [Deploying](#deploying)).
 
 ## Behavior
 
@@ -67,7 +67,7 @@ Run the demo from its own clone of the repository: its `.env` files and ports 80
     ```sh
     docker compose -f docker-compose.yml -f docker-compose.demo.yml up -d --build
     ```
-    Caddy gets certificates for both domains on first start. Only Caddy publishes ports; the frontend and backend are reached through it.
+    Caddy gets certificates for both domains on first start. Only Caddy publishes ports; the frontend and backend are reached through it. It also sets security headers and rate limits each IP, like the regular deployment ([README](../README.md#reverse-proxy)).
 6. Log in with Steam, then make yourself an admin:
     ```sh
     docker compose -f docker-compose.yml -f docker-compose.demo.yml exec backend backend usergroup add <your SteamID64> admin
