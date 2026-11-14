@@ -24,7 +24,7 @@ use crate::{
     },
     routes::validate::bad,
     state::AppState,
-    storage::{Backend, ReadTarget, UploadTarget},
+    storage::{Backend, Finish, ReadTarget, UploadTarget},
 };
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
@@ -285,25 +285,26 @@ async fn complete_upload(
     complete(&state, file, backend).await
 }
 
-/// Checks the stored object matches what was declared, then marks the file ready.
+/// Checks the uploaded object matches what was declared and puts it in place (see
+/// `Storage::finish_upload`), then marks the file ready.
 async fn complete(state: &AppState, file: File, backend: Backend) -> Result<HttpResponse, ApiError> {
     let storage = &state.storage;
-    let Some((size, e_tag)) = storage.head(backend, &file.key).await? else {
-        return Err(bad("the file's bytes haven't been uploaded yet".into()));
-    };
-    if size != file.size as u64 {
+    let e_tag = match storage.finish_upload(backend, &file.key, file.size as u64).await? {
+        Finish::Missing => return Err(bad("the file's bytes haven't been uploaded yet".into())),
         // A presigned URL can't limit the size, so a client could have sent anything.
-        storage.delete(backend, &file.key).await?;
-        return Err(bad(format!(
-            "uploaded {size} bytes but {} were declared; upload it again",
-            file.size
-        )));
-    }
+        Finish::WrongSize(size) => {
+            return Err(bad(format!(
+                "uploaded {size} bytes but {} were declared; upload it again",
+                file.size
+            )));
+        }
+        Finish::Done(e_tag) => e_tag,
+    };
     match File::mark_ready(&state.db, file.owner_id, &file.id, e_tag.as_deref()).await? {
         Some(file) => Ok(HttpResponse::Ok().json(FileView::new(state, file))),
         // Deleted (or swept) while uploading.
         None => {
-            storage.delete(backend, &file.key).await?;
+            storage.delete_file(backend, &file.key).await?;
             Err(ApiError::NotFound("file"))
         }
     }
@@ -495,7 +496,11 @@ async fn delete_file(
     }
     let backend = backend_of(&file)?;
     if File::delete(&state.db, owner_id, &file_id).await? {
-        state.storage.delete(backend, &file.key).await?;
+        if file.status == FileStatus::Pending {
+            state.storage.delete_file(backend, &file.key).await?;
+        } else {
+            state.storage.delete(backend, &file.key).await?;
+        }
         log::info!("user {} deleted file {owner_id}/{file_id}", user.0.id);
     }
     Ok(HttpResponse::NoContent().finish())

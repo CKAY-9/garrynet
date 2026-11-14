@@ -311,6 +311,27 @@ impl File {
         .await
     }
 
+    /// Ready S3 files whose upload started between `after_minutes` and `after_minutes +
+    /// window_minutes` ago, for clearing their staging keys once the upload URL has expired.
+    pub async fn completed_s3_uploads(
+        db: &PgPool,
+        after_minutes: i64,
+        window_minutes: i64,
+    ) -> Result<Vec<Self>, sqlx::Error> {
+        sqlx::query_as(with_columns!(
+            "SELECT",
+            " FROM files
+             WHERE backend = 's3' AND status = 'READY'
+               AND created_at < now() - make_interval(mins => $1)
+               AND created_at >= now() - make_interval(mins => $1 + $2)
+             ORDER BY created_at LIMIT 1000"
+        ))
+        .bind(after_minutes as i32)
+        .bind(window_minutes as i32)
+        .fetch_all(db)
+        .await
+    }
+
     /// Pending files started more than `minutes` ago: abandoned uploads.
     pub async fn stale_pending(db: &PgPool, minutes: i64) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as(with_columns!(

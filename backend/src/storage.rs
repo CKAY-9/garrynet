@@ -90,6 +90,25 @@ pub struct UploadTarget {
     pub expires_at: DateTime<Utc>,
 }
 
+/// What [`Storage::finish_upload`] found.
+pub enum Finish {
+    /// Nothing has been uploaded yet.
+    Missing,
+    /// The upload had this many bytes, not the declared size; it was deleted.
+    WrongSize(u64),
+    /// The bytes are in place at the file's key, with this ETag.
+    Done(Option<String>),
+}
+
+/// Where the bytes of an S3 upload are sent before they're checked. A presigned PUT URL
+/// can't limit the size or be revoked, and stays valid for [`UPLOAD_TTL`], so it never points
+/// at the key a file is served from: completing the upload copies the checked object to that
+/// key, and anything written to the staging key afterwards is never served (and is deleted;
+/// see [`Storage::delete_staging`]).
+fn staging_key(key: &str) -> String {
+    format!("staging/{key}")
+}
+
 /// How a stored file is read.
 pub enum ReadTarget {
     /// Send the client to this URL (presigned or public).
@@ -212,13 +231,13 @@ impl Storage {
             }
             Provider::S3 { store, .. } => {
                 // Content-Length can't be signed into a presigned URL, so the size is checked
-                // when the upload is completed instead.
+                // when the upload is completed instead, on a staging copy (see `staging_key`).
                 let value = HeaderValue::from_str(content_type)
                     .map_err(|_| ApiError::BadRequest("invalid content type".into()))?;
                 let options = SignedUrlOptions::default()
                     .with_signed_header(HeaderName::from_static("content-type"), value);
                 store
-                    .signed_url_opts(Method::PUT, &Path::from(key), UPLOAD_TTL, &options)
+                    .signed_url_opts(Method::PUT, &Path::from(staging_key(key)), UPLOAD_TTL, &options)
                     .await
                     .map_err(storage_error)?
                     .to_string()
@@ -283,12 +302,74 @@ impl Storage {
     }
 
     /// The stored object's size and ETag, or `None` if nothing is stored at `key`.
-    pub async fn head(&self, backend: Backend, key: &str) -> Result<Option<(u64, Option<String>)>, ApiError> {
-        match self.provider(backend)?.store().head(&Path::from(key)).await {
+    async fn head(store: &dyn ObjectStore, key: &str) -> Result<Option<(u64, Option<String>)>, ApiError> {
+        match store.head(&Path::from(key)).await {
             Ok(meta) => Ok(Some((meta.size, meta.e_tag))),
             Err(object_store::Error::NotFound { .. }) => Ok(None),
             Err(e) => Err(storage_error(e)),
         }
+    }
+
+    /// Checks that the bytes uploaded for `key` are exactly `size` bytes and puts them in
+    /// place: the local provider wrote them to `key` already, while an S3 upload is copied
+    /// there from its staging key (see [`staging_key`]), which is then deleted. An upload of
+    /// the wrong size is deleted.
+    pub async fn finish_upload(&self, backend: Backend, key: &str, size: u64) -> Result<Finish, ApiError> {
+        let provider = self.provider(backend)?;
+        let store = provider.store();
+        if let Provider::Local(_) = provider {
+            return Ok(match Self::head(store, key).await? {
+                None => Finish::Missing,
+                Some((found, _)) if found != size => {
+                    self.delete(backend, key).await?;
+                    Finish::WrongSize(found)
+                }
+                Some((_, e_tag)) => Finish::Done(e_tag),
+            });
+        }
+
+        let staging = staging_key(key);
+        match Self::head(store, &staging).await? {
+            None => return Ok(Finish::Missing),
+            // Rejected before copying, so an oversized upload isn't copied.
+            Some((found, _)) if found != size => {
+                self.delete_staging(backend, key).await?;
+                return Ok(Finish::WrongSize(found));
+            }
+            Some(_) => {}
+        }
+        match store.copy(&Path::from(staging.as_str()), &Path::from(key)).await {
+            Ok(()) => {}
+            Err(object_store::Error::NotFound { .. }) => return Ok(Finish::Missing),
+            Err(e) => return Err(storage_error(e)),
+        }
+        self.delete_staging(backend, key).await?;
+        // Checked again on the copy: the staging object could have been replaced between
+        // the check above and the copy.
+        match Self::head(store, key).await? {
+            None => Ok(Finish::Missing),
+            Some((found, _)) if found != size => {
+                self.delete(backend, key).await?;
+                Ok(Finish::WrongSize(found))
+            }
+            Some((_, e_tag)) => Ok(Finish::Done(e_tag)),
+        }
+    }
+
+    /// Deletes what an upload to `key` may have left at its staging key (S3 only; a no-op for
+    /// the local provider). Writes through the presigned URL remain possible until it
+    /// expires, so this is also run once it has (see `main::sweep_staging`).
+    pub async fn delete_staging(&self, backend: Backend, key: &str) -> Result<(), ApiError> {
+        match self.provider(backend)? {
+            Provider::Local(_) => Ok(()),
+            Provider::S3 { .. } => self.delete(backend, &staging_key(key)).await,
+        }
+    }
+
+    /// Deletes a file's object and anything left at its staging key.
+    pub async fn delete_file(&self, backend: Backend, key: &str) -> Result<(), ApiError> {
+        self.delete(backend, key).await?;
+        self.delete_staging(backend, key).await
     }
 
     /// How to serve `key` to a client. A `private` file is never sent to the bucket's public
@@ -401,11 +482,11 @@ mod tests {
         assert!(err.is_err(), "larger than declared");
         let err = storage.write(Backend::Local, key, 5, body(&[b"ab", b"cd"])).await;
         assert!(err.is_err(), "smaller than declared");
-        assert!(storage.head(Backend::Local, key).await.unwrap().is_none());
+
+        assert!(matches!(storage.finish_upload(Backend::Local, key, 4).await.unwrap(), Finish::Missing));
 
         storage.write(Backend::Local, key, 4, body(&[b"ab", b"cd"])).await.unwrap();
-        let (size, _) = storage.head(Backend::Local, key).await.unwrap().unwrap();
-        assert_eq!(size, 4);
+        assert!(matches!(storage.finish_upload(Backend::Local, key, 4).await.unwrap(), Finish::Done(_)));
         let bytes: Vec<Bytes> = storage
             .get(Backend::Local, key)
             .await

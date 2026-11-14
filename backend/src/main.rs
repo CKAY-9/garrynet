@@ -221,8 +221,34 @@ fn spawn_upload_sweeper(db: PgPool, storage: Storage) {
             tick.tick().await;
             sweep_files(&db, &storage, Sweep::Abandoned).await;
             sweep_files(&db, &storage, Sweep::Unattached).await;
+            sweep_staging(&db, &storage).await;
         }
     });
+}
+
+/// Completed S3 uploads whose upload URL expired this long ago (or more) get their staging
+/// key cleared. A minute past `UPLOAD_TTL`, for clock skew.
+const STAGING_SWEEP_AFTER_MINUTES: i64 = storage::UPLOAD_TTL.as_secs() as i64 / 60 + 1;
+/// ...and no more than this long ago: wider than the sweep interval, so every file is
+/// swept at least once without rescanning old ones forever.
+const STAGING_SWEEP_WINDOW_MINUTES: i64 = 25;
+
+/// Deletes what was written to the staging keys of recently completed S3 uploads after they
+/// completed: the presigned upload URL keeps working until it expires, but nothing written
+/// through it after completion is ever served (see `storage::staging_key`).
+async fn sweep_staging(db: &PgPool, storage: &Storage) {
+    let files = match File::completed_s3_uploads(db, STAGING_SWEEP_AFTER_MINUTES, STAGING_SWEEP_WINDOW_MINUTES).await {
+        Ok(files) => files,
+        Err(e) => {
+            log::error!("failed to find completed uploads to clean up: {e}");
+            return;
+        }
+    };
+    for file in files {
+        if let Err(e) = storage.delete_staging(storage::Backend::S3, &file.key).await {
+            log::error!("failed to delete the staging object of file {}/{}: {e}", file.owner_id, file.id);
+        }
+    }
 }
 
 /// What the upload sweeper deletes.
@@ -267,7 +293,12 @@ async fn sweep_files(db: &PgPool, storage: &Storage, sweep: Sweep) {
         }
         removed += 1;
         let Some(backend) = storage::Backend::parse(&file.backend) else { continue };
-        if let Err(e) = storage.delete(backend, &file.key).await {
+        let result = match sweep {
+            // An abandoned upload may have bytes waiting at its staging key.
+            Sweep::Abandoned => storage.delete_file(backend, &file.key).await,
+            Sweep::Unattached => storage.delete(backend, &file.key).await,
+        };
+        if let Err(e) = result {
             log::error!("failed to delete object {} of {what}: {e}", file.key);
         }
     }

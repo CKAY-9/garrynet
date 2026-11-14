@@ -111,7 +111,7 @@ Uploading takes three steps, the same for every provider:
 
 The frontend does steps 1 and 3 from server actions and step 2 from the browser (`frontend/src/components/Upload`).
 
-With the S3 provider, step 2 goes straight to the bucket through a presigned URL, so file bytes never pass through the backend. The bucket needs a CORS rule allowing `PUT` with a `Content-Type` header from `FRONTEND_URL`. With the local provider, step 2 goes to `PUT /file/{owner_id}/{id}/content`, which streams to disk and completes the file itself (step 3 is then a no-op).
+With the S3 provider, step 2 goes straight to the bucket through a presigned URL, so file bytes never pass through the backend. The bucket needs a CORS rule allowing `PUT` with a `Content-Type` header from `FRONTEND_URL`. The presigned URL points at a staging key, `staging/{key}`, not at the key the file is served from: a presigned URL can't limit the size and keeps working until it expires, so step 3 checks the staged object and copies it into place. Anything written to the staging key after that is never served, and the backend deletes it once the URL has expired (a bucket lifecycle rule expiring `staging/` after a day is a good backstop). With the local provider, step 2 goes to `PUT /file/{owner_id}/{id}/content`, which streams to disk and completes the file itself (step 3 is then a no-op).
 
 Pending uploads still pending after an hour are deleted, along with any bytes that arrived.
 
@@ -134,7 +134,7 @@ Local provider only. Authorized by the signature in the URL from `/file/upload` 
 
 ### POST /file/{owner_id}/{id}/complete
 
-Only the uploader can call this. Checks that the stored object exists and has the declared size, then marks the file ready and returns it. A presigned S3 URL can bind the content type but not the size, so an object of the wrong size is deleted here and the client must upload again. Completing a ready file just returns it.
+Only the uploader can call this. Checks that the uploaded object exists and has the declared size, then marks the file ready and returns it. A presigned S3 URL can bind the content type but not the size, so an object of the wrong size is deleted here and the client must upload again. With S3 the object is checked at its staging key and copied to the file's key (and checked again there) before the file is ready. Completing a ready file just returns it.
 
 ## GET /file/{owner_id}/{id}
 
