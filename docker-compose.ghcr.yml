@@ -1,0 +1,16 @@
+# Third compose file for the demo: run prebuilt images from GHCR instead of building.
+# Built by .github/workflows/publish-demo-images.yml.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.demo.yml -f docker-compose.ghcr.yml pull
+#   docker compose -f docker-compose.yml -f docker-compose.demo.yml -f docker-compose.ghcr.yml up -d
+
+services:
+  backend:
+    image: ghcr.io/ckay-9/garrynet-backend:demo
+    build: !reset null
+    pull_policy: always
+
+  frontend:
+    image: ghcr.io/ckay-9/garrynet-frontend:demo
+    build: !reset null
+    pull_policy: always

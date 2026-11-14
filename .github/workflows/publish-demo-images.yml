@@ -1,0 +1,68 @@
+# Builds the demo's backend and frontend images on GitHub's runners and pushes them to
+# GHCR, so the 2 GB droplet only ever pulls (a Rust release build would exhaust its RAM).
+#
+# NEXT_PUBLIC_API_URL is inlined into the frontend bundle at build time, so these images
+# are specific to the demo's API domain. Run manually: Actions > Publish demo images.
+name: Publish demo images
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  # GHCR image names must be lowercase.
+  IMAGE_PREFIX: ghcr.io/ckay-9/garrynet
+  DEMO_API_URL: https://api.gnet.ckay9.dev
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          push: true
+          platforms: linux/amd64
+          tags: |
+            ${{ env.IMAGE_PREFIX }}-backend:demo
+            ${{ env.IMAGE_PREFIX }}-backend:${{ github.sha }}
+          labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,scope=backend,mode=max
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # The frontend Dockerfile does `COPY . .` before `next build`, which reads frontend/.env.
+      - name: Write frontend/.env for the demo
+        run: |
+          printf 'NEXT_PUBLIC_API_URL=%s\nAPI_URL=%s\n' "$DEMO_API_URL" "$DEMO_API_URL" > frontend/.env
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          push: true
+          platforms: linux/amd64
+          tags: |
+            ${{ env.IMAGE_PREFIX }}-frontend:demo
+            ${{ env.IMAGE_PREFIX }}-frontend:${{ github.sha }}
+          labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,scope=frontend,mode=max
