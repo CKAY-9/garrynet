@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import type { Metadata } from "next";
 import Form from "next/form";
 import Link from "next/link";
 import { Avatar } from "@/components/Avatar";
@@ -13,6 +14,10 @@ import form from "../../community/editor.module.scss";
 import list from "../store.module.scss";
 import { RefundButton } from "./RefundButton";
 import { RetryButton } from "./RetryButton";
+
+export const metadata: Metadata = {
+  title: "Receipts",
+};
 
 export default function ReceiptsPage({ searchParams }: PageProps<"/admin/store/receipts">) {
   return (

@@ -1,15 +1,26 @@
 import { Suspense } from "react";
+import type { Metadata, ResolvingMetadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Activity, ActivitySkeleton, Profile, ProfileSkeleton, PunishmentControls, Punishments } from "@/components/Profile";
 import profileStyles from "@/components/Profile/Profile.module.scss";
 import { getCurrentUser } from "@/lib/auth";
 import { adminChatsHref, chatHref, MESSAGING } from "@/lib/messageEnums";
+import { pageMetadata } from "@/lib/pageMetadata";
 import { Permission, hasPermission } from "@/lib/permissions";
 import type { AuthoredFilters, AuthoredKind, AuthoredSort } from "@/lib/types";
 import { getUserPosts, getUserProfile, getUserPunishments } from "@/lib/users";
 
 type SearchParams = PageProps<"/users/[user_id]">["searchParams"];
+
+export async function generateMetadata(
+  { params }: PageProps<"/users/[user_id]">,
+  parent: ResolvingMetadata,
+): Promise<Metadata> {
+  // A private profile comes back without its bio, so the preview leaves it out too.
+  const user = await getUserProfile((await params).user_id).catch(() => null);
+  return user ? pageMetadata(parent, user.username, user.bio) : {};
+}
 
 export default function UserPage({ params, searchParams }: PageProps<"/users/[user_id]">) {
   return (

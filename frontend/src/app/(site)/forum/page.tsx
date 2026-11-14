@@ -1,6 +1,11 @@
 import { Suspense } from "react";
+import type { Metadata } from "next";
 import { ForumHome } from "@/components/Forum";
 import { getForumHome } from "@/lib/forum";
+
+export const metadata: Metadata = {
+  title: "Forums",
+};
 
 export default function ForumPage() {
   return (

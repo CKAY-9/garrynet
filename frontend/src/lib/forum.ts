@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { connection } from "next/server";
 import axios from "axios";
 import { getCurrentUser } from "./auth";
@@ -21,14 +22,14 @@ export async function getForumHome(): Promise<ForumHome> {
 }
 
 /** The category with id `id` and its threads, or `null` if there is no such category. */
-export async function getForumCategory(id: string): Promise<ForumCategoryPage | null> {
+export const getForumCategory = cache(async (id: string): Promise<ForumCategoryPage | null> => {
   return getOrNull<ForumCategoryPage>(id, (n) => `/forum/categories/${n}`);
-}
+});
 
 /** The thread with id `id` and its posts, or `null` if there is no such thread. */
-export async function getForumThread(id: string): Promise<ForumThreadPage | null> {
+export const getForumThread = cache(async (id: string): Promise<ForumThreadPage | null> => {
   return getOrNull<ForumThreadPage>(id, (n) => `/forum/threads/${n}`);
-}
+});
 
 /**
  * The title and first post of thread `id` to start a new thread from, or `null` if there is

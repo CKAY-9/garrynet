@@ -10,6 +10,12 @@ Should display community details (icon, description, name, splash, when applicab
 Should display key figures.
 Should display any connected servers and a link to connect to them (`steam://`).
 
+## Titles and Link Previews
+
+Page titles read `<page> · <community name>` (the home page is just the community name), and admin pages `<page> · Admin · <community name>`. Pages about one thing are titled after it: a forum category or thread, a profile (username), a store or item, a legal document, an FAQ. Support tickets are private, so theirs is only `Ticket #<id>`.
+
+Every website page carries Open Graph and Twitter card tags, so links shared on Discord, X, Facebook, Instagram, Slack and similar show a preview card. The card is titled and described after the community, except on the pages about one thing above, where it takes that thing's title and description (a thread's first post, a profile's bio when public, an item's short description, an FAQ's subject). The card's image is a 1200×630 banner generated per request (`frontend/src/app/(site)/opengraph-image.tsx`): the community logo, name and description over its splash background. Logos and splashes the renderer can't draw (WebP, AVIF) or can't fetch are left out; the logo then falls back to the GarryNet logo. Absolute URLs in the tags use the request's `Host` and `X-Forwarded-Proto`, so a reverse proxy in front of the frontend must forward them (Caddy does by default). Sites cache previews, so a changed logo can take a while to show on links that were already shared.
+
 ## Profile Page
 
 Should display the user's avatar, name, description, status, when they joined and were last seen, reputation.

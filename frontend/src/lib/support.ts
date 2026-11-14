@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { connection } from "next/server";
 import axios from "axios";
 import { authHeaders, getCurrentUser } from "./auth";
@@ -120,7 +121,7 @@ export async function getFaqs(category?: FaqCategory | "", limit?: number): Prom
 }
 
 /** The FAQ with id `id`, or `null` if there is none. */
-export async function getFaq(id: string): Promise<FaqWithPeople | null> {
+export const getFaq = cache(async (id: string): Promise<FaqWithPeople | null> => {
   if (!/^\d+$/.test(id)) return null;
   await connection();
   try {
@@ -130,4 +131,4 @@ export async function getFaq(id: string): Promise<FaqWithPeople | null> {
     if (axios.isAxiosError(err) && err.response?.status === 404) return null;
     throw err;
   }
-}
+});

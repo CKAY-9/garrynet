@@ -1,8 +1,13 @@
 import { Suspense } from "react";
+import type { Metadata } from "next";
 import { Breadcrumbs, FaqForm } from "@/components/Support";
 import { requirePermission } from "@/lib/auth";
 import { SUPPORT_TEAM } from "@/lib/support";
 import styles from "@/components/Support/Support.module.scss";
+
+export const metadata: Metadata = {
+  title: "New FAQ",
+};
 
 export default function NewFaqPage() {
   return (

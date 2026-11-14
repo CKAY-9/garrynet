@@ -1,11 +1,22 @@
 import { Suspense } from "react";
+import type { Metadata, ResolvingMetadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Breadcrumbs, BuyButton, ItemDetails } from "@/components/Store";
 import { getDemo } from "@/lib/demo";
+import { pageMetadata } from "@/lib/pageMetadata";
 import { firstParam, getItem, getStoreViewer, type SearchParams } from "@/lib/store";
 import { storeName } from "@/lib/storeEnums";
 import styles from "@/components/Store/Store.module.scss";
+
+export async function generateMetadata(
+  { params }: PageProps<"/store/[store_id]/items/[item_id]">,
+  parent: ResolvingMetadata,
+): Promise<Metadata> {
+  const { store_id, item_id } = await params;
+  const page = await getItem(store_id, item_id).catch(() => null);
+  return page ? pageMetadata(parent, page.item.name, page.item.short_description) : {};
+}
 
 export default function StoreItemPage({ params, searchParams }: PageProps<"/store/[store_id]/items/[item_id]">) {
   return (

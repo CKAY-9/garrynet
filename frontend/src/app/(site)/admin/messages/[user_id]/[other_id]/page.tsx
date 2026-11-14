@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AdminThread } from "@/components/Messages";
@@ -9,6 +10,10 @@ import styles from "../../../admin.module.scss";
 import servers from "../../../servers/servers.module.scss";
 import { LoggedNotice } from "../../LoggedNotice";
 import page from "../../messages.module.scss";
+
+export const metadata: Metadata = {
+  title: "Messages",
+};
 
 export default function AdminChatPage({ params }: PageProps<"/admin/messages/[user_id]/[other_id]">) {
   return (

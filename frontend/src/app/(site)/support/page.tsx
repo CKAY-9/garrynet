@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import type { Metadata } from "next";
 import Link from "next/link";
 import { FaqGrid, SupportNav, TicketFilterForm, TicketRows } from "@/components/Support";
 import { steamLoginUrl } from "@/lib/config";
@@ -6,6 +7,10 @@ import { getFaqs, getMyTickets, getSupportViewer, readTicketFilters, type Search
 import { MAX_ACTIVE_TICKETS } from "@/lib/supportEnums";
 import type { FaqWithPeople } from "@/lib/types";
 import styles from "@/components/Support/Support.module.scss";
+
+export const metadata: Metadata = {
+  title: "Support",
+};
 
 export default function SupportPage({ searchParams }: PageProps<"/support">) {
   return (

@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import type { Metadata } from "next";
 import { requirePermission } from "@/lib/auth";
 import { getLegalDocument } from "@/lib/legal";
 import { legalPages } from "@/lib/legalPages";
@@ -6,6 +7,10 @@ import { Permission } from "@/lib/permissions";
 import type { LegalDocument } from "@/lib/types";
 import styles from "../admin.module.scss";
 import { LegalEditor } from "./LegalEditor";
+
+export const metadata: Metadata = {
+  title: "Legal",
+};
 
 export default function LegalPage() {
   return (

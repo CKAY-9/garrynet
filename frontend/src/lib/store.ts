@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { connection } from "next/server";
 import axios from "axios";
 import { authHeaders, getCurrentUser } from "./auth";
@@ -75,23 +76,23 @@ export async function getStores(): Promise<StoreWithServer[]> {
 }
 
 /** An enabled store with its items, or `null` if there is none (or it's disabled). */
-export async function getStore(id: string): Promise<StorePage | null> {
+export const getStore = cache(async (id: string): Promise<StorePage | null> => {
   if (!/^\d+$/.test(id)) return null;
   await connection();
   return getOr404(() => backend.get<StorePage>(`/store/${id}`));
-}
+});
 
 /**
  * An item with, for logged-in users, whether they can buy it. `null` if the store or item
  * doesn't exist, is archived or the store is disabled.
  */
-export async function getItem(storeId: string, itemId: string): Promise<ItemPage | null> {
+export const getItem = cache(async (storeId: string, itemId: string): Promise<ItemPage | null> => {
   if (!/^\d+$/.test(storeId) || !/^\d+$/.test(itemId)) return null;
   await connection();
   return getOr404(async () =>
     backend.get<ItemPage>(`/store/${storeId}/items/${itemId}`, { headers: await authHeaders() }),
   );
-}
+});
 
 /** The current user's receipts, newest first. Login required. */
 export async function getMyPurchases(): Promise<ReceiptView[]> {

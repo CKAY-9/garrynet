@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import type { Metadata } from "next";
 import Link from "next/link";
 import { forbidden } from "next/navigation";
 import { requirePermission } from "@/lib/auth";
@@ -7,6 +8,10 @@ import { hasPermission, Permission } from "@/lib/permissions";
 import styles from "../admin.module.scss";
 import { CreateCategoryForm, CreateSectionForm, DeleteButton } from "./ForumAdmin";
 import list from "./forum.module.scss";
+
+export const metadata: Metadata = {
+  title: "Forum",
+};
 
 export default function ForumAdminPage() {
   return (

@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requirePermission } from "@/lib/auth";
@@ -12,6 +13,10 @@ import list from "../store.module.scss";
 import { DiscountForm, DiscountRow } from "./Discounts";
 import { GrantableUsergroups } from "./GrantableUsergroups";
 import { StoreSettings } from "./StoreSettings";
+
+export const metadata: Metadata = {
+  title: "Store",
+};
 
 export default function StoreSettingsPage({ params }: PageProps<"/admin/store/[store_id]">) {
   return (

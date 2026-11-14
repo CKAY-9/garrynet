@@ -1,9 +1,14 @@
 import { Suspense } from "react";
+import type { Metadata } from "next";
 import { unauthorized } from "next/navigation";
 import { Breadcrumbs, NewTicketForm } from "@/components/Support";
 import { getCurrentUser } from "@/lib/auth";
 import { MAX_ACTIVE_TICKETS } from "@/lib/supportEnums";
 import styles from "@/components/Support/Support.module.scss";
+
+export const metadata: Metadata = {
+  title: "New Ticket",
+};
 
 export default function NewTicketPage() {
   return (

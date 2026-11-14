@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requirePermission } from "@/lib/auth";
@@ -9,6 +10,10 @@ import { dateFormat, fullFormat } from "@/lib/time";
 import styles from "../../../../admin.module.scss";
 import list from "../../../store.module.scss";
 import { ArchiveItem, ItemForm } from "../ItemForm";
+
+export const metadata: Metadata = {
+  title: "Item",
+};
 
 export default function EditItemPage({ params }: PageProps<"/admin/store/[store_id]/items/[item_id]">) {
   return (

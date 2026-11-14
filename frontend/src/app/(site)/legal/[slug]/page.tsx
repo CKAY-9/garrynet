@@ -1,9 +1,19 @@
 import { Suspense } from "react";
+import type { Metadata, ResolvingMetadata } from "next";
 import { notFound } from "next/navigation";
 import { Markdown } from "@/components/Markdown";
 import { getLegalDocument } from "@/lib/legal";
+import { pageMetadata } from "@/lib/pageMetadata";
 import { dateFormat } from "@/lib/time";
 import styles from "./legal.module.scss";
+
+export async function generateMetadata(
+  { params }: PageProps<"/legal/[slug]">,
+  parent: ResolvingMetadata,
+): Promise<Metadata> {
+  const document = await getLegalDocument((await params).slug).catch(() => null);
+  return document ? pageMetadata(parent, document.title) : {};
+}
 
 export default function LegalPage({ params }: PageProps<"/legal/[slug]">) {
   return (

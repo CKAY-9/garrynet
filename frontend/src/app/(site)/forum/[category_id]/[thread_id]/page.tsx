@@ -1,7 +1,20 @@
 import { Suspense } from "react";
+import type { Metadata, ResolvingMetadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { ForumThreadPage } from "@/components/Forum";
 import { getForumThread, getForumViewer } from "@/lib/forum";
+import { pageMetadata } from "@/lib/pageMetadata";
+import { plainText } from "@/lib/text";
+
+export async function generateMetadata(
+  { params }: PageProps<"/forum/[category_id]/[thread_id]">,
+  parent: ResolvingMetadata,
+): Promise<Metadata> {
+  const data = await getForumThread((await params).thread_id).catch(() => null);
+  if (!data) return {};
+  const first = data.posts.find((post) => post.id === data.thread.thread_post_id);
+  return pageMetadata(parent, data.thread.title, first && plainText(first.content));
+}
 
 export default function ThreadPage({ params }: PageProps<"/forum/[category_id]/[thread_id]">) {
   return (

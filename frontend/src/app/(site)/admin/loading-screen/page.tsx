@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import type { Metadata } from "next";
 import Link from "next/link";
 import { previewPlayer } from "@/components/LoadingScreen";
 import { requirePermission } from "@/lib/auth";
@@ -9,6 +10,10 @@ import { siteOrigin } from "@/lib/site";
 import styles from "../admin.module.scss";
 import { LoadingScreenEditor } from "./LoadingScreenEditor";
 import { ServerSetupLine } from "./ServerSetupLine";
+
+export const metadata: Metadata = {
+  title: "Loading Screen",
+};
 
 export default function LoadingScreenPage() {
   return (

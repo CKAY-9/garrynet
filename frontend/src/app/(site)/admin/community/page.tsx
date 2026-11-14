@@ -1,9 +1,14 @@
 import { Suspense } from "react";
+import type { Metadata } from "next";
 import { requirePermission } from "@/lib/auth";
 import { getCommunity } from "@/lib/community";
 import { Permission } from "@/lib/permissions";
 import styles from "../admin.module.scss";
 import { CommunityEditor } from "./CommunityEditor";
+
+export const metadata: Metadata = {
+  title: "Community",
+};
 
 export default function CommunityPage() {
   return (

@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import Form from "next/form";
 import Link from "next/link";
+import { plainText } from "@/lib/text";
 import { fullFormat, timeAgo } from "@/lib/time";
 import type { Authored, AuthoredFilters, AuthoredKind, AuthoredPage, AuthoredSort } from "@/lib/types";
 import styles from "./Activity.module.scss";
@@ -194,19 +195,4 @@ function activityHref(userId: number, filters: AuthoredFilters, page: number): s
   if (page > 1) params.set("page", String(page));
   const query = params.size > 0 ? `?${params}` : "";
   return `/users/${userId}${query}#activity`;
-}
-
-/**
- * Rough plain text of a Markdown excerpt for a one-glance preview: drops images, code fences
- * and block markers (headings, quotes, lists), keeps link text, and collapses whitespace.
- */
-function plainText(markdown: string): string {
-  return markdown
-    .replace(/^\s*(```|~~~).*$/gm, " ")
-    .replace(/!\[[^\]]*\]\([^)]*\)?/g, " ")
-    .replace(/\[([^\]]*)\]\([^)]*\)?/g, "$1")
-    .replace(/^\s{0,3}(#{1,6}|>+|[-*+]|\d+[.)])\s+/gm, "")
-    .replace(/[*`]|~~/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
 }
