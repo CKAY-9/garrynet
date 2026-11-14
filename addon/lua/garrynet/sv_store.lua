@@ -134,18 +134,27 @@ local function Handle(f)
 	if Busy[id] then return "skipped" end
 
 	if f.status == "REVOKED" then
+		-- GarryNet offers revoked purchases even when it never heard of a delivery: the rewards
+		-- may have been applied here with the "fulfilled" report lost before the refund.
+		local pending = Pending[id]
+		local delivered = f.fulfilled_at ~= nil or pending ~= nil
 		GarryNet.Rewards.Revoke(f)
-		if Pending[id] then
+		if pending then
 			Pending[id] = nil
 			Save()
 		end
-		local ply = player.GetBySteamID64(f.steam_id)
-		if IsValid(ply) then
-			GarryNet.NotifyPlayer(ply, "A refunded store purchase was taken back: " .. DescribeAll(f.rewards) .. ".", nil)
+		if delivered then
+			local ply = player.GetBySteamID64(f.steam_id)
+			if IsValid(ply) then
+				GarryNet.NotifyPlayer(ply, "A refunded store purchase was taken back: " .. DescribeAll(f.rewards) .. ".", nil)
+			end
+			GarryNet.Util.Log(string.format("Store: revoked purchase #%d for %s", id, f.steam_id))
 		end
-		GarryNet.Util.Log(string.format("Store: revoked purchase #%d for %s", id, f.steam_id))
+		-- Report the lost delivery too, so the website shows the rewards as delivered and then
+		-- removed. The two reports can arrive in either order.
+		if pending and pending.state == "applied" and f.fulfilled_at == nil then Ack(id, "fulfilled") end
 		Ack(id, "revoked")
-		return "revoked"
+		return delivered and "revoked" or "skipped"
 	end
 
 	local pending = Pending[id]

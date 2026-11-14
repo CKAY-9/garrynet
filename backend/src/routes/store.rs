@@ -22,7 +22,7 @@ use crate::{
     },
     notify,
     state::AppState,
-    stripe::{CheckoutParams, Event, decode_hex},
+    stripe::{CheckoutParams, Event},
 };
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
@@ -324,7 +324,7 @@ fn cancel_mac(secret: &str, purchase_id: i64) -> Hmac<Sha256> {
 
 /// Compares in constant time.
 fn valid_cancel_token(secret: &str, purchase_id: i64, token: &str) -> bool {
-    decode_hex(token).is_some_and(|token| cancel_mac(secret, purchase_id).verify_slice(&token).is_ok())
+    crate::hex::decode(token).is_some_and(|token| cancel_mac(secret, purchase_id).verify_slice(&token).is_ok())
 }
 
 /// Closes a pending purchase's Checkout Session and cancels the purchase, returning its
@@ -348,6 +348,44 @@ async fn release_pending(state: &AppState, purchase: &Purchase) -> Result<Option
         }
     }
     Ok(Some(Purchase::cancel(&state.db, purchase.id).await?.unwrap_or_else(|| purchase.clone())))
+}
+
+/// Closes every pending checkout of server `server_id`'s store before the server is deleted,
+/// which deletes its store and purchases: a Checkout Session left open could still be paid,
+/// and the payment would find no purchase to record. The store is disabled first, so no
+/// checkout starts meanwhile. If a checkout can't be closed (it has been paid, or a delayed
+/// payment is clearing) or Stripe can't be reached, the store is put back as it was and the
+/// error returned, so the server isn't deleted yet.
+pub async fn close_checkouts_for_server(state: &AppState, server_id: i64) -> Result<(), ApiError> {
+    let Some(store) = ItemStore::find_by_server(&state.db, server_id).await? else {
+        return Ok(());
+    };
+    if store.enabled {
+        ItemStore::set_enabled(&state.db, store.id, false).await?;
+    }
+    let result = close_pending_checkouts(state, store.id).await;
+    if result.is_err()
+        && store.enabled
+        && let Err(e) = ItemStore::set_enabled(&state.db, store.id, true).await
+    {
+        log::error!("failed to re-enable store {} after not deleting its server: {e}", store.id);
+    }
+    result
+}
+
+async fn close_pending_checkouts(state: &AppState, store_id: i64) -> Result<(), ApiError> {
+    let mut unsettled = 0;
+    for purchase in Purchase::pending_for_store(&state.db, store_id).await? {
+        if release_pending(state, &purchase).await?.is_none() {
+            unsettled += 1;
+        }
+    }
+    if unsettled > 0 {
+        return Err(ApiError::BadRequest(format!(
+            "{unsettled} purchase(s) in this server's store have been paid or have a payment clearing; delete the server once they've settled (see the receipts)"
+        )));
+    }
+    Ok(())
 }
 
 #[derive(Deserialize)]
@@ -559,8 +597,10 @@ pub async fn sweep_stale_purchases(state: &AppState, minutes: i64) -> Result<(us
         };
         match (current.status.as_deref(), current.payment_status.as_deref()) {
             (Some("complete"), Some("paid" | "no_payment_required")) => {
+                // Checked against the purchase like a webhook's, so a mismatch is held here too.
+                let charged = current.amount_subtotal.zip(current.currency);
                 let payment_intent = current.payment_intent.unwrap_or_else(|| format!("session:{session}"));
-                record_paid(state, session, Some(purchase.id), &payment_intent, None, "stale purchase sweep").await?;
+                record_paid(state, session, Some(purchase.id), &payment_intent, charged, "stale purchase sweep").await?;
                 paid += 1;
             }
             (Some("complete"), _) if purchase.created_at > Utc::now() - Duration::days(ASYNC_PAYMENT_DAYS) => {}

@@ -115,6 +115,9 @@ pub enum EditError {
     LocksOut,
     /// The user being removed holds these permissions, which the editor doesn't.
     Outranked(Permissions),
+    /// Other members of the group hold these permissions, which the editor doesn't, so the
+    /// editor can't take permissions away from the group (or delete it).
+    MembersOutrank(Permissions),
     /// The change would leave the `admin` group without members.
     LastAdmin,
     Database(sqlx::Error),
@@ -451,7 +454,9 @@ impl Usergroup {
 
     /// Replaces a group's details. Default groups keep their name (case may change).
     /// Permissions added or removed must be ones the editor holds, and the editor must keep
-    /// [`Editor::must_keep`] afterwards.
+    /// [`Editor::must_keep`] afterwards. Removing permissions also requires holding every
+    /// permission the group's other members hold, as removing a member does, so nobody can
+    /// demote users above them by editing their group.
     pub async fn update(
         db: &PgPool,
         id: i64,
@@ -464,6 +469,9 @@ impl Usergroup {
             return Err(EditError::DefaultGroup);
         }
         check_held(editor, permissions.symmetric_difference(details.permissions))?;
+        if !permissions.difference(details.permissions).is_empty() {
+            check_members_outranked(&mut tx, id, editor).await?;
+        }
         sqlx::query(
             "UPDATE usergroups
              SET name = $2, effect = $3, color = $4, permissions = $5, icon_url = $6,
@@ -487,8 +495,8 @@ impl Usergroup {
     /// Deletes a group, removing its members from it. Returns the deleted group's name.
     /// Default groups can't be deleted, nor can a group granting permissions the editor
     /// doesn't hold (deleting it revokes them from its members, like removing them in
-    /// [`Usergroup::update`]), nor one whose removal would take [`Editor::must_keep`] away
-    /// from the editor.
+    /// [`Usergroup::update`]), nor one with members holding permissions the editor doesn't,
+    /// nor one whose removal would take [`Editor::must_keep`] away from the editor.
     pub async fn delete(db: &PgPool, id: i64, editor: Editor) -> Result<String, EditError> {
         let mut tx = db.begin().await?;
         let (name, permissions) = lock(&mut tx, id).await?;
@@ -496,6 +504,9 @@ impl Usergroup {
             return Err(EditError::DefaultGroup);
         }
         check_held(editor, permissions)?;
+        if !permissions.is_empty() {
+            check_members_outranked(&mut tx, id, editor).await?;
+        }
         sqlx::query("DELETE FROM usergroups WHERE id = $1")
             .bind(id)
             .execute(&mut *tx)
@@ -555,6 +566,25 @@ async fn effective_permissions(conn: &mut PgConnection, user_id: i64) -> sqlx::R
     .fetch_one(conn)
     .await?;
     Ok(Permissions::from_bits(bits))
+}
+
+/// The group's members other than the editor must hold no permission the editor doesn't
+/// (counting all their groups, punishments aside, as [`Usergroup::remove_member_as`] does).
+/// The group's row must be locked, so its membership can't change meanwhile.
+async fn check_members_outranked(conn: &mut PgConnection, group_id: i64, editor: Editor) -> Result<(), EditError> {
+    let bits: i64 = sqlx::query_scalar(
+        "SELECT COALESCE(bit_or(g.permissions), 0)
+         FROM usergroup_members m
+         JOIN usergroup_members um ON um.user_id = m.user_id
+         JOIN usergroups g ON g.id = um.usergroup_id
+         WHERE m.usergroup_id = $1 AND m.user_id <> $2",
+    )
+    .bind(group_id)
+    .bind(editor.user_id)
+    .fetch_one(conn)
+    .await?;
+    let outranking = Permissions::from_bits(bits).difference(editor.permissions);
+    if outranking.is_empty() { Ok(()) } else { Err(EditError::MembersOutrank(outranking)) }
 }
 
 /// The editor must still hold [`Editor::must_keep`] after the transaction's changes.

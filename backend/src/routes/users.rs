@@ -136,11 +136,13 @@ async fn profile(
     let user = User::find_by_id(&state.db, id)
         .await?
         .ok_or(ApiError::NotFound("user"))?;
-    let usergroups = Usergroup::for_user(&state.db, id)
+    // Badges only: a full `Usergroup` carries its member list, which for the default group is
+    // every user.
+    let usergroups = Usergroup::badges_for_users(&state.db, &[id])
         .await?
         .into_iter()
-        .map(UsergroupBadge::from)
-        .collect();
+        .map(|member| member.badge)
+        .collect::<Vec<UsergroupBadge>>();
     let ban = Punishment::in_effect_for(&state.db, id)
         .await?
         .into_iter()

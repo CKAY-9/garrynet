@@ -75,7 +75,7 @@ attachments: { owner_id, id, name, content_type, size }[] // attached files, see
 
 ### Attachments
 
-A post can have up to 5 files attached (see [STORAGE.md](STORAGE.md)). The author uploads them first, then sends their file IDs as `attachments` when starting the thread or replying. Each must be a ready file in the author's own folder that isn't attached to anything else; otherwise 400. Attachments are set when the post is written and editing a post doesn't change them. Deleting a post or thread deletes the attached files.
+A post can have up to 5 files attached (see [STORAGE.md](STORAGE.md)). The author uploads them first, then sends their file IDs as `attachments` when starting the thread or replying. Each must be a ready file in the author's own folder that isn't attached to anything else; otherwise 400. Attachments are set when the post is written and editing a post doesn't change them. Deleting a post, thread, category or section deletes the attached files.
 
 ## Routes
 

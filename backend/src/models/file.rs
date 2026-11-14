@@ -240,6 +240,38 @@ impl File {
         .await
     }
 
+    /// The files attached to any post in a forum category.
+    pub async fn of_forum_category(db: &PgPool, category_id: i64) -> Result<Vec<Self>, sqlx::Error> {
+        sqlx::query_as(with_columns!(
+            "SELECT",
+            " FROM files
+              WHERE forum_post_id IN (
+                  SELECT p.id FROM forum_posts p JOIN forum_threads t ON t.id = p.thread_id
+                  WHERE t.category_id = $1
+              )"
+        ))
+        .bind(category_id)
+        .fetch_all(db)
+        .await
+    }
+
+    /// The files attached to any post in a forum section.
+    pub async fn of_forum_section(db: &PgPool, section_id: i64) -> Result<Vec<Self>, sqlx::Error> {
+        sqlx::query_as(with_columns!(
+            "SELECT",
+            " FROM files
+              WHERE forum_post_id IN (
+                  SELECT p.id FROM forum_posts p
+                  JOIN forum_threads t ON t.id = p.thread_id
+                  JOIN forum_categories c ON c.id = t.category_id
+                  WHERE c.section_id = $1
+              )"
+        ))
+        .bind(section_id)
+        .fetch_all(db)
+        .await
+    }
+
     /// Marks a pending file ready. `None` if it's no longer pending (already completed, or
     /// deleted meanwhile).
     pub async fn mark_ready(
@@ -307,6 +339,27 @@ impl File {
              ORDER BY completed_at LIMIT 500"
         ))
         .bind(hours as i32)
+        .fetch_all(db)
+        .await
+    }
+
+    /// Ready S3 files whose upload started between `after_minutes` and `after_minutes +
+    /// window_minutes` ago, for clearing their staging keys once the upload URL has expired.
+    pub async fn completed_s3_uploads(
+        db: &PgPool,
+        after_minutes: i64,
+        window_minutes: i64,
+    ) -> Result<Vec<Self>, sqlx::Error> {
+        sqlx::query_as(with_columns!(
+            "SELECT",
+            " FROM files
+             WHERE backend = 's3' AND status = 'READY'
+               AND created_at < now() - make_interval(mins => $1)
+               AND created_at >= now() - make_interval(mins => $1 + $2)
+             ORDER BY created_at LIMIT 1000"
+        ))
+        .bind(after_minutes as i32)
+        .bind(window_minutes as i32)
         .fetch_all(db)
         .await
     }

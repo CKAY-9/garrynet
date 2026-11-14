@@ -17,7 +17,8 @@ color: string // hex
 connection_address: string
 map: string // "" until the first heartbeat
 access_key?: string // SHA-256 hash of the key; the key itself is shown once, when generated. Cleared once used to link
-token_version: number // server JWTs are only accepted while they carry this; bumped on link, unlink and new access key
+token_version: number // server JWTs are only accepted while they carry this; bumped on link, unlink, new access key and token rotation
+previous_token_valid_until: Date | null // the token rotation replaced is accepted until then; cleared on link, unlink and new access key
 last_heartbeat: utc timestamp // when the server last checked in
 linked: boolean // true once the server has connected with its access key
 created_at: utc timestamp
@@ -33,7 +34,7 @@ Status, as shown in the admin dashboard: not linked, waiting for heartbeat (link
 - GET `/servers/{id}`: one server (public)
 - POST `/servers`: register a server, returns `{ server, access_key }`
 - PUT `/servers/{id}`: replace the editable details
-- DELETE `/servers/{id}`: delete the server and its player records
+- DELETE `/servers/{id}`: delete the server and its player records, and its store (see [STORE.md](STORE.md)). Its store's open checkouts are closed first; 400 and nothing deleted if one has been paid or has a payment clearing
 - POST `/servers/{id}/access-key`: generate a new access key and unlink the server, returns `{ server, access_key }`
 
 Everything but the GETs requires Admin Access and Server Management. POST/PUT take `name` (required), `description`, `splash_url`, `icon_url`, `color` (hex, default `#3b82f6`) and `connection_address`. Blank optional URLs become null. `gamemode`, `map`, `last_heartbeat` and `linked` come from the server itself.

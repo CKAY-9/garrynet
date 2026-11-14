@@ -222,6 +222,10 @@ fn edit_error(e: EditError) -> ApiError {
             "{} (the user you're removing holds permissions you don't)",
             held.names().collect::<Vec<_>>().join(", ")
         )),
+        EditError::MembersOutrank(held) => ApiError::Forbidden(format!(
+            "{} (members of this usergroup hold permissions you don't, so you can't take permissions from it or delete it)",
+            held.names().collect::<Vec<_>>().join(", ")
+        )),
         EditError::LastAdmin => bad(
             "the admin group must keep at least one member; add someone else to it first".to_owned(),
         ),

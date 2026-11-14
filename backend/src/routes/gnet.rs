@@ -148,7 +148,7 @@ async fn heartbeat(
 
     Ok(HttpResponse::Ok().json(HeartbeatResponse {
         server,
-        token: auth.rotated_token(&state.jwt)?,
+        token: auth.rotated_token(&state.db, &state.jwt).await?,
     }))
 }
 
@@ -258,7 +258,8 @@ struct FulfillmentQuery {
 }
 
 /// Store fulfillments the server has to act on (docs/STORE.md): pending ones to deliver,
-/// failed ones to retry, and revoked ones whose rewards it delivered and must take back.
+/// failed ones to retry, and revoked ones whose rewards it may have delivered and must take
+/// back (until it acknowledges the revocation).
 /// Oldest first. `?steam_id=` narrows it to one player.
 #[get("/{id}/fulfillments")]
 async fn fulfillments(

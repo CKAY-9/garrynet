@@ -40,7 +40,7 @@ Usergroups are created, edited and deleted from `/admin/usergroups` (see [ADMIN.
 - GET `/admin/usergroups/{id}`: one usergroup in full.
 - POST `/admin/usergroups`: `{ name, effect, color, permissions, icon_url? }`; returns the new group (201). 409 if the name is taken.
 - PUT `/admin/usergroups/{id}`: same body; replaces the group's details and bumps `last_updated`.
-- DELETE `/admin/usergroups/{id}`: deletes the group; its members leave it (204). Requires holding every permission the group grants (403 otherwise), since deleting it revokes them.
+- DELETE `/admin/usergroups/{id}`: deletes the group; its members leave it (204). Requires holding every permission the group grants (403 otherwise), since deleting it revokes them, and every permission its other members hold (see Rules).
 - GET `/admin/usergroups/{id}/members`: the group's members, `{ id, username, avatar_url, added_at }[]`, by name.
 - POST `/admin/usergroups/{id}/members`: `{ user_id }`; adds the user and returns the member (201). 404 if the user doesn't exist, 409 if they're already a member.
 - DELETE `/admin/usergroups/{id}/members/{user_id}`: removes the user (204). 404 if they aren't a member.
@@ -51,6 +51,7 @@ Rules:
 - `permissions`: only documented bits. Editors can only grant or revoke permissions they hold themselves (403 otherwise), so Usergroup Management can't be used to escalate.
 - Adding or removing members requires holding every permission the group grants (403 otherwise), so a moderator can't put anyone, themselves included, into `admin`.
 - Removing someone else also requires holding every permission they hold (403 otherwise), so nobody can demote a user above them.
+- For the same reason, taking permissions away from a group, or deleting a group that grants any, requires holding every permission its other members hold (403 otherwise). Otherwise a moderator with Usergroup Management could strip Admin Access from the `admin` group itself.
 - The `admin` group must keep at least one member (400 for removing the last one). The shell isn't held to this, so it can still be used to recover.
 - A change that would remove the editor's own `Admin Access` or `Usergroup Management` (editing or deleting one of their groups, or leaving one) is refused with 400.
 - Changes are logged.

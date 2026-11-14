@@ -114,8 +114,8 @@ async fn create_section(
     Ok(HttpResponse::Created().json(section))
 }
 
-/// Deletes a section with all its categories, threads and posts. Requires Admin Access
-/// and Section Management.
+/// Deletes a section with all its categories, threads and posts, and their attachments.
+/// Requires Admin Access and Section Management.
 #[delete("/forum/sections/{id}")]
 async fn delete_section(
     state: web::Data<AppState>,
@@ -124,9 +124,11 @@ async fn delete_section(
 ) -> Result<HttpResponse, ApiError> {
     user.require(&state.db, MANAGE_SECTIONS).await?;
     let id = id.into_inner();
+    let attached = File::of_forum_section(&state.db, id).await?;
     if !ForumSection::delete(&state.db, id).await? {
         return Err(ApiError::NotFound("section"));
     }
+    files::delete_all(&state, attached).await;
     log::info!("user {} deleted forum section {id}", user.0.id);
     Ok(HttpResponse::NoContent().finish())
 }
@@ -161,8 +163,8 @@ async fn create_category(
     Ok(HttpResponse::Created().json(category))
 }
 
-/// Deletes a category with its threads and posts. Requires Admin Access and Category
-/// Management.
+/// Deletes a category with its threads and posts, and their attachments. Requires Admin
+/// Access and Category Management.
 #[delete("/forum/categories/{id}")]
 async fn delete_category(
     state: web::Data<AppState>,
@@ -171,9 +173,11 @@ async fn delete_category(
 ) -> Result<HttpResponse, ApiError> {
     user.require(&state.db, MANAGE_CATEGORIES).await?;
     let id = id.into_inner();
+    let attached = File::of_forum_category(&state.db, id).await?;
     if !ForumCategory::delete(&state.db, id).await? {
         return Err(ApiError::NotFound("category"));
     }
+    files::delete_all(&state, attached).await;
     log::info!("user {} deleted forum category {id}", user.0.id);
     Ok(HttpResponse::NoContent().finish())
 }

@@ -156,7 +156,7 @@ When **Keep banned users off game servers** is on in [Admin > Community](ADMIN.m
 
 ## Server Tokens
 
-The JWT is valid for 30 days and is rolling: once it is an hour old, the next heartbeat response carries a replacement, which the addon stores. Tokens carry the server's `token_version`, which the backend bumps when the server links, unlinks or gets a new access key. That revokes every earlier token. A server offline for longer than 30 days must be linked again.
+The JWT is valid for 30 days and is rolling: once it is an hour old, the next heartbeat response carries a replacement, which the addon stores. Tokens carry the server's `token_version`, which the backend bumps when the server links, unlinks or gets a new access key. That revokes every earlier token. Rotation bumps it too, so a replaced token stops working: it is only accepted for 10 more minutes, for requests already in flight. A heartbeat made with it in that time gets the current token again, in case the response that carried it was lost. A server offline for longer than 30 days must be linked again.
 
 ## Backend Routes
 
@@ -194,7 +194,7 @@ All under `/gnet/server`. Errors are `{ "error": "..." }`.
 player's `stats`: numbers, booleans, or strings (truncated to 128 characters). `counters` (optional) are whole numbers
 added to those keys (a stored value that isn't a number counts as 0), at most 1,000,000 per heartbeat. Stats not mentioned
 are kept. Keys must match `[a-z0-9_]{1,64}`, and up to 32 of each are taken; invalid entries are dropped rather than
-failing the heartbeat. A player's record is created on their first visit and linked to their GarryNet account if they have one. At most 256 players per heartbeat. Returns `{ "server": {...} }`, plus `"token"` when the JWT was rotated.
+failing the heartbeat. A player's record is created on their first visit and linked to their GarryNet account if they have one. At most 256 players per heartbeat (and a body of at most 256 KiB). The addon keeps the sessions of players who left until they've been reported, so after GarryNet has been unreachable it can have more; it then reports online players first and the rest in the following heartbeats, rather than sending one the backend would refuse every minute. Returns `{ "server": {...} }`, plus `"token"` when the JWT was rotated.
 
 **POST `/gnet/server/{SERVER_ID}/unlink`**: `Authorization: Bearer <JWT>`. Unlinks the server and revokes its token and any access key. Returns 204.
 
@@ -231,8 +231,11 @@ See [STORE.md](STORE.md) for the model. The addon should fetch work when a playe
 
 **GET `/gnet/server/{SERVER_ID}/fulfillments?steam_id=`**: `Authorization: Bearer <JWT>`. Fulfillments the
 server has to act on, oldest first: `PENDING` and retryable `FAILED` ones to deliver, and `REVOKED` ones
-whose rewards were delivered (`fulfilled_at` set, `revocation_applied_at` null) to take back (usergroups and
-weapons; not money). `steam_id` narrows it to one player.
+whose revocation hasn't been acknowledged (`revocation_applied_at` null) to take back (usergroups and
+weapons; not money). A revoked one is offered even without `fulfilled_at`, in case the addon delivered it
+but its `fulfilled` report was lost; the addon then takes back what it has recorded and reports both
+`fulfilled` and `revoked`, or, if it delivered nothing, just reports `revoked`. `steam_id` narrows it to
+one player.
 
 ```json
 [

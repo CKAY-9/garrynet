@@ -256,7 +256,8 @@ pub struct Fulfillment {
     pub created_at: DateTime<Utc>,
     pub fulfilled_at: Option<DateTime<Utc>>,
     pub revoked_at: Option<DateTime<Utc>>,
-    /// When the addon confirmed it took back the rewards of a revoked fulfillment.
+    /// When the addon confirmed it took back the rewards of a revoked fulfillment (or that
+    /// it had none to take back).
     pub revocation_applied_at: Option<DateTime<Utc>>,
 }
 
@@ -507,6 +508,17 @@ impl ItemStore {
         .bind(&details.store_message)
         .fetch_optional(db)
         .await
+    }
+
+    /// Enables or disables the store. A disabled store can't start checkouts (see
+    /// [`Purchase::begin`], which share-locks the row, so one in progress finishes first).
+    pub async fn set_enabled(db: &PgPool, id: i64, enabled: bool) -> sqlx::Result<()> {
+        sqlx::query("UPDATE item_stores SET enabled = $2, last_updated = now() WHERE id = $1")
+            .bind(id)
+            .bind(enabled)
+            .execute(db)
+            .await?;
+        Ok(())
     }
 
     /// Replaces the usergroups items may grant, and makes unavailable every item that
@@ -853,6 +865,18 @@ impl Purchase {
         .await
     }
 
+    /// Every pending purchase of the store, oldest first.
+    pub async fn pending_for_store(db: &PgPool, store_id: i64) -> sqlx::Result<Vec<Purchase>> {
+        sqlx::query_as(
+            "SELECT * FROM store_purchases
+             WHERE store_id = $1 AND status = 'PENDING'
+             ORDER BY created_at, id",
+        )
+        .bind(store_id)
+        .fetch_all(db)
+        .await
+    }
+
     /// How many purchases the buyer started in the past `seconds`, and when the oldest of
     /// them was, for rate limiting checkout.
     pub async fn recent_by_buyer(db: &PgPool, buyer_id: i64, seconds: f64) -> sqlx::Result<(i64, Option<DateTime<Utc>>)> {
@@ -1194,15 +1218,20 @@ impl Receipt {
 
 impl Fulfillment {
     /// What the server's addon has to do: deliver pending (and retryable failed)
-    /// fulfillments, and take back the rewards of revoked ones it had delivered. Oldest
-    /// first; `steam_id` narrows it to one player.
+    /// fulfillments, and take back the rewards of revoked ones. Oldest first; `steam_id`
+    /// narrows it to one player.
+    ///
+    /// Revoked fulfillments are offered until the addon acknowledges the revocation, even
+    /// when no delivery was recorded: the addon may have delivered the rewards and lost its
+    /// `fulfilled` report before the refund, and only it knows. If it delivered nothing, it
+    /// just acknowledges.
     pub async fn work_for_server(db: &PgPool, server_id: i64, steam_id: Option<&str>) -> sqlx::Result<Vec<Fulfillment>> {
         sqlx::query_as(
             "SELECT * FROM store_fulfillments
              WHERE server_id = $1
                AND ($2::TEXT IS NULL OR steam_id = $2)
                AND ((status IN ('PENDING', 'FAILED') AND attempts < $3)
-                    OR (status = 'REVOKED' AND fulfilled_at IS NOT NULL AND revocation_applied_at IS NULL))
+                    OR (status = 'REVOKED' AND revocation_applied_at IS NULL))
              ORDER BY created_at, id",
         )
         .bind(server_id)

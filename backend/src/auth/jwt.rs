@@ -15,6 +15,11 @@ pub const SERVER_TOKEN_TTL: Duration = Duration::days(30);
 /// carries a replacement.
 pub const SERVER_TOKEN_ROTATE_AFTER: Duration = Duration::hours(1);
 
+/// How long a rotated server token stays valid after its replacement is issued: long
+/// enough for requests already in flight, and for a server whose heartbeat response got
+/// lost to collect the replacement on a later heartbeat (they run every minute).
+pub const SERVER_TOKEN_GRACE: Duration = Duration::minutes(10);
+
 /// `aud` of server tokens. User tokens have none, so neither kind passes for the other.
 const SERVER_AUDIENCE: &str = "garrynet-server";
 

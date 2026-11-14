@@ -132,6 +132,9 @@ pub fn authorization(req: &HttpRequest) -> Option<String> {
 pub struct AuthServer {
     pub id: i64,
     claims: jwt::ServerClaims,
+    /// The server's token version now. Newer than the token's while it's still accepted
+    /// after being rotated.
+    current_version: i64,
 }
 
 impl FromRequest for AuthServer {
@@ -148,10 +151,10 @@ impl FromRequest for AuthServer {
             let token = token.ok_or(ApiError::Unauthorized)?;
             let claims = state.jwt.verify_server(&token)?;
             let id = claims.server_id()?;
-            match Server::token_version(&state.db, id).await? {
-                Some(version) if version == claims.ver => Ok(AuthServer { id, claims }),
-                _ => Err(ApiError::Unauthorized),
-            }
+            let current_version = Server::accepted_token_version(&state.db, id, claims.ver)
+                .await?
+                .ok_or(ApiError::Unauthorized)?;
+            Ok(AuthServer { id, claims, current_version })
         })
     }
 }
@@ -162,13 +165,22 @@ impl AuthServer {
         if self.id == id { Ok(()) } else { Err(ApiError::Unauthorized) }
     }
 
-    /// A replacement token if the current one is due for rotation.
-    pub fn rotated_token(&self, keys: &jwt::JwtKeys) -> Result<Option<String>, ApiError> {
-        if self.claims.should_rotate() {
-            keys.issue_server(self.id, self.claims.ver).map(Some)
+    /// A replacement token if this one is due for rotation. Rotating bumps the server's
+    /// token version, so this token stops working once [`jwt::SERVER_TOKEN_GRACE`] has
+    /// passed. A token that has already been rotated, but is still within that grace
+    /// period, gets a token for the current version again, in case the response carrying
+    /// it was lost.
+    pub async fn rotated_token(&self, db: &PgPool, keys: &jwt::JwtKeys) -> Result<Option<String>, ApiError> {
+        let version = if self.claims.ver != self.current_version {
+            Some(self.current_version)
+        } else if self.claims.should_rotate() {
+            // `None` if a concurrent request rotated it first; the next request with this
+            // token then collects that replacement.
+            Server::rotate_token(db, self.id, self.claims.ver, jwt::SERVER_TOKEN_GRACE).await?
         } else {
-            Ok(None)
-        }
+            None
+        };
+        version.map(|v| keys.issue_server(self.id, v)).transpose()
     }
 }
 

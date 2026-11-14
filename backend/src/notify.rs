@@ -153,11 +153,24 @@ pub async fn private_message(db: &PgPool, message: &PrivateMessage, author: &Use
         NotificationType::Message,
         "message.received",
         format!("New message from {}", author.username),
-        plain_text(&message.content),
+        message_body(message),
         Some(format!("/messages/{}", author.id)),
     )
     .await;
 }
+
+/// A message notification's body: the message as plain text, unless it is temporary.
+/// Notifications are kept far longer than the 24 hours a temporary message is visible, so
+/// its text must not be copied into one.
+fn message_body(message: &PrivateMessage) -> String {
+    if message.temporary {
+        TEMPORARY_MESSAGE_BODY.to_owned()
+    } else {
+        plain_text(&message.content)
+    }
+}
+
+const TEMPORARY_MESSAGE_BODY: &str = "Sent you a temporary message.";
 
 /// A purchase was paid.
 pub async fn purchase_paid(db: &PgPool, receipt: &Receipt) {
@@ -420,5 +433,23 @@ mod tests {
         let clipped = clip(&"é".repeat(200), MAX_TITLE);
         assert_eq!(clipped.chars().count(), MAX_TITLE);
         assert!(clipped.ends_with('…'));
+    }
+
+    #[test]
+    fn temporary_message_text_stays_out_of_notifications() {
+        let mut message = PrivateMessage {
+            id: 1,
+            author_id: 2,
+            recipient_id: 3,
+            content: "**secret** plans".to_owned(),
+            temporary: false,
+            read_at: None,
+            created_at: chrono::Utc::now(),
+            attachments: sqlx::types::Json(Vec::new()),
+        };
+        assert_eq!(message_body(&message), "secret plans");
+        message.temporary = true;
+        assert_eq!(message_body(&message), TEMPORARY_MESSAGE_BODY);
+        assert!(!message_body(&message).contains("secret"));
     }
 }
