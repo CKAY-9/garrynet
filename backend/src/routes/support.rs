@@ -239,7 +239,7 @@ async fn set_status(
         .await?
         .ok_or(ApiError::NotFound("ticket"))?;
     if ticket.status == body.status {
-        return Err(bad(format!("ticket is already {}", format!("{:?}", body.status).to_uppercase())));
+        return Err(bad(format!("ticket is already {}", body.status.as_str())));
     }
     let updated = ticket.set_status(&state.db, body.status, user.0.id).await?;
     log::info!(
@@ -385,8 +385,8 @@ fn files_base(state: &AppState) -> String {
     format!("{}/file/", state.config.backend_url)
 }
 
-/// The ticket, and whether `user` is on the Support Team. 404 (not 403) for other
-/// people's tickets, so ids can't be probed.
+/// The ticket, and whether `user` acts on it as the Support Team: a team member who
+/// doesn't own it. 404 (not 403) for other people's tickets, so ids can't be probed.
 async fn find_ticket(
     state: &AppState,
     user: &AuthUser,
@@ -395,11 +395,14 @@ async fn find_ticket(
     let ticket = SupportTicket::find_by_id(&state.db, id)
         .await?
         .ok_or(ApiError::NotFound("ticket"))?;
-    let support = user.require(&state.db, SUPPORT_TEAM).await.is_ok();
-    if !support && ticket.user_id != user.0.id {
+    let own = ticket.user_id == user.0.id;
+    let team = user.require(&state.db, SUPPORT_TEAM).await.is_ok();
+    if !team && !own {
         return Err(ApiError::NotFound("ticket"));
     }
-    Ok((ticket, support))
+    // On their own ticket a team member is its owner, not staff: their replies wait on the
+    // team rather than on themselves, and they get no internal notes.
+    Ok((ticket, team && !own))
 }
 
 async fn find_faq(state: &AppState, id: i64) -> Result<FaqWithPeople, ApiError> {

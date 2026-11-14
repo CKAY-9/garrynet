@@ -37,6 +37,12 @@ pub struct CheckoutSession {
     /// The PaymentIntent's id, once there is one.
     #[serde(default)]
     pub payment_intent: Option<String>,
+    /// The total before tax and shipping, in minor units of `currency`.
+    #[serde(default)]
+    pub amount_subtotal: Option<i64>,
+    /// ISO 4217, lowercase.
+    #[serde(default)]
+    pub currency: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -247,19 +253,9 @@ fn verify_signature(secret: &[u8], payload: &[u8], header: &str, now: i64) -> Re
     // `verify_slice` compares in constant time.
     let verified = signatures
         .iter()
-        .filter_map(|sig| decode_hex(sig))
+        .filter_map(|sig| crate::hex::decode(sig))
         .any(|sig| mac.clone().verify_slice(&sig).is_ok());
     if verified { Ok(()) } else { Err(invalid()) }
-}
-
-pub fn decode_hex(s: &str) -> Option<Vec<u8>> {
-    if s.len() % 2 != 0 {
-        return None;
-    }
-    (0..s.len())
-        .step_by(2)
-        .map(|i| u8::from_str_radix(s.get(i..i + 2)?, 16).ok())
-        .collect()
 }
 
 #[cfg(test)]
@@ -316,12 +312,5 @@ mod tests {
         assert_eq!(event.id, "evt_1");
         assert_eq!(event.kind, "checkout.session.completed");
         assert!(stripe.verify_webhook(PAYLOAD, &header, 5000).is_err());
-    }
-
-    #[test]
-    fn hex() {
-        assert_eq!(decode_hex("00ff"), Some(vec![0, 255]));
-        assert_eq!(decode_hex("0"), None);
-        assert_eq!(decode_hex("zz"), None);
     }
 }

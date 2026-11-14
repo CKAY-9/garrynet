@@ -95,7 +95,7 @@ Clients see a file as `{ owner_id, id, url, name, content_type, size, status, up
 
 ## Where files are used
 
-- Attachments: up to 5 files per forum post ([FORUM.md](FORUM.md)), 10 per support message ([SUPPORT.md](SUPPORT.md)) and 3 per private message ([PRIVATE_MESSAGES.md](PRIVATE_MESSAGES.md)). These are user files. A file can be attached to one thing only, by its owner, when the post or message is written; it's deleted when its forum post or thread is deleted. A file attached to a private message is kept when the message expires or a user deletes the chat.
+- Attachments: up to 5 files per forum post ([FORUM.md](FORUM.md)), 10 per support message ([SUPPORT.md](SUPPORT.md)) and 3 per private message ([PRIVATE_MESSAGES.md](PRIVATE_MESSAGES.md)). These are user files. A file can be attached to one thing only, by its owner, when the post or message is written; it's deleted when its forum post, thread, category or section is deleted. A file attached to a private message is kept when the message expires or a user deletes the chat.
 - Image links in the admin pages (community logo, splash and key figure pictures, forum section icons, server icons and splashes, store item images): each link input has an Upload button that stores the image as a community file and fills the input with its URL. A link can still be pasted instead.
 - User avatars come from Steam and can't be uploaded.
 

@@ -240,6 +240,38 @@ impl File {
         .await
     }
 
+    /// The files attached to any post in a forum category.
+    pub async fn of_forum_category(db: &PgPool, category_id: i64) -> Result<Vec<Self>, sqlx::Error> {
+        sqlx::query_as(with_columns!(
+            "SELECT",
+            " FROM files
+              WHERE forum_post_id IN (
+                  SELECT p.id FROM forum_posts p JOIN forum_threads t ON t.id = p.thread_id
+                  WHERE t.category_id = $1
+              )"
+        ))
+        .bind(category_id)
+        .fetch_all(db)
+        .await
+    }
+
+    /// The files attached to any post in a forum section.
+    pub async fn of_forum_section(db: &PgPool, section_id: i64) -> Result<Vec<Self>, sqlx::Error> {
+        sqlx::query_as(with_columns!(
+            "SELECT",
+            " FROM files
+              WHERE forum_post_id IN (
+                  SELECT p.id FROM forum_posts p
+                  JOIN forum_threads t ON t.id = p.thread_id
+                  JOIN forum_categories c ON c.id = t.category_id
+                  WHERE c.section_id = $1
+              )"
+        ))
+        .bind(section_id)
+        .fetch_all(db)
+        .await
+    }
+
     /// Marks a pending file ready. `None` if it's no longer pending (already completed, or
     /// deleted meanwhile).
     pub async fn mark_ready(

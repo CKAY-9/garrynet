@@ -147,7 +147,8 @@ impl Server {
     ) -> sqlx::Result<Option<Server>> {
         sqlx::query_as(with_columns!(
             "UPDATE servers
-             SET access_key = $2, linked = false, token_version = token_version + 1
+             SET access_key = $2, linked = false, token_version = token_version + 1,
+                 previous_token_valid_until = NULL
              WHERE id = $1
              RETURNING"
         ))
@@ -163,7 +164,8 @@ impl Server {
     pub async fn link(db: &PgPool, key: &str) -> sqlx::Result<Option<(Server, i64)>> {
         let row: Option<(i64, i64)> = sqlx::query_as(
             "UPDATE servers
-             SET access_key = NULL, linked = true, token_version = token_version + 1
+             SET access_key = NULL, linked = true, token_version = token_version + 1,
+                 previous_token_valid_until = NULL
              WHERE access_key = $1
              RETURNING id, token_version",
         )
@@ -181,7 +183,8 @@ impl Server {
     pub async fn unlink(db: &PgPool, id: i64) -> sqlx::Result<()> {
         sqlx::query(
             "UPDATE servers
-             SET access_key = NULL, linked = false, token_version = token_version + 1
+             SET access_key = NULL, linked = false, token_version = token_version + 1,
+                 previous_token_valid_until = NULL
              WHERE id = $1",
         )
         .bind(id)
@@ -190,13 +193,40 @@ impl Server {
         Ok(())
     }
 
-    /// The token version server JWTs must carry, or `None` if the server doesn't exist or
-    /// isn't linked.
-    pub async fn token_version(db: &PgPool, id: i64) -> sqlx::Result<Option<i64>> {
-        sqlx::query_scalar("SELECT token_version FROM servers WHERE id = $1 AND linked")
-            .bind(id)
-            .fetch_optional(db)
-            .await
+    /// The server's current token version, if a token of version `version` is accepted:
+    /// the current version, or the one rotation just replaced while it is still within its
+    /// grace period. `None` if the token is revoked, or the server doesn't exist or isn't
+    /// linked.
+    pub async fn accepted_token_version(db: &PgPool, id: i64, version: i64) -> sqlx::Result<Option<i64>> {
+        sqlx::query_scalar(
+            "SELECT token_version FROM servers
+             WHERE id = $1 AND linked
+               AND (token_version = $2
+                    OR (token_version = $2 + 1 AND previous_token_valid_until > now()))",
+        )
+        .bind(id)
+        .bind(version)
+        .fetch_optional(db)
+        .await
+    }
+
+    /// Rotates the server's token: bumps its version from `from`, revoking tokens of that
+    /// version once `grace` has passed. Returns the version to issue the new token for, or
+    /// `None` if `from` is no longer current (another request rotated it first) or the
+    /// server is gone or unlinked.
+    pub async fn rotate_token(db: &PgPool, id: i64, from: i64, grace: chrono::Duration) -> sqlx::Result<Option<i64>> {
+        sqlx::query_scalar(
+            "UPDATE servers
+             SET token_version = token_version + 1,
+                 previous_token_valid_until = now() + make_interval(secs => $3)
+             WHERE id = $1 AND linked AND token_version = $2
+             RETURNING token_version",
+        )
+        .bind(id)
+        .bind(from)
+        .bind(grace.num_seconds() as f64)
+        .fetch_optional(db)
+        .await
     }
 
     /// Records a heartbeat: the server's current gamemode and map, checked in now.

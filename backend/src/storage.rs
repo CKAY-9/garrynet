@@ -259,7 +259,7 @@ impl Storage {
         if expires < Utc::now().timestamp() {
             return false;
         }
-        let Some(signature) = decode_hex(signature) else { return false };
+        let Some(signature) = crate::hex::decode(signature) else { return false };
         let mut mac = Hmac::<Sha256>::new_from_slice(&self.0.upload_secret).expect("any key length");
         mac.update(format!("{owner_id}/{file_id}/{expires}").as_bytes());
         mac.verify_slice(&signature).is_ok()
@@ -418,16 +418,6 @@ fn storage_error(e: object_store::Error) -> ApiError {
 
 fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
-}
-
-fn decode_hex(s: &str) -> Option<Vec<u8>> {
-    if s.len() % 2 != 0 {
-        return None;
-    }
-    (0..s.len())
-        .step_by(2)
-        .map(|i| u8::from_str_radix(s.get(i..i + 2)?, 16).ok())
-        .collect()
 }
 
 #[cfg(test)]

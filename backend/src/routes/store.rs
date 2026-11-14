@@ -22,7 +22,7 @@ use crate::{
     },
     notify,
     state::AppState,
-    stripe::{CheckoutParams, Event, decode_hex},
+    stripe::{CheckoutParams, Event},
 };
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
@@ -324,7 +324,7 @@ fn cancel_mac(secret: &str, purchase_id: i64) -> Hmac<Sha256> {
 
 /// Compares in constant time.
 fn valid_cancel_token(secret: &str, purchase_id: i64, token: &str) -> bool {
-    decode_hex(token).is_some_and(|token| cancel_mac(secret, purchase_id).verify_slice(&token).is_ok())
+    crate::hex::decode(token).is_some_and(|token| cancel_mac(secret, purchase_id).verify_slice(&token).is_ok())
 }
 
 /// Closes a pending purchase's Checkout Session and cancels the purchase, returning its
@@ -597,8 +597,10 @@ pub async fn sweep_stale_purchases(state: &AppState, minutes: i64) -> Result<(us
         };
         match (current.status.as_deref(), current.payment_status.as_deref()) {
             (Some("complete"), Some("paid" | "no_payment_required")) => {
+                // Checked against the purchase like a webhook's, so a mismatch is held here too.
+                let charged = current.amount_subtotal.zip(current.currency);
                 let payment_intent = current.payment_intent.unwrap_or_else(|| format!("session:{session}"));
-                record_paid(state, session, Some(purchase.id), &payment_intent, None, "stale purchase sweep").await?;
+                record_paid(state, session, Some(purchase.id), &payment_intent, charged, "stale purchase sweep").await?;
                 paid += 1;
             }
             (Some("complete"), _) if purchase.created_at > Utc::now() - Duration::days(ASYNC_PAYMENT_DAYS) => {}

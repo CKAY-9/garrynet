@@ -1,6 +1,7 @@
 mod auth;
 mod config;
 mod error;
+mod hex;
 mod models;
 mod notify;
 mod routes;

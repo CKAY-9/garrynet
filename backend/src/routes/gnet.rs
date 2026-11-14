@@ -148,7 +148,7 @@ async fn heartbeat(
 
     Ok(HttpResponse::Ok().json(HeartbeatResponse {
         server,
-        token: auth.rotated_token(&state.jwt)?,
+        token: auth.rotated_token(&state.db, &state.jwt).await?,
     }))
 }
 

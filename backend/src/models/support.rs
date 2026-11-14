@@ -40,6 +40,17 @@ impl SupportStatus {
     pub fn is_done(self) -> bool {
         matches!(self, Self::Resolved | Self::Closed)
     }
+
+    /// The name used in the API and the database, e.g. `AWAITING_USER`.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Open => "OPEN",
+            Self::AwaitingUser => "AWAITING_USER",
+            Self::AwaitingAdmin => "AWAITING_ADMIN",
+            Self::Resolved => "RESOLVED",
+            Self::Closed => "CLOSED",
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
@@ -654,5 +665,19 @@ mod tests {
         assert!(!public.visible_to(8), "only the ticket's creator, not other users");
         let internal = MessageAudience { ticket_owner: 7, is_internal: true };
         assert!(!internal.visible_to(7), "internal notes are for the Support Team only");
+    }
+
+    #[test]
+    fn status_names_match_the_api() {
+        for status in [
+            SupportStatus::Open,
+            SupportStatus::AwaitingUser,
+            SupportStatus::AwaitingAdmin,
+            SupportStatus::Resolved,
+            SupportStatus::Closed,
+        ] {
+            assert_eq!(serde_json::to_value(status).unwrap(), status.as_str());
+        }
+        assert_eq!(SupportStatus::AwaitingUser.as_str(), "AWAITING_USER");
     }
 }

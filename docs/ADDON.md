@@ -156,7 +156,7 @@ When **Keep banned users off game servers** is on in [Admin > Community](ADMIN.m
 
 ## Server Tokens
 
-The JWT is valid for 30 days and is rolling: once it is an hour old, the next heartbeat response carries a replacement, which the addon stores. Tokens carry the server's `token_version`, which the backend bumps when the server links, unlinks or gets a new access key. That revokes every earlier token. A server offline for longer than 30 days must be linked again.
+The JWT is valid for 30 days and is rolling: once it is an hour old, the next heartbeat response carries a replacement, which the addon stores. Tokens carry the server's `token_version`, which the backend bumps when the server links, unlinks or gets a new access key. That revokes every earlier token. Rotation bumps it too, so a replaced token stops working: it is only accepted for 10 more minutes, for requests already in flight. A heartbeat made with it in that time gets the current token again, in case the response that carried it was lost. A server offline for longer than 30 days must be linked again.
 
 ## Backend Routes
 

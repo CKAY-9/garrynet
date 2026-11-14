@@ -65,6 +65,7 @@ The sender can mark a message as **temporary** ("disappearing") when writing it.
 - This is enforced when messages are queried: a message is hidden if `temporary` is set and `created_at` is more than 24 hours ago. Nothing is deleted and there is no sweeper.
 - Staff still see it, flagged as expired.
 - Its attachments are kept.
+- Its notification doesn't contain its text (see [Notifications](#notifications)).
 - An expired message still counts for `has_sent`.
 - A chat whose only visible messages have expired no longer appears in either user's chat list.
 
@@ -81,7 +82,7 @@ The recipient gets a notification (see below). It is written after the message c
 
 ### Notifications
 
-Sending creates a `MESSAGE` notification for the recipient (event `message.received`) linking to `/messages/{author_id}`. Several messages from the same user collapse into one unread notification, as described in [NOTIFICATIONS.md](NOTIFICATIONS.md#rules). The title is "New message from {username}" and the body is the start of the message as plain text (Markdown stripped, clipped like every notification body). The author is never notified of their own messages.
+Sending creates a `MESSAGE` notification for the recipient (event `message.received`) linking to `/messages/{author_id}`. Several messages from the same user collapse into one unread notification, as described in [NOTIFICATIONS.md](NOTIFICATIONS.md#rules). The title is "New message from {username}" and the body is the start of the message as plain text (Markdown stripped, clipped like every notification body). A temporary message's text is never copied into its notification, since notifications outlive its 24 hours: the body is just "Sent you a temporary message." The author is never notified of their own messages.
 
 ### Attachment Privacy
 
