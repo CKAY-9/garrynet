@@ -100,8 +100,8 @@ Both the browser and your Garry's Mod servers must be able to reach the backend,
 
 1. **Clone** the repository onto your web server, and point DNS records for both domains at it with ports 80 and 443 open:
     ```sh
-    git clone https://github.com/CKAY-9/garrynet.git
-    cd garrynet
+    git clone https://github.com/CKAY-9/gravnet.git
+    cd gravnet
     ```
 2. **Configure the backend.** Copy `backend/.env.example` to `backend/.env` and set:
     - `BACKEND_URL`: the backend's public URL, e.g. `https://api.example.com`. Steam login returns here.
