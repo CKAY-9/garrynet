@@ -16,6 +16,7 @@ import type {
 } from "@/lib/types";
 import { NewThreadForm, ReplyForm, type ThreadTemplate } from "./Composer";
 import { PostBody, ThreadTools } from "./Manage";
+import { PostVotes } from "./Votes";
 import styles from "./Forum.module.scss";
 
 type Crumb = { href?: string; label: string };
@@ -202,6 +203,20 @@ function canManage(viewer: ForumViewer, authorId: number, thread: ForumThread, c
   return viewer.userId === authorId && viewer.access === "allowed" && !thread.locked && !category.locked;
 }
 
+/**
+ * Why `viewer` can't like or dislike a post `authorId` wrote in `thread`, or `null` if they
+ * can. Mirrors the backend (`vote_post` in src/routes/forum.rs): anyone who can post, on
+ * others' posts, while neither the thread nor its category is locked.
+ */
+function whyCantVote(viewer: ForumViewer, authorId: number, thread: ForumThread, category: ForumCategory): string | null {
+  if (viewer.access === "guest") return "Log in to vote";
+  if (viewer.access === "forbidden") return "You don't have permission to vote";
+  if (viewer.userId === authorId) return "You can't vote on your own post";
+  if (thread.locked) return "This thread is locked";
+  if (category.locked) return "This category is locked";
+  return null;
+}
+
 /** /forum/{category_id}/{thread_id}: every post, the thread's first post at the top. */
 export function ForumThreadPage({ category, section, thread, posts, viewer }: ThreadData & { viewer: ForumViewer }) {
   return (
@@ -260,10 +275,13 @@ export function ForumThreadPage({ category, section, thread, posts, viewer }: Th
               <Markdown className={styles.content}>{post.content}</Markdown>
               <Attachments files={post.attachments} />
             </PostBody>
-            <div className={styles.reactions} aria-label="Reactions">
-              <span title="Likes">👍 {post.likes.length}</span>
-              <span title="Dislikes">👎 {post.dislikes.length}</span>
-            </div>
+            <PostVotes
+              postId={post.id}
+              likes={post.likes}
+              dislikes={post.dislikes}
+              viewerId={viewer.userId}
+              disabledReason={whyCantVote(viewer, post.author_id, thread, category)}
+            />
           </div>
         </article>
       ))}

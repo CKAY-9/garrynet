@@ -2,7 +2,7 @@
 //! by admins; threads and replies need User Posts. Authors manage their own threads and
 //! posts; Thread Management manages anyone's.
 
-use actix_web::{HttpResponse, delete, get, patch, post, web};
+use actix_web::{HttpResponse, delete, get, patch, post, put, web};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -12,7 +12,7 @@ use crate::{
         File, Permissions, User, Usergroup,
         forum::{
             CategoryDetails, ForumCategory, ForumPost, ForumSection, ForumStats, ForumThread,
-            PostWithAuthor, SectionDetails, SectionWithCategories, ThreadChanges, ThreadSummary,
+            PostWithAuthor, SectionDetails, SectionWithCategories, ThreadChanges, ThreadSummary, Vote,
         },
     },
     notify,
@@ -37,6 +37,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .service(delete_thread)
         .service(create_post)
         .service(edit_post)
+        .service(vote_post)
         .service(delete_post);
 }
 
@@ -431,6 +432,41 @@ async fn delete_post(
         }
     }
     Ok(HttpResponse::NoContent().finish())
+}
+
+#[derive(Deserialize)]
+struct VoteBody {
+    /// `null` takes the user's vote back.
+    vote: Option<Vote>,
+}
+
+/// Likes or dislikes a post, or takes the vote back, and returns the post. Each like adds 1
+/// to the author's reputation and each dislike takes 1 away. Requires Site Access and User
+/// Posts. Users can't vote on their own posts (400). 423 if the thread or its category is
+/// locked.
+#[put("/forum/posts/{id}/vote")]
+async fn vote_post(
+    state: web::Data<AppState>,
+    user: AuthUser,
+    id: web::Path<i64>,
+    body: web::Json<VoteBody>,
+) -> Result<HttpResponse, ApiError> {
+    user.require(&state.db, POST).await?;
+    let (post, thread) = find_post(&state, id.into_inner()).await?;
+    if post.author_id == user.0.id {
+        return Err(bad("you can't vote on your own post".to_owned()));
+    }
+    if thread.locked {
+        return Err(ApiError::Locked("thread"));
+    }
+    let category = ForumCategory::find_by_id(&state.db, thread.category_id)
+        .await?
+        .ok_or(ApiError::NotFound("category"))?;
+    if category.locked {
+        return Err(ApiError::Locked("category"));
+    }
+    let voted = post.vote(&state.db, user.0.id, body.vote).await?;
+    Ok(HttpResponse::Ok().json(voted))
 }
 
 /// How a user may manage a thread or post.

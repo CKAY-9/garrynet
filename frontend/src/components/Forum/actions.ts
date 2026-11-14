@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { runAction, type ActionResult } from "@/lib/actionResult";
 import { authHeaders } from "@/lib/auth";
 import { backend } from "@/lib/backend";
-import type { ForumPost, ForumThread } from "@/lib/types";
+import type { ForumPost, ForumThread, PostVote } from "@/lib/types";
 
 /** A new thread's first post and flags. Starting a thread locked needs Thread Management. */
 export type NewThread = {
@@ -75,6 +75,20 @@ export async function deleteThread(threadId: number, categoryId: number): Promis
 export async function editPost(postId: number, content: string): Promise<ActionResult<ForumPost>> {
   return runAction("edit the post", async () => {
     const { data } = await backend.patch<ForumPost>(`/forum/posts/${postId}`, { content }, {
+      headers: await authHeaders(),
+    });
+    refresh();
+    return data;
+  });
+}
+
+/**
+ * Likes or dislikes a post, or takes the vote back (`null`), and refreshes the page. Each
+ * like adds 1 to the author's reputation and each dislike takes 1 away.
+ */
+export async function votePost(postId: number, vote: PostVote | null): Promise<ActionResult<ForumPost>> {
+  return runAction("vote on the post", async () => {
+    const { data } = await backend.put<ForumPost>(`/forum/posts/${postId}/vote`, { vote }, {
       headers: await authHeaders(),
     });
     refresh();

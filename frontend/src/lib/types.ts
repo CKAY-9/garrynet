@@ -348,6 +348,9 @@ export type ForumPost = {
   attachments: Attachment[];
 };
 
+/** A user's vote on a post: +1 or -1 to the author's reputation. */
+export type PostVote = "like" | "dislike";
+
 /** The author fields the forum displays next to threads and posts. */
 export type ForumAuthor = Pick<User, "id" | "username" | "avatar_url">;
 

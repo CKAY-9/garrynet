@@ -205,14 +205,42 @@ $border: 1px solid rgb(127 127 127 / 0.2);
 
 .reactions {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 0.5rem;
   font-size: 0.85rem;
 
-  span {
+  > span,
+  > button {
     padding: 0.15rem 0.6rem;
     border: $border;
     border-radius: 999px;
     font-variant-numeric: tabular-nums;
+  }
+
+  > button {
+    background: none;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+
+    &:hover:not(:disabled) {
+      background: rgb(127 127 127 / 0.12);
+    }
+
+    &:disabled {
+      cursor: progress;
+    }
+  }
+
+  > .liked {
+    border-color: #30a46c;
+    background: rgb(48 164 108 / 0.15);
+  }
+
+  > .disliked {
+    border-color: #e5484d;
+    background: rgb(229 72 77 / 0.15);
   }
 }
 
