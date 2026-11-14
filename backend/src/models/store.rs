@@ -510,6 +510,17 @@ impl ItemStore {
         .await
     }
 
+    /// Enables or disables the store. A disabled store can't start checkouts (see
+    /// [`Purchase::begin`], which share-locks the row, so one in progress finishes first).
+    pub async fn set_enabled(db: &PgPool, id: i64, enabled: bool) -> sqlx::Result<()> {
+        sqlx::query("UPDATE item_stores SET enabled = $2, last_updated = now() WHERE id = $1")
+            .bind(id)
+            .bind(enabled)
+            .execute(db)
+            .await?;
+        Ok(())
+    }
+
     /// Replaces the usergroups items may grant, and makes unavailable every item that
     /// grants a usergroup no longer allowed, so it can't be bought until a manager fixes
     /// it. Returns the store and how many items were made unavailable; `None` if there is
@@ -850,6 +861,18 @@ impl Purchase {
         )
         .bind(buyer_id)
         .bind(item_id)
+        .fetch_all(db)
+        .await
+    }
+
+    /// Every pending purchase of the store, oldest first.
+    pub async fn pending_for_store(db: &PgPool, store_id: i64) -> sqlx::Result<Vec<Purchase>> {
+        sqlx::query_as(
+            "SELECT * FROM store_purchases
+             WHERE store_id = $1 AND status = 'PENDING'
+             ORDER BY created_at, id",
+        )
+        .bind(store_id)
         .fetch_all(db)
         .await
     }

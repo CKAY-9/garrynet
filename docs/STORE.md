@@ -79,7 +79,11 @@ against the list, so an item saved before the change can't grant it. Public stor
 `grantable_usergroups` empty; only the admin routes show it.
 
 Deleting a server deletes its store, items, pending purchases and fulfillments. Receipts are kept
-(see below). Stores themselves are never deleted on their own; disable one instead.
+(see below). Before that, the store is disabled and every pending checkout is closed (its Stripe
+session expired), so nobody can pay for a purchase that's about to be deleted. If one can't be
+closed, because it has been paid or has a delayed payment clearing, or Stripe can't be reached,
+nothing is deleted (400, or 502), the store is put back as it was, and the server can be deleted once
+the purchase has settled. Stores themselves are never deleted on their own; disable one instead.
 
 ## Store Discounts
 
@@ -184,7 +188,8 @@ completed_at?: utc timestamp
    the purchase becomes `PAID`, a Receipt is written, `all_time_purchases` is incremented, and a
    Fulfillment is created. The purchase is found by its session id or, if that was never recorded,
    by the `purchase_id` in the session's metadata. A paid GarryNet session whose purchase no longer
-   exists (its server was deleted) is logged as an error for staff to refund.
+   exists is logged as an error for staff to refund. (Deleting a server closes its checkouts first,
+   so this shouldn't happen.)
 4. `checkout.session.expired`, `checkout.session.async_payment_failed`, or the buyer backing out of
    Checkout (which lands on the frontend's `/store/checkout/cancel`): the purchase becomes
    `CANCELLED` and the reserved stock is released. Backing out also expires the Stripe session; if

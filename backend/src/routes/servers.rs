@@ -8,7 +8,10 @@ use crate::{
         Permissions, Server,
         server::{AccessKey, ServerDetails},
     },
-    routes::validate::{bad, hex_color, optional_url, required_text, text},
+    routes::{
+        store,
+        validate::{bad, hex_color, optional_url, required_text, text},
+    },
     state::AppState,
 };
 
@@ -86,7 +89,9 @@ async fn update_server(
     Ok(HttpResponse::Ok().json(server))
 }
 
-/// Deletes a server and its player records. Requires Admin Access and Server Management.
+/// Deletes a server and its player records, and its store with its purchases. Its store's
+/// open checkouts are closed first; 400 (and nothing deleted) if one of them has been paid or
+/// has a payment clearing. Requires Admin Access and Server Management.
 #[delete("/servers/{id}")]
 async fn delete_server(
     state: web::Data<AppState>,
@@ -95,6 +100,7 @@ async fn delete_server(
 ) -> Result<HttpResponse, ApiError> {
     user.require(&state.db, MANAGE).await?;
     let id = id.into_inner();
+    store::close_checkouts_for_server(&state, id).await?;
     if !Server::delete(&state.db, id).await? {
         return Err(ApiError::NotFound("server"));
     }

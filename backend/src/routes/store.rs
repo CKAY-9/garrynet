@@ -350,6 +350,44 @@ async fn release_pending(state: &AppState, purchase: &Purchase) -> Result<Option
     Ok(Some(Purchase::cancel(&state.db, purchase.id).await?.unwrap_or_else(|| purchase.clone())))
 }
 
+/// Closes every pending checkout of server `server_id`'s store before the server is deleted,
+/// which deletes its store and purchases: a Checkout Session left open could still be paid,
+/// and the payment would find no purchase to record. The store is disabled first, so no
+/// checkout starts meanwhile. If a checkout can't be closed (it has been paid, or a delayed
+/// payment is clearing) or Stripe can't be reached, the store is put back as it was and the
+/// error returned, so the server isn't deleted yet.
+pub async fn close_checkouts_for_server(state: &AppState, server_id: i64) -> Result<(), ApiError> {
+    let Some(store) = ItemStore::find_by_server(&state.db, server_id).await? else {
+        return Ok(());
+    };
+    if store.enabled {
+        ItemStore::set_enabled(&state.db, store.id, false).await?;
+    }
+    let result = close_pending_checkouts(state, store.id).await;
+    if result.is_err()
+        && store.enabled
+        && let Err(e) = ItemStore::set_enabled(&state.db, store.id, true).await
+    {
+        log::error!("failed to re-enable store {} after not deleting its server: {e}", store.id);
+    }
+    result
+}
+
+async fn close_pending_checkouts(state: &AppState, store_id: i64) -> Result<(), ApiError> {
+    let mut unsettled = 0;
+    for purchase in Purchase::pending_for_store(&state.db, store_id).await? {
+        if release_pending(state, &purchase).await?.is_none() {
+            unsettled += 1;
+        }
+    }
+    if unsettled > 0 {
+        return Err(ApiError::BadRequest(format!(
+            "{unsettled} purchase(s) in this server's store have been paid or have a payment clearing; delete the server once they've settled (see the receipts)"
+        )));
+    }
+    Ok(())
+}
+
 #[derive(Deserialize)]
 struct CancelBody {
     /// From the cancel link; see [`cancel_token`].
