@@ -246,8 +246,10 @@ revocation_applied_at?: utc timestamp // when the addon confirmed it took the re
   (the webhook's `amount_subtotal`), the payment is still recorded, but the fulfillment is created
   held: failed, with no attempts left and a `last_error` explaining why. Nothing is delivered until a
   user with `Store Finance` has checked the payment in Stripe and retries it (or refunds it).
-- A revoked fulfillment whose rewards were delivered is offered to the addon until it acknowledges
-  taking them back.
+- A revoked fulfillment is offered to the addon until it acknowledges the revocation, even if no
+  delivery was recorded: the addon may have applied the rewards and lost its `fulfilled` report before
+  the refund. It takes back what it delivered (reporting the lost delivery too), or just acknowledges
+  if it delivered nothing.
 - The addon's side (usergroup adapters, stacking timed usergroups, protecting staff groups, exactly-once
   delivery) is described in [ADDON.md](ADDON.md#delivery-in-the-addon).
 

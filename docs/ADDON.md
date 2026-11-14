@@ -231,8 +231,11 @@ See [STORE.md](STORE.md) for the model. The addon should fetch work when a playe
 
 **GET `/gnet/server/{SERVER_ID}/fulfillments?steam_id=`**: `Authorization: Bearer <JWT>`. Fulfillments the
 server has to act on, oldest first: `PENDING` and retryable `FAILED` ones to deliver, and `REVOKED` ones
-whose rewards were delivered (`fulfilled_at` set, `revocation_applied_at` null) to take back (usergroups and
-weapons; not money). `steam_id` narrows it to one player.
+whose revocation hasn't been acknowledged (`revocation_applied_at` null) to take back (usergroups and
+weapons; not money). A revoked one is offered even without `fulfilled_at`, in case the addon delivered it
+but its `fulfilled` report was lost; the addon then takes back what it has recorded and reports both
+`fulfilled` and `revoked`, or, if it delivered nothing, just reports `revoked`. `steam_id` narrows it to
+one player.
 
 ```json
 [
