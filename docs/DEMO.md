@@ -45,7 +45,7 @@ Limitations:
 Run the demo from its own clone of the repository: its `.env` files and ports 80/443 can't be shared with another deployment on the same machine.
 
 1. Point DNS records for the site and API domains (e.g. `gnet.example.com` and `api.gnet.example.com`) at the machine, and open ports 80 and 443.
-2. Create a root `.env`:
+2. Copy `.env.example` to `.env` in the repository root and set:
     ```sh
     SITE_DOMAIN=gnet.example.com
     API_DOMAIN=api.gnet.example.com

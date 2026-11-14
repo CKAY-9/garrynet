@@ -112,7 +112,7 @@ Both the browser and your Garry's Mod servers must be able to reach the backend,
 
     `DATABASE_URL` and `BIND_ADDR` are set by Compose, so you can leave them alone.
 3. **Configure the frontend.** Copy `frontend/.env.example` to `frontend/.env` and set `NEXT_PUBLIC_API_URL` to the backend's public URL (the same as `BACKEND_URL`). `API_URL` is set by Compose.
-4. **Set a database password.** Create a `.env` in the repository root:
+4. **Set a database password.** Copy `.env.example` to `.env` in the repository root and set:
     ```sh
     POSTGRES_PASSWORD=<a strong password>
     ```
