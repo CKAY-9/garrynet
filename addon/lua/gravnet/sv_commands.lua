@@ -1,23 +1,23 @@
--- Chat commands: a superadmin saying !gnet gets the GarryNet menu; anyone saying !gstore gets
+-- Chat commands: a superadmin saying !gnet gets the GravNet menu; anyone saying !gstore gets
 -- the store menu. Console commands do what !gnet does from the server console (e.g. a dedicated
 -- server with nobody on).
 
-hook.Add("PlayerSay", "GarryNet.Commands.ChatCommand", function(ply, text)
+hook.Add("PlayerSay", "GravNet.Commands.ChatCommand", function(ply, text)
 	local command = string.lower(string.Trim(text))
 
-	if command == GarryNet.Config.StoreCommand then
-		GarryNet.StoreMenu.Open(ply)
+	if command == GravNet.Config.StoreCommand then
+		GravNet.StoreMenu.Open(ply)
 		return "" -- hide the command from chat
 	end
 
-	if command ~= GarryNet.Config.ChatCommand then return end
+	if command ~= GravNet.Config.ChatCommand then return end
 
 	if not ply:IsSuperAdmin() then
-		ply:ChatPrint("[GarryNet] Only superadmins can use " .. GarryNet.Config.ChatCommand .. ".")
+		ply:ChatPrint("[GravNet] Only superadmins can use " .. GravNet.Config.ChatCommand .. ".")
 		return ""
 	end
 
-	GarryNet.OpenMenu(ply)
+	GravNet.OpenMenu(ply)
 	return "" -- hide the command from chat
 end)
 
@@ -29,9 +29,9 @@ local function Command(name, help, run)
 
 		local function reply(message)
 			if from_console then
-				GarryNet.Util.Log(message)
+				GravNet.Util.Log(message)
 			elseif IsValid(ply) then
-				ply:PrintMessage(HUD_PRINTCONSOLE, "[GarryNet] " .. message)
+				ply:PrintMessage(HUD_PRINTCONSOLE, "[GravNet] " .. message)
 			end
 		end
 
@@ -39,10 +39,10 @@ local function Command(name, help, run)
 	end, nil, help)
 end
 
-Command("garrynet_status", "Show whether this server is linked to GarryNet.", function(reply)
-	local status = GarryNet.GetStatus()
-	if not status.configured then reply("garrynet_api_url is not set.") end
-	if status.insecure then reply("Warning: " .. GarryNet.HTTP.InsecureWarning) end
+Command("gravnet_status", "Show whether this server is linked to GravNet.", function(reply)
+	local status = GravNet.GetStatus()
+	if not status.configured then reply("gravnet_api_url is not set.") end
+	if status.insecure then reply("Warning: " .. GravNet.HTTP.InsecureWarning) end
 
 	if not status.linked then
 		reply("Not linked.")
@@ -57,65 +57,65 @@ Command("garrynet_status", "Show whether this server is linked to GarryNet.", fu
 		reply("No sync yet.")
 	end
 
-	local store = GarryNet.Store.GetLastSync()
+	local store = GravNet.Store.GetLastSync()
 	if store then
 		reply(string.format("Last store sync %ds ago: %s", os.time() - store.time, store.message))
 	end
-	local bans = GarryNet.Bans.GetLastSync()
+	local bans = GravNet.Bans.GetLastSync()
 	if bans then
 		reply(string.format("Last ban list sync %ds ago: %s", os.time() - bans.time, bans.message))
 	end
-	local messages = GarryNet.StoreMessages.GetStatus()
+	local messages = GravNet.StoreMessages.GetStatus()
 	if messages.enabled then
 		reply(string.format("Store chat messages: every %d min%s", messages.minutes,
 			messages.skipped ~= "" and (", last one not sent: " .. messages.skipped) or "."))
 	else
 		reply("Store chat messages: off.")
 	end
-	reply("Usergroups are managed with " .. GarryNet.Rewards.Adapter().name .. ".")
+	reply("Usergroups are managed with " .. GravNet.Rewards.Adapter().name .. ".")
 end)
 
 -- Reply with the outcome and refresh any open menus.
 local function Done(reply)
 	return function(_, message)
 		reply(message)
-		GarryNet.BroadcastStatus()
+		GravNet.BroadcastStatus()
 	end
 end
 
-Command("garrynet_link", "Link this server to GarryNet: garrynet_link <access key>", function(reply, args)
+Command("gravnet_link", "Link this server to GravNet: gravnet_link <access key>", function(reply, args)
 	-- Link() warns in the server console; a superadmin running this from their own console
 	-- needs to see it too.
-	if GarryNet.HTTP.IsInsecure() then reply("Warning: " .. GarryNet.HTTP.InsecureWarning) end
-	GarryNet.Link.Link(args, function(success, message)
+	if GravNet.HTTP.IsInsecure() then reply("Warning: " .. GravNet.HTTP.InsecureWarning) end
+	GravNet.Link.Link(args, function(success, message)
 		Done(reply)(success, message)
-		if success then GarryNet.NotifyAdmins("This server was linked from the console: " .. message, true) end
+		if success then GravNet.NotifyAdmins("This server was linked from the console: " .. message, true) end
 	end)
 end)
 
-Command("garrynet_unlink", "Unlink this server from GarryNet.", function(reply)
-	GarryNet.Link.Unlink(Done(reply))
+Command("gravnet_unlink", "Unlink this server from GravNet.", function(reply)
+	GravNet.Link.Unlink(Done(reply))
 end)
 
-Command("garrynet_sync", "Send a heartbeat to GarryNet now.", function(reply)
-	GarryNet.Interval.Run(Done(reply))
+Command("gravnet_sync", "Send a heartbeat to GravNet now.", function(reply)
+	GravNet.Interval.Run(Done(reply))
 end)
 
-Command("garrynet_store_sync", "Fetch and deliver store purchases now.", function(reply)
-	GarryNet.Store.Sync(nil, function(_, message) reply(message) end)
+Command("gravnet_store_sync", "Fetch and deliver store purchases now.", function(reply)
+	GravNet.Store.Sync(nil, function(_, message) reply(message) end)
 end)
 
-Command("garrynet_store_grants", "Show a player's store usergroups and weapons: garrynet_store_grants <SteamID64>", function(reply, args)
+Command("gravnet_store_grants", "Show a player's store usergroups and weapons: gravnet_store_grants <SteamID64>", function(reply, args)
 	if not string.match(args, "^%d+$") then
-		reply("Usage: garrynet_store_grants <SteamID64>")
+		reply("Usage: gravnet_store_grants <SteamID64>")
 		return
 	end
-	local grants, applied = GarryNet.Rewards.GetGrants(args)
+	local grants, applied = GravNet.Rewards.GetGrants(args)
 	if #grants == 0 and not applied then
 		reply("No store usergroups or weapons for " .. args .. ".")
 		return
 	end
-	local group, expires = GarryNet.Rewards.GroupExpiry(args)
+	local group, expires = GravNet.Rewards.GroupExpiry(args)
 	if group then
 		reply(string.format("Usergroup %s, %s.", group, expires == math.huge and "permanent"
 			or ("until " .. os.date("!%Y-%m-%d %H:%M UTC", expires))))

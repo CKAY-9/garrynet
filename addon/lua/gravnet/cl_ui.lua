@@ -1,8 +1,8 @@
--- The look shared by the GarryNet menus (!gnet, !gstore): a dark-blue card with an accent strip,
+-- The look shared by the GravNet menus (!gnet, !gstore): a dark-blue card with an accent strip,
 -- over a darkened, blurred background (docs/ADDON.md).
 
-GarryNet.UI = GarryNet.UI or {}
-local UI = GarryNet.UI
+GravNet.UI = GravNet.UI or {}
+local UI = GravNet.UI
 
 local Colors = {
 	Background = Color(12, 22, 48), -- dark blue panel
@@ -20,10 +20,10 @@ local Colors = {
 }
 UI.Colors = Colors
 
-surface.CreateFont("GarryNet.Title", { font = "Roboto", size = 28, weight = 700, extended = true })
-surface.CreateFont("GarryNet.Body", { font = "Roboto", size = 18, weight = 500, extended = true })
-surface.CreateFont("GarryNet.Small", { font = "Roboto", size = 15, weight = 500, extended = true })
-surface.CreateFont("GarryNet.Button", { font = "Roboto", size = 17, weight = 700, extended = true })
+surface.CreateFont("GravNet.Title", { font = "Roboto", size = 28, weight = 700, extended = true })
+surface.CreateFont("GravNet.Body", { font = "Roboto", size = 18, weight = 500, extended = true })
+surface.CreateFont("GravNet.Small", { font = "Roboto", size = 15, weight = 500, extended = true })
+surface.CreateFont("GravNet.Button", { font = "Roboto", size = 17, weight = 700, extended = true })
 
 function UI.Lighten(c, amount)
 	return Color(math.min(c.r + amount, 255), math.min(c.g + amount, 255), math.min(c.b + amount, 255), c.a)
@@ -71,7 +71,7 @@ end
 function UI.Button(parent, label, color, on_click)
 	local button = vgui.Create("DButton", parent)
 	button:SetText(label)
-	button:SetFont("GarryNet.Button")
+	button:SetFont("GravNet.Button")
 	button:SetTextColor(Colors.Text)
 	button.fill = color
 	button.DoClick = on_click
@@ -197,14 +197,14 @@ function UI.Card(parent)
 	return card
 end
 
--- "GarryNet" over a muted subtitle, with the close button on the right. 52px tall.
+-- "GravNet" over a muted subtitle, with the close button on the right. 52px tall.
 function UI.Header(parent, subtitle, on_close)
 	local header = vgui.Create("DPanel", parent)
 	header.subtitle = subtitle
 
 	function header:Paint()
-		draw.SimpleText("GarryNet", "GarryNet.Title", 0, 0, Colors.Text)
-		draw.SimpleText(self.subtitle, "GarryNet.Small", 0, 32, Colors.Muted)
+		draw.SimpleText("GravNet", "GravNet.Title", 0, 0, Colors.Text)
+		draw.SimpleText(self.subtitle, "GravNet.Small", 0, 32, Colors.Muted)
 		return true
 	end
 

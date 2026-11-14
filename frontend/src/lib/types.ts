@@ -1,6 +1,6 @@
 export type UserStatus = "ONLINE" | "IDLE" | "OFFLINE";
 
-/** A GarryNet user, as returned by the backend. Timestamps are ISO 8601 (UTC). */
+/** A GravNet user, as returned by the backend. Timestamps are ISO 8601 (UTC). */
 export type User = {
   id: number;
   username: string;
@@ -220,7 +220,7 @@ export type UserPlayer = {
 /** The player who is loading in. */
 export type LoadingScreenPlayer = {
   steam_id: string;
-  /** GarryNet username, else the in-game name, else the Steam name. */
+  /** GravNet username, else the in-game name, else the Steam name. */
   name: string;
   avatar_url: string | null;
   user_id: number | null;
@@ -238,7 +238,7 @@ export type LoadingScreenData = {
 
 /** A notable member of the community, shown on the homepage. */
 export type KeyFigure = {
-  /** Their GarryNet account, if they have one. Absent otherwise. */
+  /** Their GravNet account, if they have one. Absent otherwise. */
   user_id?: number;
   name: string;
   /** Image URL; empty for none. */
@@ -264,7 +264,7 @@ export type Community = {
   splash_background: string | null;
   external_links: string[];
   key_figures: KeyFigure[];
-  /** Whether the addon keeps users banned on GarryNet off the community's game servers. */
+  /** Whether the addon keeps users banned on GravNet off the community's game servers. */
   ban_from_servers: boolean;
   created_at: string;
   last_updated: string | null;
@@ -895,7 +895,7 @@ export type LegalDocument = {
   title: string;
   /** Markdown. */
   body: string;
-  /** `null` while it's still GarryNet's default template. */
+  /** `null` while it's still GravNet's default template. */
   last_updated: string | null;
   updated_by: number | null;
 };

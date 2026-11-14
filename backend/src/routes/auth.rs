@@ -39,7 +39,7 @@ async fn steam_login(state: web::Data<AppState>) -> Result<HttpResponse, ApiErro
 }
 
 /// Steam redirects here after the user signs in. Verifies the assertion (including that its
-/// `return_to` carries this browser's login nonce), creates the GarryNet user on first
+/// `return_to` carries this browser's login nonce), creates the GravNet user on first
 /// login, sets the JWT cookie and sends the user to the frontend.
 #[get("/auth/steam/callback")]
 async fn steam_callback(

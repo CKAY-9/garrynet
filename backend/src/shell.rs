@@ -34,7 +34,7 @@ commands:
   user unsuspend <USER>                     lift a user's suspension
   demo reset                                clear what non-admins created now (DEMO_MODE only)
 
-  <USER>  GarryNet user id, or 17-digit SteamID64
+  <USER>  GravNet user id, or 17-digit SteamID64
   <GROUP> usergroup id or name (case-insensitive; quote names with spaces)";
 
 #[derive(Debug, thiserror::Error)]

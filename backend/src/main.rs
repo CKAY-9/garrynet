@@ -66,7 +66,7 @@ async fn main() -> std::io::Result<()> {
         );
     }
 
-    log::info!("GarryNet backend listening on http://{}", config.bind_addr);
+    log::info!("GravNet backend listening on http://{}", config.bind_addr);
     shell::spawn(state.clone());
     if config.demo {
         demo::spawn_daily_reset(state.clone());

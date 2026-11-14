@@ -1,6 +1,6 @@
 # Notifications
 
-Part of [GarryNet Design](README.md).
+Part of [GravNet Design](README.md).
 
 Notifications tell a user that something happened that concerns them, and link to where they can act on it. The system is deliberately small: in-site only, one row per recipient, created by the backend when an event happens.
 

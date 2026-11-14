@@ -1,6 +1,6 @@
 # Storage
 
-Part of [GarryNet Design](README.md).
+Part of [GravNet Design](README.md).
 
 Files are stored locally or in an S3-compatible bucket (AWS S3, Cloudflare R2, MinIO, ...), depending on backend configuration. Every provider sits behind one interface (`backend/src/storage.rs`, built on the [`object_store`](https://docs.rs/object_store) crate), so routes never care where a file lives.
 
@@ -30,7 +30,7 @@ docker run -d --name garage-container \
   -v garage-meta:/var/lib/garage/meta -v garage-data:/var/lib/garage/data \
   -e GARAGE_DEFAULT_ACCESS_KEY=GK0123456789abcdef01234567 \
   -e GARAGE_DEFAULT_SECRET_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef \
-  -e GARAGE_DEFAULT_BUCKET=garrynet \
+  -e GARAGE_DEFAULT_BUCKET=gravnet \
   dxflrs/garage:v2.5.0 /garage server --single-node --default-bucket
 ```
 
@@ -40,7 +40,7 @@ Then set these in `backend/.env`:
 
 ```
 STORAGE_PROVIDER=s3
-S3_BUCKET=garrynet
+S3_BUCKET=gravnet
 S3_ENDPOINT=http://localhost:3900
 S3_REGION=garage
 S3_ACCESS_KEY_ID=GK0123456789abcdef01234567
@@ -62,7 +62,7 @@ Manage the container with `docker stop garage-container` and `docker start garag
 ```sh
 curl -X PUT --aws-sigv4 "aws:amz:garage:s3" \
   --user "GK0123456789abcdef01234567:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" \
-  -H "Content-Type: application/xml" --data-binary @cors.xml "http://localhost:3900/garrynet?cors"
+  -H "Content-Type: application/xml" --data-binary @cors.xml "http://localhost:3900/gravnet?cors"
 ```
 
 A `NetworkError when attempting to fetch resource` in the browser after `POST /file/upload` returns 201 usually means this rule is missing.

@@ -1,10 +1,10 @@
--- GarryNet bootstrap. Creates the global table and loads every module in order.
--- Module files live in lua/garrynet/ and are prefixed by realm: sh_ (shared), sv_ (server), cl_ (client).
+-- GravNet bootstrap. Creates the global table and loads every module in order.
+-- Module files live in lua/gravnet/ and are prefixed by realm: sh_ (shared), sv_ (server), cl_ (client).
 
-GarryNet = GarryNet or {}
-GarryNet.Version = "0.1.0"
+GravNet = GravNet or {}
+GravNet.Version = "0.1.0"
 
-local BASE = "garrynet/"
+local BASE = "gravnet/"
 
 -- Load order matters: later files may depend on earlier ones.
 local FILES = {
@@ -32,7 +32,7 @@ local FILES = {
 	"cl_store_menu.lua",
 }
 
-function GarryNet.Include(file)
+function GravNet.Include(file)
 	local prefix = string.sub(file, 1, 3)
 	local path = BASE .. file
 
@@ -48,14 +48,14 @@ function GarryNet.Include(file)
 			include(path)
 		end
 	else
-		ErrorNoHalt("[GarryNet] Unknown realm prefix for file: " .. file .. "\n")
+		ErrorNoHalt("[GravNet] Unknown realm prefix for file: " .. file .. "\n")
 	end
 end
 
 for _, file in ipairs(FILES) do
-	GarryNet.Include(file)
+	GravNet.Include(file)
 end
 
 if SERVER then
-	MsgC(Color(59, 130, 246), "[GarryNet] ", color_white, "Loaded v" .. GarryNet.Version .. "\n")
+	MsgC(Color(59, 130, 246), "[GravNet] ", color_white, "Loaded v" .. GravNet.Version .. "\n")
 end

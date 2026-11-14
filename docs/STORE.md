@@ -1,14 +1,14 @@
 # Store
 
-Part of [GarryNet Design](README.md).
+Part of [GravNet Design](README.md).
 
-**GarryNet prohibits any usage of the store that involves gambling, loot boxes, or other
+**GravNet prohibits any usage of the store that involves gambling, loot boxes, or other
 similar luck-based mechanics.** Item names and descriptions must not imply random or
 chance-based rewards. Store managers are responsible for enforcing this on their items.
 
 The store page allows players to buy in-game items and rewards for specific servers.
 The store uses Stripe on the backend to handle payments and other associated services:
-GarryNet opens a hosted [Checkout Session](https://docs.stripe.com/payments/checkout) for each
+GravNet opens a hosted [Checkout Session](https://docs.stripe.com/payments/checkout) for each
 purchase and learns the outcome from Stripe's webhook.
 
 ## Configuration
@@ -139,7 +139,7 @@ all_time_purchases: number // default = 0; incremented when a purchase is paid, 
 rewards: Reward[]
 ```
 
-Prices are owned by GarryNet. The final price is calculated at checkout and passed to Stripe
+Prices are owned by GravNet. The final price is calculated at checkout and passed to Stripe
 with inline `price_data`, so no Stripe Price needs to be created or kept in sync.
 
 Removing an item archives it. Items with receipts are never hard deleted. Changing
@@ -179,7 +179,7 @@ created_at: utc timestamp
 completed_at?: utc timestamp
 ```
 
-1. The buyer starts checkout. GarryNet creates a `PENDING` purchase and a Stripe Checkout Session
+1. The buyer starts checkout. GravNet creates a `PENDING` purchase and a Stripe Checkout Session
    (35 minutes to pay; Stripe's minimum is 30) and sends the buyer to it. The price after every
    discount, and the currency, are read while the item is locked and recorded on the purchase;
    that's what Stripe charges.
@@ -190,7 +190,7 @@ completed_at?: utc timestamp
 3. `checkout.session.completed` (with `payment_status` paid) or `checkout.session.async_payment_succeeded`:
    the purchase becomes `PAID`, a Receipt is written, `all_time_purchases` is incremented, and a
    Fulfillment is created. The purchase is found by its session id or, if that was never recorded,
-   by the `purchase_id` in the session's metadata. A paid GarryNet session whose purchase no longer
+   by the `purchase_id` in the session's metadata. A paid GravNet session whose purchase no longer
    exists is logged as an error for staff to refund. (Deleting a server closes its checkouts first,
    so this shouldn't happen.)
 4. `checkout.session.expired`, `checkout.session.async_payment_failed`, or the buyer backing out of

@@ -1,8 +1,8 @@
 # Private Messages
 
-Part of [GarryNet Design](README.md).
+Part of [GravNet Design](README.md).
 
-Private Messages let GarryNet users talk to each other on the platform. Sending and reading them requires the `User Messages` permission together with Site Access (see [PERMISSIONS.md](PERMISSIONS.md)). A [suspension](USERS.md#user-punishment) removes `User Messages`, and a ban removes everything, so punished users can't use messages until it ends.
+Private Messages let GravNet users talk to each other on the platform. Sending and reading them requires the `User Messages` permission together with Site Access (see [PERMISSIONS.md](PERMISSIONS.md)). A [suspension](USERS.md#user-punishment) removes `User Messages`, and a ban removes everything, so punished users can't use messages until it ends.
 
 There is no separate chat entity. A chat is just the pair of users who have exchanged messages, and it is addressed by the other user's id: `/messages/{user_id}`.
 
@@ -25,7 +25,7 @@ read_at?: utc timestamp // null = the recipient hasn't opened it yet
 created_at: utc timestamp
 ```
 
-Markdown is sanitized like support messages (see [SUPPORT.md](SUPPORT.md#support-message)): raw HTML is escaped, and images can only be ones uploaded to GarryNet, i.e. URLs under `{BACKEND_URL}/file/`. Any other image is refused with 400. Staff can read messages, and an image from another host would tell whoever runs that host when they did. Links to other sites are fine.
+Markdown is sanitized like support messages (see [SUPPORT.md](SUPPORT.md#support-message)): raw HTML is escaped, and images can only be ones uploaded to GravNet, i.e. URLs under `{BACKEND_URL}/file/`. Any other image is refused with 400. Staff can read messages, and an image from another host would tell whoever runs that host when they did. Links to other sites are fine.
 
 Content is required and can't be blank, even with attachments. Up to 3 files can be attached (see [STORAGE.md](STORAGE.md)). The author uploads them first, then sends their file IDs as `attachments` with the message. Each must be a ready file in the author's own folder that isn't attached to anything else; otherwise 400.
 

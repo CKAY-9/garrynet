@@ -1,8 +1,8 @@
 # Support
 
-Part of [GarryNet Design](README.md).
+Part of [GravNet Design](README.md).
 
-GarryNet offers a support system to users to get into contact with community administrators or review frequently asked questions. Tickets should support markdown like forum posts.
+GravNet offers a support system to users to get into contact with community administrators or review frequently asked questions. Tickets should support markdown like forum posts.
 
 ## Support Ticket
 

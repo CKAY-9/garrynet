@@ -120,9 +120,9 @@ function listenToGmod(set: (p: Progress) => void): () => void {
 const DEMO: [status: string, value: number, ms: number][] = [
   ["Retrieving server info...", 0.04, 900],
   ["Mounting addons", 0.08, 900],
-  ["Downloading materials/garrynet/hud/icons.png", 0.2, 700],
-  ["Downloading models/props_garrynet/crate01.mdl", 0.34, 700],
-  ["Downloading sound/garrynet/ambience/city.ogg", 0.5, 700],
+  ["Downloading materials/gravnet/hud/icons.png", 0.2, 700],
+  ["Downloading models/props_gravnet/crate01.mdl", 0.34, 700],
+  ["Downloading sound/gravnet/ambience/city.ogg", 0.5, 700],
   ["Downloading maps/graphs/rp_downtown.ain", 0.62, 700],
   ["Workshop Complete", 0.75, 900],
   ["Sending client info...", 0.82, 800],

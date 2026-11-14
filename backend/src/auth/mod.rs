@@ -21,7 +21,7 @@ use crate::{
 };
 
 /// Name of the httpOnly cookie holding the user's JWT. The frontend reads it by this name.
-pub const AUTH_COOKIE: &str = "garrynet_token";
+pub const AUTH_COOKIE: &str = "gravnet_token";
 
 /// Builds the auth cookie. It's readable by the frontend's Next.js server (same host, or a
 /// sibling subdomain when `COOKIE_DOMAIN` is set) but not by page JavaScript.
@@ -47,7 +47,7 @@ pub fn removal_cookie(config: &Config) -> Cookie<'static> {
 }
 
 /// Name of the cookie tying a Steam login to the browser that started it.
-pub const LOGIN_STATE_COOKIE: &str = "garrynet_login_state";
+pub const LOGIN_STATE_COOKIE: &str = "gravnet_login_state";
 
 /// How long the user has to finish signing in on Steam.
 const LOGIN_STATE_TTL_MINUTES: i64 = 10;

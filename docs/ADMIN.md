@@ -1,6 +1,6 @@
 # Admin Pages
 
-Part of [GarryNet Design](README.md).
+Part of [GravNet Design](README.md).
 
 ## /admin: Dashboard
 
@@ -58,14 +58,14 @@ Requires: Admin Access and Usergroup Management
 Admins can edit the community details: name, description, logo, splash background, external links and key figures (add, remove, reorder). Changes apply when saved.
 Requires: Community Management
 
-**Game servers:** "Keep banned users off game servers" (off by default, `ban_from_servers` on `PUT /community`) makes linked servers refuse players banned on GarryNet and kick ones already playing. See [ADDON.md](ADDON.md#ban-enforcement).
+**Game servers:** "Keep banned users off game servers" (off by default, `ban_from_servers` on `PUT /community`) makes linked servers refuse players banned on GravNet and kick ones already playing. See [ADDON.md](ADDON.md#ban-enforcement).
 
 ## /admin/legal
 
 Admins can edit the terms of service, privacy policy and refund policy (see [LEGAL.md](LEGAL.md)). There's a tab per document, each with a title and a Markdown body with a Write/Preview toggle. Each document saves on its own; unsaved edits are kept while switching tabs and marked with a dot.
 Requires: Community Management
 
-- While a document is still GarryNet's default template, a notice asks the admin to fill in the placeholders and review it.
+- While a document is still GravNet's default template, a notice asks the admin to fill in the placeholders and review it.
 - "Load default template" puts the shipped template in the editor. Nothing changes until it's saved.
 
 ## /admin/messages

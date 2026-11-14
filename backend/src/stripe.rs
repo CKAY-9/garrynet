@@ -51,7 +51,7 @@ pub struct Refund {
     pub status: Option<String>,
 }
 
-/// What a Checkout Session is for. Prices are owned by GarryNet and passed inline, so no
+/// What a Checkout Session is for. Prices are owned by GravNet and passed inline, so no
 /// Stripe Product or Price has to exist.
 pub struct CheckoutParams<'a> {
     pub purchase_id: i64,
@@ -208,10 +208,10 @@ impl Stripe {
             Ok(b) => (b.error.message, b.error.code),
             Err(_) => (format!("HTTP {status}"), None),
         };
-        // A bad or under-privileged key is GarryNet's problem, not the request's, and
+        // A bad or under-privileged key is GravNet's problem, not the request's, and
         // Stripe's message for it quotes part of the key, so it mustn't reach a client.
         if matches!(status.as_u16(), 401 | 403) {
-            Err(Failure::Unavailable(format!("{status}: Stripe refused GarryNet's API key (check STRIPE_SECRET_KEY)")))
+            Err(Failure::Unavailable(format!("{status}: Stripe refused GravNet's API key (check STRIPE_SECRET_KEY)")))
         } else if status.is_client_error() && status.as_u16() != 429 {
             Err(Failure::Rejected { code, message })
         } else {

@@ -1,4 +1,4 @@
-# GarryNet: Postgres + backend + frontend, behind Caddy (HTTPS, security headers and a
+# GravNet: Postgres + backend + frontend, behind Caddy (HTTPS, security headers and a
 # per-IP rate limit; see Caddyfile).
 #
 # Each service reads its own `.env` (backend/.env, frontend/.env) when present.
@@ -16,9 +16,9 @@ services:
     image: postgres:17-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-garrynet}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-garrynet}
-      POSTGRES_DB: ${POSTGRES_DB:-garrynet}
+      POSTGRES_USER: ${POSTGRES_USER:-gravnet}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-gravnet}
+      POSTGRES_DB: ${POSTGRES_DB:-gravnet}
     volumes:
       - db-data:/var/lib/postgresql/data
     healthcheck:
@@ -39,7 +39,7 @@ services:
         required: false
     environment:
       BIND_ADDR: 0.0.0.0:8080
-      DATABASE_URL: postgres://${POSTGRES_USER:-garrynet}:${POSTGRES_PASSWORD:-garrynet}@db:5432/${POSTGRES_DB:-garrynet}
+      DATABASE_URL: postgres://${POSTGRES_USER:-gravnet}:${POSTGRES_PASSWORD:-gravnet}@db:5432/${POSTGRES_DB:-gravnet}
     volumes:
       # Uploaded files (local storage provider). Unused with STORAGE_PROVIDER=s3.
       - uploads:/app/storage

@@ -1,8 +1,8 @@
 # Architecture
 
-Part of [GarryNet Design](README.md).
+Part of [GravNet Design](README.md).
 
-GarryNet has three parts: a Rust backend that owns all data, a Next.js frontend for the website and loading screen, and a Garry's Mod addon on each game server.
+GravNet has three parts: a Rust backend that owns all data, a Next.js frontend for the website and loading screen, and a Garry's Mod addon on each game server.
 
 ```
                  ┌──────────────── Steam OpenID login, file uploads ────────────────┐
@@ -10,7 +10,7 @@ GarryNet has three parts: a Rust backend that owns all data, a Next.js frontend 
  Browser ──► Frontend (Next.js) ── server-side requests, user JWT as bearer ──► Backend (Actix Web) ──► PostgreSQL
                                                                                  ▲   │
  Garry's Mod server ── heartbeat, store fulfillments, server JWT ────────────────┘   ├──► Stripe (checkout, webhooks)
- (GarryNet addon)                                                                    ├──► Steam Web API (names, avatars)
+ (GravNet addon)                                                                    ├──► Steam Web API (names, avatars)
                                                                                      └──► Local disk or S3 (files)
 ```
 
@@ -42,7 +42,7 @@ The frontend has no database. Pages and server actions call the backend from the
 
 ## Authentication
 
-- **Users:** Steam OpenID through the backend, which sets a 24-hour JWT in an httpOnly cookie (`garrynet_token`).
+- **Users:** Steam OpenID through the backend, which sets a 24-hour JWT in an httpOnly cookie (`gravnet_token`).
 - **Servers:** a one-time access key exchanged for a 30-day rolling JWT, revoked by bumping the server's `token_version`.
 - **Uploads (local provider):** signed URLs, HMAC'd with a key derived from `JWT_SECRET`.
 - **Stripe webhooks:** verified with `STRIPE_WEBHOOK_SECRET`.

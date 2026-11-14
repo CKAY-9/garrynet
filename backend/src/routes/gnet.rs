@@ -1,4 +1,4 @@
-//! Routes used by the GarryNet Garry's Mod addon (docs/ADDON.md). A server links once with
+//! Routes used by the GravNet Garry's Mod addon (docs/ADDON.md). A server links once with
 //! its access key, then authenticates with the JWT it gets back.
 
 use actix_web::{HttpRequest, HttpResponse, get, post, web};
@@ -65,7 +65,7 @@ const MAX_MAP: usize = 128;
 const MAX_PLAYERS: usize = 256;
 const MAX_PLAYER_NAME: usize = 64;
 const MAX_USERGROUP: usize = 64;
-/// Playtime piles up on the addon while GarryNet is unreachable; cap what one heartbeat can
+/// Playtime piles up on the addon while GravNet is unreachable; cap what one heartbeat can
 /// add at a week.
 const MAX_MINUTES: i32 = 7 * 24 * 60;
 /// Gamemode stats per player per heartbeat, of each kind (values and counters).
@@ -414,7 +414,7 @@ struct BanList {
     bans: Vec<ServerBan>,
 }
 
-/// Users banned on GarryNet right now, by SteamID64, so the addon can refuse them when they
+/// Users banned on GravNet right now, by SteamID64, so the addon can refuse them when they
 /// connect (docs/ADDON.md "Ban Enforcement"). Polled every minute.
 #[get("/{id}/bans")]
 async fn bans(

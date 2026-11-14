@@ -5,7 +5,7 @@ use sqlx::{PgPool, types::Json};
 /// A notable member of the community, shown on the homepage.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct KeyFigure {
-    /// Their GarryNet account, if they have one; the homepage links to their profile.
+    /// Their GravNet account, if they have one; the homepage links to their profile.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub user_id: Option<i64>,
     pub name: String,
@@ -26,7 +26,7 @@ pub struct Community {
     pub splash_background: Option<String>,
     pub external_links: Vec<String>,
     pub key_figures: Json<Vec<KeyFigure>>,
-    /// Whether the addon keeps users banned on GarryNet off the community's game servers.
+    /// Whether the addon keeps users banned on GravNet off the community's game servers.
     pub ban_from_servers: bool,
     pub created_at: DateTime<Utc>,
     pub last_updated: Option<DateTime<Utc>>,
@@ -47,7 +47,7 @@ impl CommunityDetails {
     /// The placeholder community created on first start, to be edited in the admin dashboard.
     pub fn skeleton() -> Self {
         Self {
-            name: "GarryNet Community".to_owned(),
+            name: "GravNet Community".to_owned(),
             description: "Set your own community description in the admin dashboard".to_owned(),
             logo_url: None,
             splash_background: None,
@@ -56,7 +56,7 @@ impl CommunityDetails {
                 user_id: None,
                 name: "CKAY9".to_owned(),
                 profile_picture: "https://avatars.githubusercontent.com/u/53030585?v=4".to_owned(),
-                role: "GarryNet Developer".to_owned(),
+                role: "GravNet Developer".to_owned(),
                 description: "Hey, this is the thing I made.".to_owned(),
             }],
             ban_from_servers: false,
@@ -84,7 +84,7 @@ impl Community {
             .await
     }
 
-    /// Whether users banned on GarryNet are kept off the game servers. `false` if the
+    /// Whether users banned on GravNet are kept off the game servers. `false` if the
     /// community hasn't been created.
     pub async fn bans_from_servers(db: &PgPool) -> sqlx::Result<bool> {
         Ok(sqlx::query_scalar("SELECT ban_from_servers FROM community LIMIT 1")

@@ -1,7 +1,7 @@
 <div align="center">
-    <img src="./assets/logo.svg" alt="GarryNet logo" width="250" height="250" />
+    <img src="./assets/logo.svg" alt="GravNet logo" width="250" height="250" />
     <br><br>
-    <h1>GarryNet</h1>
+    <h1>GravNet</h1>
     <p>An all-in-one, self-hosted website for Garry's Mod communities: forums, a store, support tickets, loading screens and live server sync, all in one deployment.</p>
 </div>
 
@@ -10,7 +10,7 @@
 </p>
 
 > [!NOTE]
-> GarryNet is under active development. The features below work, but expect breaking changes between versions.
+> GravNet is under active development. The features below work, but expect breaking changes between versions.
 
 ## Features
 
@@ -60,7 +60,7 @@ Register servers on the website and link them with a one-time access key. The si
 
 ### Legal Pages
 
-Terms of service, a privacy policy and a refund policy, linked from every page, the login button and the store. GarryNet fills them with templates based on what it actually stores, and you edit them from the admin dashboard. The templates are a starting point, not legal advice.
+Terms of service, a privacy policy and a refund policy, linked from every page, the login button and the store. GravNet fills them with templates based on what it actually stores, and you edit them from the admin dashboard. The templates are a starting point, not legal advice.
 
 ### Notifications
 
@@ -77,7 +77,7 @@ Users with the `User Messages` permission can message each other with Markdown a
     │                                   ▲   ▲   │
     └── Steam login, uploads ───────────┘   │   └──► Stripe, S3 (optional)
                                             │
- Garry's Mod server (GarryNet addon) ───────┘  heartbeat, store delivery
+ Garry's Mod server (GravNet addon) ───────┘  heartbeat, store delivery
 ```
 
 - **Backend** (`backend/`): the API. Steam login, permissions, forums, store, Stripe webhooks, file storage, and the routes the addon calls. Database migrations are applied on startup.
@@ -118,7 +118,7 @@ Both the browser and your Garry's Mod servers must be able to reach the backend,
     API_DOMAIN=api.example.com
     POSTGRES_PASSWORD=<a strong password>
     ```
-    Without a password it defaults to `garrynet`. You can also set `POSTGRES_USER`, `POSTGRES_DB` and the rate limit (see [Reverse proxy](#reverse-proxy)) here.
+    Without a password it defaults to `gravnet`. You can also set `POSTGRES_USER`, `POSTGRES_DB` and the rate limit (see [Reverse proxy](#reverse-proxy)) here.
 5. **Start it:**
     ```sh
     docker compose up -d --build
@@ -177,14 +177,14 @@ Database migrations run automatically when the backend starts. Back up the `db-d
 
 ## Connecting a Garry's Mod Server
 
-1. **Install the addon.** Copy the `addon/` folder to your server as `garrysmod/addons/garrynet`.
+1. **Install the addon.** Copy the `addon/` folder to your server as `garrysmod/addons/gravnet`.
 2. **Point it at the backend.** Add this to `garrysmod/cfg/server.cfg`, using the backend's public URL (`BACKEND_URL`):
     ```
-    garrynet_api_url "https://api.example.com"
+    gravnet_api_url "https://api.example.com"
     ```
     Garry's Mod blocks HTTP requests to local and private addresses. If the backend runs on the same machine or network (common when testing), start the server with `-allowlocalhttp`.
 3. **Register the server.** On the website, go to **Admin → Servers → Register** and copy the access key. It is only shown once.
-4. **Link it.** Restart the Garry's Mod server, join as a superadmin, type `!gnet` in chat and paste the key. (From the server console: `garrynet_link <key>`.) Superadmins get a chat message once the server is linked, and the website shows it as **Online** within a minute.
+4. **Link it.** Restart the Garry's Mod server, join as a superadmin, type `!gnet` in chat and paste the key. (From the server console: `gravnet_link <key>`.) Superadmins get a chat message once the server is linked, and the website shows it as **Online** within a minute.
 5. **Set up the loading screen** (optional). The server's admin page shows its `sv_loadingurl` line. Add it to `server.cfg`:
     ```
     sv_loadingurl "https://example.com/loading-screen?server=<SERVER_ID>&steamid=%s&mapname=%m"

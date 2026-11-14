@@ -10,9 +10,9 @@ export type Theme = "light" | "dark";
 /** What the user picked: a fixed theme, or whatever their system uses. */
 export type ThemePreference = Theme | "system";
 
-const STORAGE_KEY = "garrynet_theme";
+const STORAGE_KEY = "gravnet_theme";
 /** Fired on `window` when this tab changes the theme (`storage` only fires in other tabs). */
-const CHANGE_EVENT = "garrynet-theme-change";
+const CHANGE_EVENT = "gravnet-theme-change";
 
 const isTheme = (value: unknown): value is Theme => value === "light" || value === "dark";
 

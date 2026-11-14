@@ -13,7 +13,7 @@ export type NotificationChange =
   | { kind: "allRead"; type: NotificationType | "" }
   | { kind: "readDeleted" };
 
-const EVENT = "garrynet:notifications";
+const EVENT = "gravnet:notifications";
 
 export function announceChange(change: NotificationChange) {
   window.dispatchEvent(new CustomEvent<NotificationChange>(EVENT, { detail: change }));

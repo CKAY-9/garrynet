@@ -85,7 +85,7 @@ struct CommunityBody {
     external_links: Vec<String>,
     #[serde(default)]
     key_figures: Vec<KeyFigure>,
-    /// Keep users banned on GarryNet off the game servers (docs/ADDON.md "Ban Enforcement").
+    /// Keep users banned on GravNet off the game servers (docs/ADDON.md "Ban Enforcement").
     #[serde(default)]
     ban_from_servers: bool,
 }

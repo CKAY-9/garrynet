@@ -1,4 +1,4 @@
-> **This is GarryNet's default template.** Replace the text in [square brackets], remove anything that doesn't apply to your community, and delete this note. It is a starting point, not legal advice. Check what the law where you and your players live requires.
+> **This is GravNet's default template.** Replace the text in [square brackets], remove anything that doesn't apply to your community, and delete this note. It is a starting point, not legal advice. Check what the law where you and your players live requires.
 
 [Community Name] ("we", "us") runs this website and the game servers connected to it. This policy explains what we collect, why, and what you can do about it.
 
@@ -39,8 +39,8 @@ Our servers report, for each player (whether or not they have an account here):
 ## Cookies
 
 We use two cookies, both needed for the site to work:
-- `garrynet_token` keeps you logged in. It expires after 24 hours or when you log out.
-- `garrynet_login_state` protects the Steam login against forgery. It lasts a few minutes.
+- `gravnet_token` keeps you logged in. It expires after 24 hours or when you log out.
+- `gravnet_login_state` protects the Steam login against forgery. It lasts a few minutes.
 
 We don't use advertising or tracking cookies. [Remove this line, or list them here, if you add analytics.]
 

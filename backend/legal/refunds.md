@@ -1,4 +1,4 @@
-> **This is GarryNet's default template.** Replace the text in [square brackets], remove anything that doesn't apply to your community, and delete this note. It is a starting point, not legal advice. Consumer law where your players live may give them rights this policy can't take away.
+> **This is GravNet's default template.** Replace the text in [square brackets], remove anything that doesn't apply to your community, and delete this note. It is a starting point, not legal advice. Consumer law where your players live may give them rights this policy can't take away.
 
 This policy covers purchases from the [Community Name] store.
 

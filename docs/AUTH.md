@@ -1,6 +1,6 @@
 # Authentication
 
-Part of [GarryNet Design](README.md).
+Part of [GravNet Design](README.md).
 
 All authentication uses JWT. A standard user JWT expires after 24 hours and is stored in an httpOnly cookie.
 
@@ -10,9 +10,9 @@ User tokens are revocable: each carries the user's `token_version`, and a token 
 
 Servers authenticate with a rolling JWT: a token is valid for 30 days, and once it is an hour old the next heartbeat returns a replacement. Linking, unlinking and regenerating the access key revoke all of a server's earlier tokens. See [ADDON.md](ADDON.md#server-tokens).
 
-Users log in with Steam. If no GarryNet account exists for the Steam account, one is created, and the user is granted access to it via JWT.
+Users log in with Steam. If no GravNet account exists for the Steam account, one is created, and the user is granted access to it via JWT.
 
-Each login is tied to the browser that started it: GET `/auth/steam` sets a short-lived (10 minutes) `garrynet_login_state` cookie holding a random nonce and puts the same nonce in the OpenID `return_to` (`/auth/steam/callback?state=...`), which Steam signs. The callback only accepts an assertion whose `return_to` carries the cookie's nonce, then clears the cookie. Otherwise someone could send a victim to the callback with an assertion for the attacker's own account and have the victim use it unknowingly (login CSRF). A login that takes longer than 10 minutes, or finishes in another browser, has to be started again.
+Each login is tied to the browser that started it: GET `/auth/steam` sets a short-lived (10 minutes) `gravnet_login_state` cookie holding a random nonce and puts the same nonce in the OpenID `return_to` (`/auth/steam/callback?state=...`), which Steam signs. The callback only accepts an assertion whose `return_to` carries the cookie's nonce, then clears the cookie. Otherwise someone could send a victim to the callback with an assertion for the attacker's own account and have the victim use it unknowingly (login CSRF). A login that takes longer than 10 minutes, or finishes in another browser, has to be started again.
 
 ## Banned Users
 

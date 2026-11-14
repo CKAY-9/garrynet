@@ -18,7 +18,7 @@ export async function saveLegalDocument(
   });
 }
 
-/** The default template GarryNet ships for a document. */
+/** The default template GravNet ships for a document. */
 export async function loadLegalTemplate(slug: LegalSlug): Promise<ActionResult<{ title: string; body: string }>> {
   return runAction("load the template", async () => {
     const { data } = await backend.get<{ title: string; body: string }>(`/legal/${slug}/template`, {

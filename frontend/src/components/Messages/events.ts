@@ -3,7 +3,7 @@
  * reads or sends messages announces it, and the badge refetches the unread count.
  */
 
-const EVENT = "garrynet:messages";
+const EVENT = "gravnet:messages";
 
 export function announceMessagesChange() {
   window.dispatchEvent(new Event(EVENT));

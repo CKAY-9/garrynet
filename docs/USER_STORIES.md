@@ -1,6 +1,6 @@
 # User Stories
 
-Part of [GarryNet Design](README.md).
+Part of [GravNet Design](README.md).
 
 ## General
 
@@ -13,7 +13,7 @@ Part of [GarryNet Design](README.md).
 **Viewing Profile**
 
 1. As a logged-in user, I should see my profile in place of the "Login with Steam" button, so that I can navigate to it.
-2. Navigating to my profile should redirect to `/users/{USER_ID}`, where `USER_ID` is my own GarryNet user id.
+2. Navigating to my profile should redirect to `/users/{USER_ID}`, where `USER_ID` is my own GravNet user id.
 
 **Admin View**
 
@@ -51,12 +51,12 @@ Part of [GarryNet Design](README.md).
 **Registering a Garry's Mod Server**
 1. As a user with `Server Management`, I want to register a new server, so that I can link it later.
 2. I first provide a name and description.
-3. I am given a generated access key to use on a server running the GarryNet addon.
+3. I am given a generated access key to use on a server running the GravNet addon.
 
 **Linking a Garry's Mod Server**
-1. As a Garry's Mod superadmin, I want to paste the generated `access_key`, so that I can link this server to GarryNet
+1. As a Garry's Mod superadmin, I want to paste the generated `access_key`, so that I can link this server to GravNet
 2. Run `!gnet`
-3. If the server is already linked to an instance of GarryNet, give options, otherwise have a text box for `access_key`
+3. If the server is already linked to an instance of GravNet, give options, otherwise have a text box for `access_key`
 4. The key is sent to the server and verified, then the server is linked and given a rolling JWT.
 
 ## Support
@@ -78,8 +78,8 @@ Part of [GarryNet Design](README.md).
 2. I do this by going to `/store` and viewing the list of server stores (referred to as Item Stores)
 3. Going into a store lists items and details like discount
 4. Selecting an item lists all its description and rewards
-5. Purchasing it goes through Stripe, which then hooks into GarryNet
-6. GarryNet tracks and fulfills the purchase
+5. Purchasing it goes through Stripe, which then hooks into GravNet
+6. GravNet tracks and fulfills the purchase
 7. If I am logged out or banned, I can browse but not buy.
 
 **Cancelled or Failed Payment**
@@ -98,11 +98,11 @@ Part of [GarryNet Design](README.md).
 **Viewing Purchase History in Server**
 1. As a player in a linked GMod server, I want to run `!gstore`, so that I can view a summary list of my recent transactions
    - Player should be notified if the server doesn't have a store setup
-2. Typing `!gstore`, opens the *GarryNet Store Menu* that primarily shows the users recent transactions. Details should be kept to necessities.
+2. Typing `!gstore`, opens the *GravNet Store Menu* that primarily shows the users recent transactions. Details should be kept to necessities.
 
 **Opening a Server's Store from GMod**
 1. As a player in a linked GMod server, I want to run `!gstore`, so that I can get a link to the server's store if available
-2. Opening the *GarryNet Store Menu*, I have a button that opens the link to the server's store
+2. Opening the *GravNet Store Menu*, I have a button that opens the link to the server's store
 
 **Notifying Players of Store**
 1. As an superadmin, I want to be able to toggle repeating messages alerting players to the store, so that I can generate revenue

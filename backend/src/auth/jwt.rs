@@ -21,12 +21,12 @@ pub const SERVER_TOKEN_ROTATE_AFTER: Duration = Duration::hours(1);
 pub const SERVER_TOKEN_GRACE: Duration = Duration::minutes(10);
 
 /// `aud` of server tokens. User tokens have none, so neither kind passes for the other.
-const SERVER_AUDIENCE: &str = "garrynet-server";
+const SERVER_AUDIENCE: &str = "gravnet-server";
 
 /// Claims of a token issued to a Garry's Mod server running the addon.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ServerClaims {
-    /// GarryNet server id.
+    /// GravNet server id.
     pub sub: String,
     pub aud: String,
     /// `servers.token_version` when the token was issued; the token is only accepted while
@@ -49,7 +49,7 @@ impl ServerClaims {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
-    /// GarryNet user id.
+    /// GravNet user id.
     pub sub: String,
     pub steam_id: String,
     /// `users.token_version` when the token was issued; the token is only accepted while it

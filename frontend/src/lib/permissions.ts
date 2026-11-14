@@ -42,7 +42,7 @@ export const PERMISSION_LABELS: readonly { flag: number; label: string }[] = [
 ];
 
 /**
- * The usergroups GarryNet creates itself (see `DEFAULT_GROUPS` in the backend). Matched by
+ * The usergroups GravNet creates itself (see `DEFAULT_GROUPS` in the backend). Matched by
  * name, so they can't be renamed or deleted.
  */
 export function isDefaultGroup(name: string): boolean {

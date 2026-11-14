@@ -16,7 +16,7 @@ export async function getServers(): Promise<Server[]> {
 }
 
 /**
- * The server with GarryNet id `id`, or `null` if there is no such server. Request-time;
+ * The server with GravNet id `id`, or `null` if there is no such server. Request-time;
  * render inside a `<Suspense>` boundary.
  */
 export async function getServer(id: string): Promise<Server | null> {

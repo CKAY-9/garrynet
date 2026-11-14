@@ -1,8 +1,8 @@
 # Users
 
-Part of [GarryNet Design](README.md).
+Part of [GravNet Design](README.md).
 
-Users are authenticated using Steam. Everyone logs in with their Steam account and GarryNet stores each user in its own table entry.
+Users are authenticated using Steam. Everyone logs in with their Steam account and GravNet stores each user in its own table entry.
 
 ## User
 
@@ -135,13 +135,13 @@ The backend shell can lift them without these checks, e.g. to recover an admin b
 
 ## User Player
 
-A UserPlayer is a per-server record linking a player to a GarryNet user. For example, a user has one UserPlayer for the community DarkRP server and another for the Sandbox server. The GarryNet addon updates UserPlayer records by sending HTTP requests to the GarryNet backend.
+A UserPlayer is a per-server record linking a player to a GravNet user. For example, a user has one UserPlayer for the community DarkRP server and another for the Sandbox server. The GravNet addon updates UserPlayer records by sending HTTP requests to the GravNet backend.
 
 ```
 id: number
 server_id: number // id of the Garry's Mod Server
 steam_id: string
-user_id?: number // GarryNet user id (not the Steam id); empty if the player has no GarryNet account
+user_id?: number // GravNet user id (not the Steam id); empty if the player has no GravNet account
 ingame_name: string
 last_logon: utc timestamp // equals first_joined until the player returns
 first_joined: utc timestamp // also serves as created_at
@@ -163,7 +163,7 @@ Implemented on the frontend at `/users/search` (see [Site Design](SITE_DESIGN.md
 - GET `/users/search?name=&last_activity=&id=&usergroup=&sort_by=&limit=`: users matching every given filter. No login required. Blank values are ignored.
     - name: case-insensitive part of the username
     - last_activity: how recently the user was seen: `online`, `hour`, `day`, `week`, or `month`
-    - id: GarryNet user id (matches at most one user)
+    - id: GravNet user id (matches at most one user)
     - usergroup: id of a usergroup the users belong to
     - sort_by: `reputation+` (most first; send the `+` as `%2B`), `reputation-` (least first), or `posts` (most forum posts first). When omitted, exact and prefix name matches come first, or the order is random if no name is given.
     - limit: 1 to 100, default 24

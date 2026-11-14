@@ -1,6 +1,6 @@
 -- Shared constants. Nothing here talks to the backend.
 
-GarryNet.Config = {
+GravNet.Config = {
 	-- Seconds between interval syncs (docs/ADDON.md: every minute).
 	IntervalSeconds = 60,
 
@@ -14,18 +14,18 @@ GarryNet.Config = {
 	-- server's store (anyone).
 	StoreCommand = "!gstore",
 
-	-- Seconds a player waits between opening the store menu (each one asks GarryNet).
+	-- Seconds a player waits between opening the store menu (each one asks GravNet).
 	StoreMenuCooldown = 5,
 
 	-- Directory (inside garrysmod/data) where link state is persisted.
-	DataDir = "garrynet",
+	DataDir = "gravnet",
 
 	-- Server access keys look like "gnet_" followed by 64 hex characters (docs/SERVERS.md).
 	AccessKeyPattern = "^gnet_%x+$",
 	AccessKeyLength = 69,
 
 	-- Repeating chat messages advertising the store, set from the !gnet menu and saved in
-	-- garrysmod/data/garrynet/store_messages.json. These are the limits and the defaults.
+	-- garrysmod/data/gravnet/store_messages.json. These are the limits and the defaults.
 	StoreMessages = {
 		DefaultMinutes = 10,
 		MinMinutes = 1,
@@ -55,7 +55,7 @@ GarryNet.Config = {
 		-- Usergroups a store usergroup may replace. Anyone in another group (staff) keeps it.
 		OverridableGroups = { "user" },
 
-		-- Never granted by the store, whatever GarryNet says (lowercase).
+		-- Never granted by the store, whatever GravNet says (lowercase).
 		ProtectedGroups = { "superadmin", "admin", "owner", "developer" },
 
 		-- Longest wait between retries of a purchase that failed to deliver.
@@ -63,22 +63,22 @@ GarryNet.Config = {
 	},
 }
 
--- Backend base URL: wherever the GarryNet backend is reachable, e.g. "https://api.example.com".
--- Set in server.cfg: garrynet_api_url "https://..."
+-- Backend base URL: wherever the GravNet backend is reachable, e.g. "https://api.example.com".
+-- Set in server.cfg: gravnet_api_url "https://..."
 if SERVER then
-	CreateConVar("garrynet_api_url", "", FCVAR_PROTECTED + FCVAR_ARCHIVE, "Base URL of the GarryNet backend.")
+	CreateConVar("gravnet_api_url", "", FCVAR_PROTECTED + FCVAR_ARCHIVE, "Base URL of the GravNet backend.")
 end
 
 -- Net message names, shared so both realms agree on them.
-GarryNet.Net = {
-	OpenMenu = "GarryNet.OpenMenu", -- server -> client: open the menu, payload is the current status
-	Status = "GarryNet.Status", -- server -> client: link status update
-	Link = "GarryNet.Link", -- client -> server: access key submitted
-	Unlink = "GarryNet.Unlink", -- client -> server: unlink requested
-	ForceSync = "GarryNet.ForceSync", -- client -> server: force an interval update
-	Result = "GarryNet.Result", -- server -> client: result of Link/Unlink/ForceSync (success, message)
-	RewardSound = "GarryNet.RewardSound", -- server -> client: play the reward sound
-	Notify = "GarryNet.Notify", -- server -> client: chat notice (superadmins: linked, out of sync; buyers: purchase delivered)
-	StoreMenu = "GarryNet.StoreMenu", -- server -> client: open the store menu (sh_store_menu.lua)
-	SaveStoreMessages = "GarryNet.SaveStoreMessages", -- client -> server: store chat message settings (enabled, minutes, message)
+GravNet.Net = {
+	OpenMenu = "GravNet.OpenMenu", -- server -> client: open the menu, payload is the current status
+	Status = "GravNet.Status", -- server -> client: link status update
+	Link = "GravNet.Link", -- client -> server: access key submitted
+	Unlink = "GravNet.Unlink", -- client -> server: unlink requested
+	ForceSync = "GravNet.ForceSync", -- client -> server: force an interval update
+	Result = "GravNet.Result", -- server -> client: result of Link/Unlink/ForceSync (success, message)
+	RewardSound = "GravNet.RewardSound", -- server -> client: play the reward sound
+	Notify = "GravNet.Notify", -- server -> client: chat notice (superadmins: linked, out of sync; buyers: purchase delivered)
+	StoreMenu = "GravNet.StoreMenu", -- server -> client: open the store menu (sh_store_menu.lua)
+	SaveStoreMessages = "GravNet.SaveStoreMessages", -- client -> server: store chat message settings (enabled, minutes, message)
 }

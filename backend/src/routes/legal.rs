@@ -40,7 +40,7 @@ async fn get_document(
     Ok(HttpResponse::Ok().json(document))
 }
 
-/// The default template GarryNet ships for a document, to reset it. Requires Admin Access
+/// The default template GravNet ships for a document, to reset it. Requires Admin Access
 /// and Community Management.
 #[get("/legal/{slug}/template")]
 async fn get_template(

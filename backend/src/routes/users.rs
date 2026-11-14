@@ -123,7 +123,7 @@ struct Profile {
     ban: Option<PublicBan>,
 }
 
-/// Public profile of the user with the given GarryNet id, including a ban in effect (reason,
+/// Public profile of the user with the given GravNet id, including a ban in effect (reason,
 /// date and end, not who issued it). No login required; a private profile's bio and
 /// reputation are only included for the user themselves and staff.
 #[get("/users/{id}")]
@@ -204,7 +204,7 @@ struct SearchResult {
 /// Users matching every given filter. No login required.
 ///
 /// - `name`: case-insensitive substring of the username
-/// - `id`: GarryNet user id (matches at most one user)
+/// - `id`: GravNet user id (matches at most one user)
 /// - `usergroup`: id of a group the users belong to
 /// - `last_activity`: `online`, `hour`, `day`, `week` or `month`: seen within that window
 /// - `sort_by`: `reputation+` (most), `reputation-` (least) or `posts` (most). Defaults

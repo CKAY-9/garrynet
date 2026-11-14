@@ -1,9 +1,9 @@
 -- The !gstore menu (docs/ADDON.md "!gstore"): the player's recent purchases on this server and a
 -- button that opens the server's store on the website. Same look as the !gnet menu (cl_ui.lua).
 
-GarryNet.StoreMenu = GarryNet.StoreMenu or {}
+GravNet.StoreMenu = GravNet.StoreMenu or {}
 
-local UI = GarryNet.UI
+local UI = GravNet.UI
 local Colors = UI.Colors
 
 local WIDTH = 520
@@ -61,14 +61,14 @@ local function PurchaseRow(parent, p, last)
 
 	function row:Paint(w, h)
 		local x, right = 12, w - 12
-		surface.SetFont("GarryNet.Body")
+		surface.SetFont("GravNet.Body")
 		local price_w = surface.GetTextSize(price)
-		local name = UI.Ellipsize(p.item_name, "GarryNet.Body", right - x - price_w - 16)
+		local name = UI.Ellipsize(p.item_name, "GravNet.Body", right - x - price_w - 16)
 
-		draw.SimpleText(name, "GarryNet.Body", x, 8, Colors.Text)
-		draw.SimpleText(price, "GarryNet.Body", right, 8, Colors.Text, TEXT_ALIGN_RIGHT)
-		draw.SimpleText(date, "GarryNet.Small", x, 29, Colors.Muted)
-		draw.SimpleText(status, "GarryNet.Small", right, 29, status_color, TEXT_ALIGN_RIGHT)
+		draw.SimpleText(name, "GravNet.Body", x, 8, Colors.Text)
+		draw.SimpleText(price, "GravNet.Body", right, 8, Colors.Text, TEXT_ALIGN_RIGHT)
+		draw.SimpleText(date, "GravNet.Small", x, 29, Colors.Muted)
+		draw.SimpleText(status, "GravNet.Small", right, 29, status_color, TEXT_ALIGN_RIGHT)
 
 		if not last then
 			surface.SetDrawColor(Colors.Border)
@@ -87,7 +87,7 @@ local function PurchaseList(parent, purchases)
 		draw.RoundedBox(6, 0, 0, w, h, Colors.Border)
 		draw.RoundedBox(6, 1, 1, w - 2, h - 2, Colors.Input)
 		if #purchases == 0 then
-			draw.SimpleText("You haven't bought anything on this server yet.", "GarryNet.Small",
+			draw.SimpleText("You haven't bought anything on this server yet.", "GravNet.Small",
 				w / 2, h / 2, Colors.Muted, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
 		end
 		return true
@@ -113,33 +113,33 @@ local function PurchaseList(parent, purchases)
 	return box, math.min(#purchases, VISIBLE_ROWS) * ROW_H + 2
 end
 
-function GarryNet.StoreMenu.IsOpen()
+function GravNet.StoreMenu.IsOpen()
 	return IsValid(Overlay)
 end
 
-function GarryNet.StoreMenu.Close()
+function GravNet.StoreMenu.Close()
 	if IsValid(Overlay) then Overlay:Remove() end
 	Overlay = nil
 end
 
 -- Show the menu for `data` (see sh_store_menu.lua).
-function GarryNet.StoreMenu.Open(data)
-	GarryNet.StoreMenu.Close()
-	-- One GarryNet menu at a time.
-	if GarryNet.Menu and GarryNet.Menu.IsOpen() then GarryNet.Menu.Close() end
+function GravNet.StoreMenu.Open(data)
+	GravNet.StoreMenu.Close()
+	-- One GravNet menu at a time.
+	if GravNet.Menu and GravNet.Menu.IsOpen() then GravNet.Menu.Close() end
 
-	Overlay = UI.Overlay(GarryNet.StoreMenu.Close)
+	Overlay = UI.Overlay(GravNet.StoreMenu.Close)
 	local card = UI.Card(Overlay)
 	local inner = WIDTH - PAD * 2
 	local y = PAD
 
-	local header = UI.Header(card, UI.Ellipsize(data.name, "GarryNet.Small", inner - 40), GarryNet.StoreMenu.Close)
+	local header = UI.Header(card, UI.Ellipsize(data.name, "GravNet.Small", inner - 40), GravNet.StoreMenu.Close)
 	header:SetPos(PAD, y)
 	header:SetSize(inner, 52)
 	y = y + 52 + 16
 
 	local label = vgui.Create("DLabel", card)
-	label:SetFont("GarryNet.Small")
+	label:SetFont("GravNet.Small")
 	label:SetTextColor(Colors.Muted)
 	label:SetText("Your recent purchases")
 	label:SetPos(PAD, y)
@@ -153,13 +153,13 @@ function GarryNet.StoreMenu.Open(data)
 
 	local hint = Hint(data.purchases)
 	if hint ~= "" then
-		local lines = UI.WrapLines(hint, "GarryNet.Small", inner)
-		surface.SetFont("GarryNet.Small")
+		local lines = UI.WrapLines(hint, "GravNet.Small", inner)
+		surface.SetFont("GravNet.Small")
 		local _, line_h = surface.GetTextSize("Ay")
 		local block = vgui.Create("DPanel", card)
 		function block:Paint()
 			for i, line in ipairs(lines) do
-				draw.SimpleText(line, "GarryNet.Small", 0, (i - 1) * line_h, Colors.Muted)
+				draw.SimpleText(line, "GravNet.Small", 0, (i - 1) * line_h, Colors.Muted)
 			end
 			return true
 		end
@@ -168,13 +168,13 @@ function GarryNet.StoreMenu.Open(data)
 		y = y + #lines * line_h + GAP
 	end
 
-	-- Only web links: the URL comes from GarryNet, but gui.OpenURL would take anything.
+	-- Only web links: the URL comes from GravNet, but gui.OpenURL would take anything.
 	local url = data.url
 	local valid_url = string.match(url, "^https?://") ~= nil
 	local open = UI.Button(card, "Open store", Colors.Accent, function()
 		if not valid_url then return end
 		gui.OpenURL(url)
-		GarryNet.StoreMenu.Close()
+		GravNet.StoreMenu.Close()
 	end)
 	open:SetEnabled(valid_url)
 	open:SetPos(PAD, y)

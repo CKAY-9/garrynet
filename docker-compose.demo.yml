@@ -1,4 +1,4 @@
-# Demo deployment (docs/DEMO.md): GarryNet with demo mode on. Stripe only takes test keys,
+# Demo deployment (docs/DEMO.md): GravNet with demo mode on. Stripe only takes test keys,
 # and everything users without Admin Access create is cleared daily at midnight UTC.
 #
 #   docker compose -f docker-compose.yml -f docker-compose.demo.yml up -d --build

@@ -6,16 +6,16 @@
 
 services:
   backend:
-    image: ghcr.io/ckay-9/garrynet-backend:demo
+    image: ghcr.io/ckay-9/gravnet-backend:demo
     build: !reset null
     pull_policy: always
 
   frontend:
-    image: ghcr.io/ckay-9/garrynet-frontend:demo
+    image: ghcr.io/ckay-9/gravnet-frontend:demo
     build: !reset null
     pull_policy: always
 
   caddy:
-    image: ghcr.io/ckay-9/garrynet-caddy:demo
+    image: ghcr.io/ckay-9/gravnet-caddy:demo
     build: !reset null
     pull_policy: always

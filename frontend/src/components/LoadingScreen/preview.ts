@@ -3,7 +3,7 @@ import type { LoadingScreenServer } from "./LoadingScreen";
 
 /** Fake server details for loading screen previews. */
 export const previewServer: LoadingScreenServer = {
-  name: "GarryNet DarkRP",
+  name: "GravNet DarkRP",
   gamemode: "darkrp",
   map: "rp_downtown_v4c_v2",
   icon_url: null,

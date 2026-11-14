@@ -1,23 +1,23 @@
--- Store delivery (docs/STORE.md "Item Fulfillment"). GarryNet keeps a queue of fulfillments per
+-- Store delivery (docs/STORE.md "Item Fulfillment"). GravNet keeps a queue of fulfillments per
 -- server; the addon fetches it when a player joins and every minute, applies the rewards of
 -- players who are online, and reports back:
 --   GET  /gnet/server/{SERVER_ID}/fulfillments[?steam_id=]       what to deliver or take back
 --   POST /gnet/server/{SERVER_ID}/fulfillments/{ID}/ack          fulfilled | failed | revoked
 --
 -- Delivery must never happen twice (money would be paid out again), so a fulfillment is
--- recorded in garrysmod/data/garrynet/store_pending.json once applied and only forgotten after
--- GarryNet confirms the acknowledgement. If the acknowledgement is lost, the next fetch
+-- recorded in garrysmod/data/gravnet/store_pending.json once applied and only forgotten after
+-- GravNet confirms the acknowledgement. If the acknowledgement is lost, the next fetch
 -- re-acknowledges instead of applying again.
 
-GarryNet.Store = GarryNet.Store or {}
-local S = GarryNet.Store
+GravNet.Store = GravNet.Store or {}
+local S = GravNet.Store
 
-local FILE = GarryNet.Config.DataDir .. "/store_pending.json"
+local FILE = GravNet.Config.DataDir .. "/store_pending.json"
 
 -- Forget local records this old (only errored ones should ever linger).
 local PENDING_MAX_AGE = 30 * 24 * 60 * 60
 
-local function Cfg() return GarryNet.Config.Store end
+local function Cfg() return GravNet.Config.Store end
 
 -- Applied in-game but not yet acknowledged, by fulfillment id:
 --   { state = "applied" | "errored", at = unix seconds, error = string|nil }
@@ -45,7 +45,7 @@ local function Save()
 	for id, p in pairs(Pending) do
 		list[#list + 1] = { id = id, state = p.state, at = p.at, error = p.error }
 	end
-	if not file.IsDir(GarryNet.Config.DataDir, "DATA") then file.CreateDir(GarryNet.Config.DataDir) end
+	if not file.IsDir(GravNet.Config.DataDir, "DATA") then file.CreateDir(GravNet.Config.DataDir) end
 	file.Write(FILE, util.TableToJSON(list))
 end
 
@@ -54,7 +54,7 @@ local function Load()
 	if not raw or raw == "" then return end
 	local list = util.JSONToTable(raw)
 	if not istable(list) then
-		GarryNet.Util.Warn("Ignoring unreadable " .. FILE)
+		GravNet.Util.Warn("Ignoring unreadable " .. FILE)
 		return
 	end
 	local now = os.time()
@@ -70,19 +70,19 @@ function S.GetLastSync()
 	return LastSync
 end
 
--- Tell GarryNet what happened to fulfillment `id`. Clears the local record once an "applied"
+-- Tell GravNet what happened to fulfillment `id`. Clears the local record once an "applied"
 -- delivery is confirmed.
 local function Ack(id, result, error_message)
 	Busy[id] = true
 	local body = { result = result, error = error_message }
-	GarryNet.HTTP.ServerRequest("POST", "/fulfillments/" .. id .. "/ack", body, function(ok, status, _, err, current)
+	GravNet.HTTP.ServerRequest("POST", "/fulfillments/" .. id .. "/ack", body, function(ok, status, _, err, current)
 		Busy[id] = nil
 		if not current then return end
 		if status == 401 then
-			GarryNet.Link.OnOutOfSync()
+			GravNet.Link.OnOutOfSync()
 			return
 		end
-		-- 404: GarryNet no longer has it (e.g. the server was re-registered); nothing left to report.
+		-- 404: GravNet no longer has it (e.g. the server was re-registered); nothing left to report.
 		if ok or status == 404 then
 			if Pending[id] and Pending[id].state == "applied" then
 				Pending[id] = nil
@@ -91,18 +91,18 @@ local function Ack(id, result, error_message)
 			return
 		end
 		-- Kept in Pending; the next fetch re-acknowledges.
-		GarryNet.Util.Warn(string.format("Couldn't report store purchase #%d as %s: %s", id, result, tostring(err)))
+		GravNet.Util.Warn(string.format("Couldn't report store purchase #%d as %s: %s", id, result, tostring(err)))
 	end)
 end
 
 local function DescribeAll(rewards)
 	local parts = {}
-	for _, r in ipairs(rewards) do parts[#parts + 1] = GarryNet.Rewards.Describe(r) end
+	for _, r in ipairs(rewards) do parts[#parts + 1] = GravNet.Rewards.Describe(r) end
 	return table.concat(parts, ", ")
 end
 
 -- Whether a failed fulfillment is due for another try: waits 1, 2, 4, ... minutes after each
--- failure (up to MaxRetryMinutes), so a fix on the server side gets a chance before GarryNet
+-- failure (up to MaxRetryMinutes), so a fix on the server side gets a chance before GravNet
 -- stops offering it.
 local function RetryDue(f)
 	local last = LastFailure[f.id]
@@ -118,10 +118,10 @@ local function Failed(f, ply, reason)
 	if not Warned[f.id] then
 		Warned[f.id] = true
 		local message = string.format("Store purchase #%d for %s couldn't be delivered: %s", f.id, f.steam_id, reason)
-		GarryNet.Util.Warn(message)
-		GarryNet.NotifyAdmins(message, false)
+		GravNet.Util.Warn(message)
+		GravNet.NotifyAdmins(message, false)
 		if ply then
-			GarryNet.NotifyPlayer(ply, "Your store purchase couldn't be delivered yet (" .. reason
+			GravNet.NotifyPlayer(ply, "Your store purchase couldn't be delivered yet (" .. reason
 				.. "). Staff have been told; it will be retried.", false)
 		end
 	end
@@ -134,11 +134,11 @@ local function Handle(f)
 	if Busy[id] then return "skipped" end
 
 	if f.status == "REVOKED" then
-		-- GarryNet offers revoked purchases even when it never heard of a delivery: the rewards
+		-- GravNet offers revoked purchases even when it never heard of a delivery: the rewards
 		-- may have been applied here with the "fulfilled" report lost before the refund.
 		local pending = Pending[id]
 		local delivered = f.fulfilled_at ~= nil or pending ~= nil
-		GarryNet.Rewards.Revoke(f)
+		GravNet.Rewards.Revoke(f)
 		if pending then
 			Pending[id] = nil
 			Save()
@@ -146,9 +146,9 @@ local function Handle(f)
 		if delivered then
 			local ply = player.GetBySteamID64(f.steam_id)
 			if IsValid(ply) then
-				GarryNet.NotifyPlayer(ply, "A refunded store purchase was taken back: " .. DescribeAll(f.rewards) .. ".", nil)
+				GravNet.NotifyPlayer(ply, "A refunded store purchase was taken back: " .. DescribeAll(f.rewards) .. ".", nil)
 			end
-			GarryNet.Util.Log(string.format("Store: revoked purchase #%d for %s", id, f.steam_id))
+			GravNet.Util.Log(string.format("Store: revoked purchase #%d for %s", id, f.steam_id))
 		end
 		-- Report the lost delivery too, so the website shows the rewards as delivered and then
 		-- removed. The two reports can arrive in either order.
@@ -159,7 +159,7 @@ local function Handle(f)
 
 	local pending = Pending[id]
 	if pending and pending.state == "applied" then
-		-- Applied before, but GarryNet never heard about it.
+		-- Applied before, but GravNet never heard about it.
 		Ack(id, "fulfilled")
 		return "delivered"
 	end
@@ -169,14 +169,14 @@ local function Handle(f)
 	if not IsValid(ply) then return "offline" end
 	if f.status == "FAILED" and not RetryDue(f) then return "waiting" end
 
-	local verdict, reason = GarryNet.Rewards.Validate(f.rewards, ply)
+	local verdict, reason = GravNet.Rewards.Validate(f.rewards, ply)
 	if verdict == "wait" then return "waiting" end
 	if verdict ~= "ok" then
 		Failed(f, ply, reason)
 		return "failed"
 	end
 
-	local ok, err = pcall(GarryNet.Rewards.Apply, f, ply)
+	local ok, err = pcall(GravNet.Rewards.Apply, f, ply)
 	if not ok then
 		Pending[id] = { state = "errored", at = os.time(), error = tostring(err) }
 		Save()
@@ -187,9 +187,9 @@ local function Handle(f)
 	Pending[id] = { state = "applied", at = os.time() }
 	Save()
 	LastFailure[id] = nil
-	GarryNet.Util.Log(string.format("Store: delivered purchase #%d to %s (%s)", id, ply:Nick(), f.steam_id))
-	GarryNet.NotifyPlayer(ply, "Thanks for your purchase! You received: " .. DescribeAll(f.rewards) .. ".", true)
-	GarryNet.PlayRewardSound(ply)
+	GravNet.Util.Log(string.format("Store: delivered purchase #%d to %s (%s)", id, ply:Nick(), f.steam_id))
+	GravNet.NotifyPlayer(ply, "Thanks for your purchase! You received: " .. DescribeAll(f.rewards) .. ".", true)
+	GravNet.PlayRewardSound(ply)
 	Ack(id, "fulfilled")
 	return "delivered"
 end
@@ -203,8 +203,8 @@ end
 function S.Sync(steam_id, callback)
 	callback = callback or function() end
 
-	if not GarryNet.Storage.IsLinked() then
-		callback(false, "This server is not linked to GarryNet.")
+	if not GravNet.Storage.IsLinked() then
+		callback(false, "This server is not linked to GravNet.")
 		return
 	end
 	if not steam_id then
@@ -216,7 +216,7 @@ function S.Sync(steam_id, callback)
 	end
 
 	local route = "/fulfillments" .. (steam_id and ("?steam_id=" .. steam_id) or "")
-	GarryNet.HTTP.ServerRequest("GET", route, nil, function(ok, status, data, err, current)
+	GravNet.HTTP.ServerRequest("GET", route, nil, function(ok, status, data, err, current)
 		if not steam_id then Fetching = false end
 
 		if not current then
@@ -224,18 +224,18 @@ function S.Sync(steam_id, callback)
 			return
 		end
 		if status == 401 then
-			GarryNet.Link.OnOutOfSync()
-			callback(false, "GarryNet rejected the server token; the server has been unlinked.")
+			GravNet.Link.OnOutOfSync()
+			callback(false, "GravNet rejected the server token; the server has been unlinked.")
 			return
 		end
 
 		local message
 		if not ok or not istable(data) then
-			message = "Store sync failed: " .. (err or "unexpected response from GarryNet")
+			message = "Store sync failed: " .. (err or "unexpected response from GravNet")
 			if not steam_id then
 				local changed = not LastSync or LastSync.ok or LastSync.message ~= message
 				LastSync = { time = os.time(), ok = false, message = message }
-				if changed then GarryNet.Util.Warn(message) end
+				if changed then GravNet.Util.Warn(message) end
 			end
 			callback(false, message)
 			return
@@ -260,23 +260,23 @@ function S.Sync(steam_id, callback)
 end
 
 -- Every minute, and shortly after the map loads.
-timer.Create("GarryNet.Store.Poll", GarryNet.Config.Store.PollSeconds, 0, function()
-	if GarryNet.Storage.IsLinked() and GarryNet.HTTP.IsConfigured() then S.Sync() end
+timer.Create("GravNet.Store.Poll", GravNet.Config.Store.PollSeconds, 0, function()
+	if GravNet.Storage.IsLinked() and GravNet.HTTP.IsConfigured() then S.Sync() end
 end)
 
-hook.Add("InitPostEntity", "GarryNet.Store.Start", function()
+hook.Add("InitPostEntity", "GravNet.Store.Start", function()
 	timer.Simple(10, function()
-		if GarryNet.Storage.IsLinked() and GarryNet.HTTP.IsConfigured() then S.Sync() end
+		if GravNet.Storage.IsLinked() and GravNet.HTTP.IsConfigured() then S.Sync() end
 	end)
 end)
 
 -- When a player joins, deliver what they bought while away. Delayed so the gamemode (e.g.
 -- DarkRP's money) and the admin mod have loaded the player first.
-hook.Add("PlayerInitialSpawn", "GarryNet.Store.Join", function(ply)
+hook.Add("PlayerInitialSpawn", "GravNet.Store.Join", function(ply)
 	if ply:IsBot() then return end
 	local steam_id = ply:SteamID64()
-	timer.Simple(GarryNet.Config.Store.JoinDelay + 1, function()
-		if IsValid(ply) and GarryNet.Storage.IsLinked() and GarryNet.HTTP.IsConfigured() then S.Sync(steam_id) end
+	timer.Simple(GravNet.Config.Store.JoinDelay + 1, function()
+		if IsValid(ply) and GravNet.Storage.IsLinked() and GravNet.HTTP.IsConfigured() then S.Sync(steam_id) end
 	end)
 end)
 

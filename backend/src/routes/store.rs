@@ -161,7 +161,7 @@ async fn eligibility(
     } else if item.max_per_user.is_some_and(|max| purchased >= i64::from(max)) {
         Some("you've already bought this item".to_owned())
     } else if state.stripe.is_none() {
-        Some("purchases aren't set up on this GarryNet yet".to_owned())
+        Some("purchases aren't set up on this GravNet yet".to_owned())
     } else {
         None
     };
@@ -565,7 +565,7 @@ async fn record_paid(
             "checkout session {session} was paid ({payment_intent}) but purchase {} no longer exists; refund it from the Stripe dashboard ({source})",
             purchase_id.unwrap_or_default()
         ),
-        // Not a GarryNet session (e.g. `stripe trigger`, or another integration).
+        // Not a GravNet session (e.g. `stripe trigger`, or another integration).
         MarkPaid::Unknown => log::debug!("ignoring checkout session {session} without a purchase ({source})"),
     }
     Ok(())

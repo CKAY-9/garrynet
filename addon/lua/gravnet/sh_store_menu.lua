@@ -14,8 +14,8 @@
 --     } },
 -- }
 
-GarryNet.StoreMenuData = GarryNet.StoreMenuData or {}
-local D = GarryNet.StoreMenuData
+GravNet.StoreMenuData = GravNet.StoreMenuData or {}
+local D = GravNet.StoreMenuData
 
 D.MAX_PURCHASES = 20
 

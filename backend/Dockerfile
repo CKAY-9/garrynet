@@ -23,17 +23,17 @@ FROM debian:bookworm-slim AS runtime
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
-    && useradd --system --no-create-home --shell /usr/sbin/nologin garrynet
+    && useradd --system --no-create-home --shell /usr/sbin/nologin gravnet
 
 # Uploads with the local storage provider (STORAGE_LOCAL_PATH=./storage) land in
 # /app/storage. docker-compose.yml mounts a volume here; a new volume copies this
 # directory's ownership, so the non-root user can write to it.
 WORKDIR /app
-RUN mkdir storage && chown garrynet:garrynet storage
+RUN mkdir storage && chown gravnet:gravnet storage
 
 COPY --from=builder /app/target/release/backend /usr/local/bin/backend
 
-USER garrynet
+USER gravnet
 ENV BIND_ADDR=0.0.0.0:8080 \
     RUST_LOG=info
 EXPOSE 8080

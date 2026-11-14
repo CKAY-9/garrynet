@@ -1,8 +1,8 @@
-# GarryNet Design
+# GravNet Design
 
-GarryNet is a community platform (forum, store, Garry's Mod server integration) with one deployment per community.
+GravNet is a community platform (forum, store, Garry's Mod server integration) with one deployment per community.
 
-These documents are the design reference: each one describes a feature's behavior, data model and API routes. They're kept up to date with the code. Anything not built yet is marked **Planned**. For installing and running GarryNet, see the [main README](../README.md).
+These documents are the design reference: each one describes a feature's behavior, data model and API routes. They're kept up to date with the code. Anything not built yet is marked **Planned**. For installing and running GravNet, see the [main README](../README.md).
 
 ## Documents
 
@@ -26,7 +26,7 @@ These documents are the design reference: each one describes a feature's behavio
 
 ## Community
 
-Each deployment of GarryNet is meant for one community.
+Each deployment of GravNet is meant for one community.
 
 ```
 id: number
@@ -43,13 +43,13 @@ key_figures: json // array of { user_id?: number, name: string, profile_picture:
 If starting for the first time, a skeleton community entry should be created that can be edited later. There is only ever one community; existing details are never overwritten on startup.
 
 Skeleton Community:
-- name: "GarryNet Community"
+- name: "GravNet Community"
 - description: "Set your own community description in the admin dashboard"
 - key_figures: [
     {
         name: "CKAY9",
         profile_picture: "https://avatars.githubusercontent.com/u/53030585?v=4",
-        role: "GarryNet Developer",
+        role: "GravNet Developer",
         description: "Hey, this is the thing I made."
     }
 ]

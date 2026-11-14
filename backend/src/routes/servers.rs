@@ -108,7 +108,7 @@ async fn delete_server(
     Ok(HttpResponse::NoContent().finish())
 }
 
-/// Generates a new access key and unlinks the server, for when it and GarryNet fall out of
+/// Generates a new access key and unlinks the server, for when it and GravNet fall out of
 /// sync. Requires Admin Access and Server Management.
 #[post("/servers/{id}/access-key")]
 async fn reset_access_key(

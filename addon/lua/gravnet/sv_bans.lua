@@ -1,19 +1,19 @@
 -- Ban enforcement (docs/ADDON.md "Ban Enforcement"). When the community turns on "Keep banned
--- users off game servers" on the website, players banned on GarryNet are refused when they
+-- users off game servers" on the website, players banned on GravNet are refused when they
 -- connect and kicked if they're already playing:
 --   GET /gnet/server/{SERVER_ID}/bans   -> { enforce, appeal_url, bans = { { steam_id, reason, ends } } }
 --
 -- CheckPassword has to answer straight away, so the list is fetched every minute rather than
 -- per connection; a new ban takes up to a minute to apply. The last list is kept in
--- garrysmod/data/garrynet/bans.json and keeps being enforced while GarryNet is unreachable,
+-- garrysmod/data/gravnet/bans.json and keeps being enforced while GravNet is unreachable,
 -- including across restarts. Bans that end are dropped locally on time.
 
-GarryNet.Bans = GarryNet.Bans or {}
-local B = GarryNet.Bans
+GravNet.Bans = GravNet.Bans or {}
+local B = GravNet.Bans
 
-local FILE = GarryNet.Config.DataDir .. "/bans.json"
+local FILE = GravNet.Config.DataDir .. "/bans.json"
 
--- The latest list from GarryNet. `bans` is keyed by SteamID64: { reason = string, ends = unix seconds|nil }.
+-- The latest list from GravNet. `bans` is keyed by SteamID64: { reason = string, ends = unix seconds|nil }.
 local List = { enforce = false, appeal_url = "", bans = {}, count = 0 }
 
 -- True while a fetch is in flight.
@@ -54,13 +54,13 @@ local function Parse(data)
 	return list
 end
 
--- Saved as an array, as GarryNet sent it: util.JSONToTable would turn SteamID64 keys into numbers.
+-- Saved as an array, as GravNet sent it: util.JSONToTable would turn SteamID64 keys into numbers.
 local function Save()
 	local bans = {}
 	for steam_id, ban in pairs(List.bans) do
 		bans[#bans + 1] = { steam_id = steam_id, reason = ban.reason, ends = ban.ends }
 	end
-	if not file.IsDir(GarryNet.Config.DataDir, "DATA") then file.CreateDir(GarryNet.Config.DataDir) end
+	if not file.IsDir(GravNet.Config.DataDir, "DATA") then file.CreateDir(GravNet.Config.DataDir) end
 	file.Write(FILE, util.TableToJSON({ enforce = List.enforce, appeal_url = List.appeal_url, bans = bans }))
 end
 
@@ -69,7 +69,7 @@ local function Load()
 	if not raw or raw == "" then return end
 	local data = util.JSONToTable(raw)
 	if not istable(data) then
-		GarryNet.Util.Warn("Ignoring unreadable " .. FILE)
+		GravNet.Util.Warn("Ignoring unreadable " .. FILE)
 		return
 	end
 	List = Parse(data)
@@ -77,7 +77,7 @@ end
 
 -- The ban keeping `steam_id` (a SteamID64) off this server, or nil.
 function B.Find(steam_id)
-	if not List.enforce or not GarryNet.Storage.IsLinked() then return nil end
+	if not List.enforce or not GravNet.Storage.IsLinked() then return nil end
 	local ban = List.bans[tostring(steam_id)]
 	if not ban or (ban.ends and ban.ends <= os.time()) then return nil end
 	return ban
@@ -97,7 +97,7 @@ local function KickBanned()
 	for _, ply in ipairs(player.GetHumans()) do
 		local ban = B.Find(ply:SteamID64())
 		if ban then
-			GarryNet.Util.Log(string.format("Kicked %s (%s): banned on GarryNet", ply:Nick(), ply:SteamID64()))
+			GravNet.Util.Log(string.format("Kicked %s (%s): banned on GravNet", ply:Nick(), ply:SteamID64()))
 			ply:Kick(B.Message(ban))
 		end
 	end
@@ -108,8 +108,8 @@ end
 function B.Sync(callback)
 	callback = callback or function() end
 
-	if not GarryNet.Storage.IsLinked() then
-		callback(false, "This server is not linked to GarryNet.")
+	if not GravNet.Storage.IsLinked() then
+		callback(false, "This server is not linked to GravNet.")
 		return
 	end
 	if Fetching then
@@ -118,7 +118,7 @@ function B.Sync(callback)
 	end
 
 	Fetching = true
-	GarryNet.HTTP.ServerRequest("GET", "/bans", nil, function(ok, status, data, err, current)
+	GravNet.HTTP.ServerRequest("GET", "/bans", nil, function(ok, status, data, err, current)
 		Fetching = false
 
 		if not current then
@@ -126,18 +126,18 @@ function B.Sync(callback)
 			return
 		end
 		if status == 401 then
-			GarryNet.Link.OnOutOfSync()
-			callback(false, "GarryNet rejected the server token; the server has been unlinked.")
+			GravNet.Link.OnOutOfSync()
+			callback(false, "GravNet rejected the server token; the server has been unlinked.")
 			return
 		end
 
 		local message
 		if not ok or not istable(data) then
 			-- Keep enforcing the last list we had.
-			message = "Ban list sync failed: " .. (err or "unexpected response from GarryNet")
+			message = "Ban list sync failed: " .. (err or "unexpected response from GravNet")
 			local changed = not LastSync or LastSync.ok or LastSync.message ~= message
 			LastSync = { time = os.time(), ok = false, message = message }
-			if changed then GarryNet.Util.Warn(message) end
+			if changed then GravNet.Util.Warn(message) end
 			callback(false, message)
 			return
 		end
@@ -146,8 +146,8 @@ function B.Sync(callback)
 		List = Parse(data)
 		Save()
 		if List.enforce ~= was_enforcing then
-			GarryNet.Util.Log(List.enforce and "Players banned on GarryNet are now kept off this server."
-				or "Players banned on GarryNet are no longer kept off this server.")
+			GravNet.Util.Log(List.enforce and "Players banned on GravNet are now kept off this server."
+				or "Players banned on GravNet are no longer kept off this server.")
 		end
 		KickBanned()
 
@@ -166,23 +166,23 @@ end
 
 -- Refuse banned players before they load in. Returning nothing leaves the decision (e.g. the
 -- server password) to other hooks and the default.
-hook.Add("CheckPassword", "GarryNet.Bans", function(steam_id, _, _, _, name)
+hook.Add("CheckPassword", "GravNet.Bans", function(steam_id, _, _, _, name)
 	local ban = B.Find(steam_id)
 	if ban then
-		GarryNet.Util.Log(string.format("Refused %s (%s): banned on GarryNet", tostring(name), tostring(steam_id)))
+		GravNet.Util.Log(string.format("Refused %s (%s): banned on GravNet", tostring(name), tostring(steam_id)))
 		return false, B.Message(ban)
 	end
 end)
 
 -- Every minute, and shortly after the map loads.
-timer.Create("GarryNet.Bans.Poll", GarryNet.Config.IntervalSeconds, 0, function()
-	if GarryNet.Storage.IsLinked() and GarryNet.HTTP.IsConfigured() then B.Sync() end
+timer.Create("GravNet.Bans.Poll", GravNet.Config.IntervalSeconds, 0, function()
+	if GravNet.Storage.IsLinked() and GravNet.HTTP.IsConfigured() then B.Sync() end
 end)
 
-hook.Add("InitPostEntity", "GarryNet.Bans.Start", function()
+hook.Add("InitPostEntity", "GravNet.Bans.Start", function()
 	-- HTTP isn't usable until the server has ticked a few times.
 	timer.Simple(5, function()
-		if GarryNet.Storage.IsLinked() and GarryNet.HTTP.IsConfigured() then B.Sync() end
+		if GravNet.Storage.IsLinked() and GravNet.HTTP.IsConfigured() then B.Sync() end
 	end)
 end)
 

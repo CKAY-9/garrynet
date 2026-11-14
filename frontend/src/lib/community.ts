@@ -6,7 +6,7 @@ import type { Community } from "./types";
 
 /**
  * The community, or `null` if the backend can't be reached (pages still render, with
- * GarryNet defaults). Deduplicated per request, so the navigation and the page can both
+ * GravNet defaults). Deduplicated per request, so the navigation and the page can both
  * call it. Request-time, so render anything that uses this inside a `<Suspense>` boundary.
  */
 export const getCommunity = cache(async (): Promise<Community | null> => {
@@ -22,7 +22,7 @@ export const getCommunity = cache(async (): Promise<Community | null> => {
 });
 
 /** Shown when the community can't be loaded. */
-export const FALLBACK_COMMUNITY_NAME = "GarryNet";
+export const FALLBACK_COMMUNITY_NAME = "GravNet";
 
 /** A link's host without `www.`, e.g. `discord.gg`, to label external links. */
 export function linkLabel(url: string): string {

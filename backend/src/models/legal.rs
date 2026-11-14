@@ -1,11 +1,11 @@
 //! The community's legal documents (docs/LEGAL.md): terms of service, privacy policy and
-//! refund policy, as Markdown. Each deployment edits its own; GarryNet ships defaults.
+//! refund policy, as Markdown. Each deployment edits its own; GravNet ships defaults.
 
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 use sqlx::PgPool;
 
-/// A document GarryNet ships a default for. The slug is its URL (`/legal/{slug}`).
+/// A document GravNet ships a default for. The slug is its URL (`/legal/{slug}`).
 #[derive(Clone, Copy, Debug, Serialize)]
 pub struct Template {
     pub slug: &'static str,

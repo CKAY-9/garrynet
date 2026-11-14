@@ -1,32 +1,32 @@
 # Addon Details
 
-Part of [GarryNet Design](README.md). Servers and access keys are defined in [SERVERS.md](SERVERS.md).
+Part of [GravNet Design](README.md). Servers and access keys are defined in [SERVERS.md](SERVERS.md).
 
-The GarryNet Garry's Mod addon is responsible for communicating with GarryNet. It will update player data, fetch unrealized store requests, config changes, etc.
+The GravNet Garry's Mod addon is responsible for communicating with GravNet. It will update player data, fetch unrealized store requests, config changes, etc.
 
 **Status:** linking, unlinking, the per-minute heartbeat (server details, player records and gamemode stats), store delivery, the `!gstore` store menu, store chat messages and ban enforcement work. Config changes are not implemented yet.
 
 ## Installation and Configuration
 
-Copy or symlink `addon/` to `garrysmod/addons/garrynet`. In `server.cfg`, set the backend's public URL (its `BACKEND_URL`):
+Copy or symlink `addon/` to `garrysmod/addons/gravnet`. In `server.cfg`, set the backend's public URL (its `BACKEND_URL`):
 
 ```
-garrynet_api_url "https://api.example.com"
+gravnet_api_url "https://api.example.com"
 ```
 
-Use `https://`. The access key and the server's JWT travel in the `Authorization` header, so over plain HTTP anyone on the path can steal them and act as the server (report players, fetch and acknowledge store deliveries). The addon still works with `http://`, but warns about it in the server console (on startup, when the URL changes and when linking), in `garrynet_status` and in the `!gnet` menu. Loopback URLs (`localhost`, `127.x.x.x`, `[::1]`) don't trigger the warning.
+Use `https://`. The access key and the server's JWT travel in the `Authorization` header, so over plain HTTP anyone on the path can steal them and act as the server (report players, fetch and acknowledge store deliveries). The addon still works with `http://`, but warns about it in the server console (on startup, when the URL changes and when linking), in `gravnet_status` and in the `!gnet` menu. Loopback URLs (`localhost`, `127.x.x.x`, `[::1]`) don't trigger the warning.
 
 Garry's Mod refuses HTTP requests to local and private addresses. When the backend runs on the same machine or network (e.g. in development), start the server with `-allowlocalhttp`.
 
-Link state (server id, JWT and server name) is persisted in `garrysmod/data/garrynet/state.json`. The JWT is a secret and is never sent to clients. The last ban list is kept in `bans.json` beside it (see [Ban Enforcement](#ban-enforcement)).
+Link state (server id, JWT and server name) is persisted in `garrysmod/data/gravnet/state.json`. The JWT is a secret and is never sent to clients. The last ban list is kept in `bans.json` beside it (see [Ban Enforcement](#ban-enforcement)).
 
 ## Structure
 
-Files live in `addon/lua/garrynet/`, and are loaded in order by `addon/lua/autorun/garrynet.lua`. The `sh_`, `sv_` or `cl_` prefix decides the realm.
+Files live in `addon/lua/gravnet/`, and are loaded in order by `addon/lua/autorun/gravnet.lua`. The `sh_`, `sv_` or `cl_` prefix decides the realm.
 
 | File | Purpose |
 | --- | --- |
-| `sh_config.lua` | Constants, the `garrynet_api_url` convar, net message names |
+| `sh_config.lua` | Constants, the `gravnet_api_url` convar, net message names |
 | `sh_util.lua` | Logging, access key format check |
 | `sh_status.lua` | Link status sent to the menu (read/write over net) |
 | `sh_store_menu.lua` | Store menu contents sent to a player (read/write over net) |
@@ -41,7 +41,7 @@ Files live in `addon/lua/garrynet/`, and are loaded in order by `addon/lua/autor
 | `sv_net.lua` | Net handlers for the menu; every one checks for superadmin |
 | `sv_store_menu.lua` | `!gstore`: fetch a player's purchases and the store link, send them the menu |
 | `sv_store_messages.lua` | Repeating store chat messages: settings, timer |
-| `sv_commands.lua` | `!gnet` and `!gstore` chat commands, `garrynet_*` console commands |
+| `sv_commands.lua` | `!gnet` and `!gstore` chat commands, `gravnet_*` console commands |
 | `cl_ui.lua` | The menus' shared look: colors, fonts, overlay, card, buttons |
 | `cl_net.lua` | Client net handlers and senders, chat notices |
 | `cl_menu.lua` | The `!gnet` menu |
@@ -55,7 +55,7 @@ A superadmin can execute `!gnet` in chat and is presented with a dark-blue menu,
 Prompt the superadmin for the generated server access key (`gnet_` followed by 64 hex characters). It is sent to `/gnet/server/link` as the authorization header and exchanged for a JWT the server authenticates with. The backend then revokes the access key: keys only work once.
 
 **Linked**
-Shows the server's GarryNet name and id, and the last sync. "Sync now" forces an interval update; "Unlink" (click twice to confirm) revokes the JWT and forgets it locally.
+Shows the server's GravNet name and id, and the last sync. "Sync now" forces an interval update; "Unlink" (click twice to confirm) revokes the JWT and forgets it locally.
 Below that are the [store chat messages](#store-chat-messages) settings.
 
 ### Store chat messages
@@ -63,15 +63,15 @@ Below that are the [store chat messages](#store-chat-messages) settings.
 A superadmin can have a chat message advertising the store sent to every player on a timer. The `!gnet` menu (when
 linked) has a switch to turn them on, the interval in minutes (default 10, 1 to 1440) and the message (at most 200
 characters; line breaks become spaces). Nothing changes until "Save"; the menu says when there are unsaved changes.
-Settings are saved in `garrysmod/data/garrynet/store_messages.json` and survive restarts. Defaults and limits are
+Settings are saved in `garrysmod/data/gravnet/store_messages.json` and survive restarts. Defaults and limits are
 `StoreMessages` in `sh_config.lua`.
 
-- Before each message the addon asks GarryNet whether the server has an enabled store (`GET /gnet/server/{id}/store`
-  without `steam_id`). If it doesn't, or GarryNet can't be reached, the message is skipped and the menu and
-  `garrynet_status` say why. Nothing is sent while the server is empty.
+- Before each message the addon asks GravNet whether the server has an enabled store (`GET /gnet/server/{id}/store`
+  without `steam_id`). If it doesn't, or GravNet can't be reached, the message is skipped and the menu and
+  `gravnet_status` say why. Nothing is sent while the server is empty.
 - The menu shows when the next message goes out. Saving restarts the countdown only when messages are turned on or
   the interval changes, so editing the message doesn't put the next one off.
-- Messages appear in chat with the `[GarryNet]` prefix.
+- Messages appear in chat with the `[GravNet]` prefix.
 
 ### Confirmation
 
@@ -81,16 +81,16 @@ Every superadmin in game gets a chat notice when the server is linked, when the 
 
 These run from the server console, or from a superadmin's own console:
 
-- `garrynet_status`: link status, last sync, and the last store and ban list syncs
-- `garrynet_link <access key>`: link without the menu
-- `garrynet_unlink`
-- `garrynet_sync`: send a heartbeat now
-- `garrynet_store_sync`: fetch and deliver store purchases now
-- `garrynet_store_grants <SteamID64>`: a player's store usergroups and weapons
+- `gravnet_status`: link status, last sync, and the last store and ban list syncs
+- `gravnet_link <access key>`: link without the menu
+- `gravnet_unlink`
+- `gravnet_sync`: send a heartbeat now
+- `gravnet_store_sync`: fetch and deliver store purchases now
+- `gravnet_store_grants <SteamID64>`: a player's store usergroups and weapons
 
 ## !gstore
 
-Any player can execute `!gstore` in chat to open the *GarryNet Store Menu*, in the same style as `!gnet`. It lists
+Any player can execute `!gstore` in chat to open the *GravNet Store Menu*, in the same style as `!gnet`. It lists
 their 10 most recent purchases on this server, newest first, each with the item name, price, date, and one status:
 Delivered, Awaiting delivery, Delivery failed, Refunded, Disputed or Revoked. A line under the list explains when
 something is still awaiting delivery or failed. "Open store" opens the server's store page on the website
@@ -98,17 +98,17 @@ something is still awaiting delivery or failed. "Open store" opens the server's 
 
 - Purchases are matched by the player's SteamID64 (the one captured at checkout), and only this server's are shown.
 - If the server isn't linked, has no store, or its store is disabled, the player gets a chat notice ("This server
-  doesn't have a store set up.") instead of the menu. If GarryNet can't be reached, they're told to try again and the
+  doesn't have a store set up.") instead of the menu. If GravNet can't be reached, they're told to try again and the
   error is logged in the server console.
-- Each opening asks GarryNet (nothing is cached), so players can open it once every `StoreMenuCooldown` (5) seconds.
+- Each opening asks GravNet (nothing is cached), so players can open it once every `StoreMenuCooldown` (5) seconds.
 
 ## Intervals
 
-A GNet interval occurs every minute and syncs server and player information to GarryNet through `POST /gnet/server/{SERVER_ID}/heartbeat`, authorized with the server JWT. It also runs 5 seconds after the map loads.
+A GNet interval occurs every minute and syncs server and player information to GravNet through `POST /gnet/server/{SERVER_ID}/heartbeat`, authorized with the server JWT. It also runs 5 seconds after the map loads.
 
-The first successful sync after linking is the server's first heartbeat, from which the backend fills in the server's `gamemode` and `map`. A 401 means the server and GarryNet are out of sync (the server was unlinked or deleted on the website, its access key was regenerated, or its token expired). The addon then forgets its credentials and tells superadmins; the access key must be regenerated and the server linked again.
+The first successful sync after linking is the server's first heartbeat, from which the backend fills in the server's `gamemode` and `map`. A 401 means the server and GravNet are out of sync (the server was unlinked or deleted on the website, its access key was regenerated, or its token expired). The addon then forgets its credentials and tells superadmins; the access key must be regenerated and the server linked again.
 
-The addon tracks each human player's session (bots are skipped) and reports playtime in whole minutes, keeping the remainder for the next heartbeat. Unreported playtime survives failed heartbeats, so nothing is lost while GarryNet is unreachable. A disconnected player is reported once more, then dropped.
+The addon tracks each human player's session (bots are skipped) and reports playtime in whole minutes, keeping the remainder for the next heartbeat. Unreported playtime survives failed heartbeats, so nothing is lost while GravNet is unreachable. A disconnected player is reported once more, then dropped.
 
 ### Gamemode Stats
 
@@ -123,34 +123,34 @@ website can label `darkrp_money` as "Money".
 | Sandbox | `sandbox_props_spawned` | counter | Props spawned |
 | Sandbox | `sandbox_tools_used` | counter | Tool gun clicks (left, right, reload) that reach `CanTool` |
 
-- **Values** are sampled every heartbeat and when the player leaves, and replace what GarryNet has. A value the gamemode
+- **Values** are sampled every heartbeat and when the player leaves, and replace what GravNet has. A value the gamemode
   doesn't have at the moment keeps its last known value.
-- **Counters** are counted as events happen and only the increase since the last accepted heartbeat is sent; GarryNet
+- **Counters** are counted as events happen and only the increase since the last accepted heartbeat is sent; GravNet
   adds it to the stored total. Like playtime, unreported counts survive failed heartbeats.
 - Sandbox stats are only collected on Sandbox itself, not on gamemodes derived from it such as DarkRP.
-- When a heartbeat reports a different gamemode than the server had (ignoring case), GarryNet clears the stats of every
+- When a heartbeat reports a different gamemode than the server had (ignoring case), GravNet clears the stats of every
   player on that server before recording the heartbeat, so no player keeps the old gamemode's stats. Players online then
   get the new gamemode's stats straight away; the rest get them on their next visit.
 
 Other addons can add stats for their gamemode:
 
 ```lua
-GarryNet.Stats.Register("murder", {
+GravNet.Stats.Register("murder", {
     active = function() return engine.ActiveGamemode() == "murder" end,
     sample = function(ply) return { murder_wins = ply:GetNWInt("Wins") } end, -- values; optional
 })
-GarryNet.Stats.Count(ply, "murder_rounds_played") -- counters, e.g. from a round hook
+GravNet.Stats.Count(ply, "murder_rounds_played") -- counters, e.g. from a round hook
 ```
 
 ## Ban Enforcement
 
-When **Keep banned users off game servers** is on in [Admin > Community](ADMIN.md#admincommunity), linked servers keep out players banned on GarryNet (see [User Punishment](USERS.md#user-punishment)). It's off by default. Suspensions don't apply in-game.
+When **Keep banned users off game servers** is on in [Admin > Community](ADMIN.md#admincommunity), linked servers keep out players banned on GravNet (see [User Punishment](USERS.md#user-punishment)). It's off by default. Suspensions don't apply in-game.
 
-- **When:** the addon fetches the ban list every minute (`IntervalSeconds`), 5 seconds after the map loads, and right after linking. Garry's Mod's `CheckPassword` hook has to answer immediately, so connections are checked against this list rather than asking GarryNet each time: a new ban or unban takes up to a minute to apply.
+- **When:** the addon fetches the ban list every minute (`IntervalSeconds`), 5 seconds after the map loads, and right after linking. Garry's Mod's `CheckPassword` hook has to answer immediately, so connections are checked against this list rather than asking GravNet each time: a new ban or unban takes up to a minute to apply.
 - **Connecting:** a banned player is refused in `CheckPassword` with a message giving the reason, when the ban ends (or that it's permanent) and where to appeal (the website's `/support`). Players who aren't banned are left to other hooks and the server password, as usual.
 - **Already playing:** after each fetch, banned players on the server are kicked with the same message. This covers bans issued while they play and turning enforcement on.
 - **Expiry:** each ban carries its end, so it stops applying on time between fetches.
-- **GarryNet unreachable:** the last list keeps being enforced, including across restarts (it's saved in `data/garrynet/bans.json`). Failures are logged once, like heartbeats.
+- **GravNet unreachable:** the last list keeps being enforced, including across restarts (it's saved in `data/gravnet/bans.json`). Failures are logged once, like heartbeats.
 - **Unlinking** (or a 401) forgets the list, so an unlinked server doesn't enforce stale bans.
 - Refusals and kicks are logged in the server console. Bans are matched by the connecting account's SteamID64 only; Steam Family Sharing borrowers aren't matched to the lender.
 
@@ -194,11 +194,11 @@ All under `/gnet/server`. Errors are `{ "error": "..." }`.
 player's `stats`: numbers, booleans, or strings (truncated to 128 characters). `counters` (optional) are whole numbers
 added to those keys (a stored value that isn't a number counts as 0), at most 1,000,000 per heartbeat. Stats not mentioned
 are kept. Keys must match `[a-z0-9_]{1,64}`, and up to 32 of each are taken; invalid entries are dropped rather than
-failing the heartbeat. A player's record is created on their first visit and linked to their GarryNet account if they have one. At most 256 players per heartbeat (and a body of at most 256 KiB). The addon keeps the sessions of players who left until they've been reported, so after GarryNet has been unreachable it can have more; it then reports online players first and the rest in the following heartbeats, rather than sending one the backend would refuse every minute. Returns `{ "server": {...} }`, plus `"token"` when the JWT was rotated.
+failing the heartbeat. A player's record is created on their first visit and linked to their GravNet account if they have one. At most 256 players per heartbeat (and a body of at most 256 KiB). The addon keeps the sessions of players who left until they've been reported, so after GravNet has been unreachable it can have more; it then reports online players first and the rest in the following heartbeats, rather than sending one the backend would refuse every minute. Returns `{ "server": {...} }`, plus `"token"` when the JWT was rotated.
 
 **POST `/gnet/server/{SERVER_ID}/unlink`**: `Authorization: Bearer <JWT>`. Unlinks the server and revokes its token and any access key. Returns 204.
 
-**GET `/gnet/server/{SERVER_ID}/bans`**: `Authorization: Bearer <JWT>`. Users banned on GarryNet right now, by SteamID64. `ends` is unix seconds, or null for a permanent ban. When the community doesn't keep banned users off its servers, `enforce` is false and `bans` is empty. `appeal_url` is the website's support page, for the kick message.
+**GET `/gnet/server/{SERVER_ID}/bans`**: `Authorization: Bearer <JWT>`. Users banned on GravNet right now, by SteamID64. `ends` is unix seconds, or null for a permanent ban. When the community doesn't keep banned users off its servers, `enforce` is false and `bans` is empty. `appeal_url` is the website's support page, for the kick message.
 
 ```json
 {
@@ -263,20 +263,20 @@ Idempotent: repeating a report changes nothing. Returns the fulfillment as it st
 - **All or nothing:** every reward is validated before any is applied (the usergroup exists in the admin mod and isn't
   protected, the server runs DarkRP for money, the weapon class is known). A failure is acknowledged as `failed` with the
   reason, superadmins and the buyer get a chat notice, and it's retried with backoff (1, 2, 4... minutes, at most 60), so
-  fixing the server gives it a chance before GarryNet stops offering it after 20 attempts (staff with Store Finance can
+  fixing the server gives it a chance before GravNet stops offering it after 20 attempts (staff with Store Finance can
   reset it from the receipts page once it's fixed). DarkRP money waits, without
   failing, until DarkRP has loaded the player's data.
-- **Exactly once:** an applied fulfillment is written to `data/garrynet/store_pending.json` before it's acknowledged and
-  only forgotten once GarryNet confirms. If the acknowledgement is lost, the next fetch re-acknowledges instead of applying
+- **Exactly once:** an applied fulfillment is written to `data/gravnet/store_pending.json` before it's acknowledged and
+  only forgotten once GravNet confirms. If the acknowledgement is lost, the next fetch re-acknowledges instead of applying
   again. A Lua error part-way through applying is reported as `failed` and never retried automatically.
 - **Usergroups:** set through an adapter: ULX (ULib, persistent, works for offline players) when installed, else
-  `Player:SetUserGroup`, which GarryNet re-applies on every join. `GarryNet.Rewards.SetUsergroupAdapter` plugs in other admin
+  `Player:SetUserGroup`, which GravNet re-applies on every join. `GravNet.Rewards.SetUsergroupAdapter` plugs in other admin
   mods. Purchases of the same group stack (each duration starts when the previous one ends); with several store groups the
   most recently bought one wins. A store group only replaces a group in `Store.OverridableGroups` (default `user`) or one
   the store set itself, so staff are never demoted; their grant still counts if they later return to `user`. When the
   last store group ends or is revoked, the player goes back to `Store.DefaultGroup`. `Store.ProtectedGroups` are never granted.
 - **Weapons** are recorded and given back on every spawn (1 second after, skipped while DarkRP-arrested).
-- Grants are kept in `data/garrynet/store_grants.json`, per player and per fulfillment, so a revocation removes exactly that
+- Grants are kept in `data/gravnet/store_grants.json`, per player and per fulfillment, so a revocation removes exactly that
   purchase's usergroups and weapons.
 
 Config changes are still to be defined.

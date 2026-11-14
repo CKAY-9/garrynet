@@ -141,7 +141,7 @@ export function CommunityEditor({ community }: { community: Community }) {
                 required
               />
             </Field>
-            <Field label="Logo URL" hint="Paste a link or upload an image. Square images work best. Leave empty to use the default GarryNet logo.">
+            <Field label="Logo URL" hint="Paste a link or upload an image. Square images work best. Leave empty to use the default GravNet logo.">
               <ImageUrlInput
                 className={styles.input}
                 value={draft.logo_url}
@@ -233,7 +233,7 @@ export function CommunityEditor({ community }: { community: Community }) {
               <Field label="Picture" hint="Paste a link or upload an image.">
                 <ImageUrlInput className={styles.input} value={figure.profile_picture} onChange={(url) => setFigure(figure.key, { profile_picture: url })} placeholder="https://..." />
               </Field>
-              <Field label="GarryNet user ID" hint="Optional. Links to their profile.">
+              <Field label="GravNet user ID" hint="Optional. Links to their profile.">
                 <input className={styles.input} type="number" min={1} step={1} value={figure.user_id} onChange={(e) => setFigure(figure.key, { user_id: e.target.value })} />
               </Field>
             </div>
@@ -264,7 +264,7 @@ export function CommunityEditor({ community }: { community: Community }) {
           <span>
             <span className={styles.label}>Keep banned users off game servers</span>
             <span className={styles.hint}>
-              Linked servers running the GarryNet addon refuse players banned on GarryNet when they connect, and kick
+              Linked servers running the GravNet addon refuse players banned on GravNet when they connect, and kick
               them if they&apos;re already playing. The ban list is checked every minute, so a new ban can take up to a
               minute to apply. Suspended users can still play.
             </span>
