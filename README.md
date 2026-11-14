@@ -130,6 +130,14 @@ Both the browser and your Garry's Mod servers must be able to reach the backend,
 
 `NEXT_PUBLIC_API_URL` is baked into the frontend at build time, so re-run with `--build` after changing it. Uploaded files are kept in the `uploads` volume, and the database in `db-data`.
 
+### Demo
+
+To run a public demo, with Stripe in test mode and everything non-admins create cleared daily, use `docker-compose.demo.yml`. It adds Caddy for HTTPS. See [docs/DEMO.md](./docs/DEMO.md#deploying).
+
+```sh
+docker compose -f docker-compose.yml -f docker-compose.demo.yml up -d --build
+```
+
 ### Manual
 
 The backend and frontend are separate processes; start the backend first.
@@ -200,6 +208,7 @@ backend usergroup remove <USER_ID or SteamID64> <GROUP>
 backend user show <USER_ID or SteamID64>
 backend user unban <USER_ID or SteamID64>
 backend user unsuspend <USER_ID or SteamID64>
+backend demo reset          # demo deployments only: clear what non-admins created
 backend help
 ```
 

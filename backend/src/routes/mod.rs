@@ -1,6 +1,7 @@
 pub mod admin;
 pub mod auth;
 pub mod community;
+pub mod demo;
 pub mod files;
 pub mod forum;
 pub mod gnet;
@@ -24,6 +25,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.configure(auth::configure)
         .configure(admin::configure)
         .configure(community::configure)
+        .configure(demo::configure)
         .configure(files::configure)
         .configure(forum::configure)
         .configure(gnet::configure)

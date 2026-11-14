@@ -17,6 +17,9 @@ pub struct Config {
     /// can be bought.
     pub stripe: Option<StripeConfig>,
     pub storage: StorageConfig,
+    /// Demo mode (docs/DEMO.md): Stripe must use test keys, and what non-admins create is
+    /// cleared every day.
+    pub demo: bool,
 }
 
 /// Stripe settings (docs/STORE.md). All or nothing: setting some of the variables but not
@@ -42,6 +45,13 @@ impl Config {
             return Err("JWT_SECRET must be at least 32 bytes long".into());
         }
 
+        let demo = match optional("DEMO_MODE") {
+            Some(v) => v
+                .parse()
+                .map_err(|_| "DEMO_MODE must be `true` or `false`".to_owned())?,
+            None => false,
+        };
+
         let cookie_secure = match optional("COOKIE_SECURE") {
             Some(v) => v
                 .parse()
@@ -58,8 +68,9 @@ impl Config {
             steam_api_key: required("STEAM_API_KEY")?,
             cookie_domain: optional("COOKIE_DOMAIN"),
             cookie_secure,
-            stripe: stripe_from_env()?,
+            stripe: stripe_from_env(demo)?,
             storage: storage_from_env()?,
+            demo,
         })
     }
 
@@ -87,7 +98,7 @@ impl TaxBehavior {
     }
 }
 
-fn stripe_from_env() -> Result<Option<StripeConfig>, String> {
+fn stripe_from_env(demo: bool) -> Result<Option<StripeConfig>, String> {
     let secret_key = optional("STRIPE_SECRET_KEY");
     let webhook_secret = optional("STRIPE_WEBHOOK_SECRET");
     let tax = match optional("STRIPE_TAX") {
@@ -107,10 +118,18 @@ fn stripe_from_env() -> Result<Option<StripeConfig>, String> {
             if !secret_key.starts_with("sk_") && !secret_key.starts_with("rk_") {
                 return Err("STRIPE_SECRET_KEY must be a Stripe secret key (sk_... or rk_...)".into());
             }
+            if demo && !is_test_key(&secret_key) {
+                return Err("DEMO_MODE only takes Stripe test keys: STRIPE_SECRET_KEY must start with sk_test_ or rk_test_".into());
+            }
             Ok(Some(StripeConfig { secret_key, webhook_secret, tax, tax_behavior }))
         }
         _ => Err("STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET must be set together".into()),
     }
+}
+
+/// Whether a Stripe secret key is a test-mode key, which can't move real money.
+fn is_test_key(key: &str) -> bool {
+    key.starts_with("sk_test_") || key.starts_with("rk_test_")
 }
 
 /// Which storage provider new uploads go to (docs/STORAGE.md).
@@ -194,4 +213,18 @@ fn required(key: &str) -> Result<String, String> {
 
 fn optional(key: &str) -> Option<String> {
     env::var(key).ok().filter(|v| !v.trim().is_empty())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_keys() {
+        assert!(is_test_key("sk_test_abc"));
+        assert!(is_test_key("rk_test_abc"));
+        assert!(!is_test_key("sk_live_abc"));
+        assert!(!is_test_key("rk_live_abc"));
+        assert!(!is_test_key("sk_abc"));
+    }
 }

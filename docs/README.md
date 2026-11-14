@@ -22,6 +22,7 @@ These documents are the design reference: each one describes a feature's behavio
 - [USER_STORIES.md](USER_STORIES.md): user stories
 - [SITE_DESIGN.md](SITE_DESIGN.md): frontend layout, navigation, themes
 - [ARCHITECTURE.md](ARCHITECTURE.md): how the frontend, backend and addon fit together
+- [DEMO.md](DEMO.md): demo mode, test-only payments and the daily reset
 
 ## Community
 

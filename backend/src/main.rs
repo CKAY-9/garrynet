@@ -1,5 +1,6 @@
 mod auth;
 mod config;
+mod demo;
 mod error;
 mod hex;
 mod models;
@@ -56,42 +57,20 @@ async fn main() -> std::io::Result<()> {
         return run_command(&args).await;
     }
 
-    let config = Config::from_env().unwrap_or_else(|e| {
-        eprintln!("configuration error: {e}");
-        std::process::exit(1);
-    });
-
-    let db = connect_db(&config.database_url).await?;
-
-    let http = reqwest::Client::builder()
-        .timeout(Duration::from_secs(10))
-        .build()
-        .map_err(std::io::Error::other)?;
-
-    let stripe = config.stripe.clone().map(|stripe| Stripe::new(http.clone(), stripe));
-    if stripe.is_none() {
-        log::warn!("STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET are not set: the store can't take payments");
+    let config = load_config();
+    let state = build_state(config.clone()).await?;
+    if config.demo {
+        log::warn!(
+            "DEMO_MODE is on: everything users without Admin Access create is deleted at midnight UTC (next reset {})",
+            demo::next_reset(chrono::Utc::now())
+        );
     }
 
-    let storage = Storage::new(&config.storage, &config.backend_url, &config.jwt_secret)
-        .unwrap_or_else(|e| {
-            eprintln!("configuration error: {e}");
-            std::process::exit(1);
-        });
-    log::info!("storing new uploads with the {} provider", storage.default_backend());
-
-    let state = AppState {
-        db,
-        jwt: JwtKeys::new(&config.jwt_secret),
-        config: Arc::new(config.clone()),
-        http,
-        stripe,
-        storage,
-        steam_profiles: Arc::default(),
-    };
-
     log::info!("GarryNet backend listening on http://{}", config.bind_addr);
-    shell::spawn(state.db.clone());
+    shell::spawn(state.clone());
+    if config.demo {
+        demo::spawn_daily_reset(state.clone());
+    }
     spawn_ticket_auto_close(state.db.clone());
     spawn_purchase_sweeper(state.clone());
     spawn_upload_sweeper(state.db.clone(), state.storage.clone());
@@ -122,6 +101,46 @@ async fn main() -> std::io::Result<()> {
     .bind(&config.bind_addr)?
     .run()
     .await
+}
+
+/// The configuration from the environment; exits on a configuration error.
+fn load_config() -> Config {
+    Config::from_env().unwrap_or_else(|e| {
+        eprintln!("configuration error: {e}");
+        std::process::exit(1);
+    })
+}
+
+/// Connects to the database and sets up the clients the server (or a command) needs.
+async fn build_state(config: Config) -> std::io::Result<AppState> {
+    let db = connect_db(&config.database_url).await?;
+
+    let http = reqwest::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()
+        .map_err(std::io::Error::other)?;
+
+    let stripe = config.stripe.clone().map(|stripe| Stripe::new(http.clone(), stripe));
+    if stripe.is_none() {
+        log::warn!("STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET are not set: the store can't take payments");
+    }
+
+    let storage = Storage::new(&config.storage, &config.backend_url, &config.jwt_secret)
+        .unwrap_or_else(|e| {
+            eprintln!("configuration error: {e}");
+            std::process::exit(1);
+        });
+    log::info!("storing new uploads with the {} provider", storage.default_backend());
+
+    Ok(AppState {
+        db,
+        jwt: JwtKeys::new(&config.jwt_secret),
+        config: Arc::new(config),
+        http,
+        stripe,
+        storage,
+        steam_profiles: Arc::default(),
+    })
 }
 
 /// Connects to Postgres, applies migrations and creates the default usergroups, the
@@ -308,15 +327,21 @@ async fn sweep_files(db: &PgPool, storage: &Storage, sweep: Sweep) {
     }
 }
 
-/// One-shot command mode. Only needs `DATABASE_URL`.
+/// One-shot command mode. Only needs `DATABASE_URL`, except `demo` commands, which delete
+/// files and close checkouts and so need the full configuration.
 async fn run_command(args: &[String]) -> std::io::Result<()> {
-    let Some(database_url) = std::env::var("DATABASE_URL").ok().filter(|v| !v.is_empty())
-    else {
-        eprintln!("configuration error: missing required environment variable DATABASE_URL");
-        std::process::exit(1);
+    let (db, state) = if args.first().is_some_and(|a| a == "demo") {
+        let state = build_state(load_config()).await?;
+        (state.db.clone(), Some(state))
+    } else {
+        let Some(database_url) = std::env::var("DATABASE_URL").ok().filter(|v| !v.is_empty())
+        else {
+            eprintln!("configuration error: missing required environment variable DATABASE_URL");
+            std::process::exit(1);
+        };
+        (connect_db(&database_url).await?, None)
     };
-    let db = connect_db(&database_url).await?;
-    match shell::execute(&db, args).await {
+    match shell::execute(&db, state.as_ref(), args).await {
         Ok(out) => {
             if !out.is_empty() {
                 println!("{out}");

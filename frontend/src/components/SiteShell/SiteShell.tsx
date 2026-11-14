@@ -1,4 +1,5 @@
-import type { ReactNode } from "react";
+import { Suspense, type ReactNode } from "react";
+import { DemoBanner } from "@/components/DemoBanner";
 import { SideNav } from "@/components/SideNav";
 
 /**
@@ -9,7 +10,13 @@ export function SiteShell({ children }: { children: ReactNode }) {
   return (
     <div className="shell">
       <SideNav />
-      <main className="content">{children}</main>
+      <main className="content">
+        {/* Request-time, so it streams in behind the boundary. */}
+        <Suspense>
+          <DemoBanner />
+        </Suspense>
+        {children}
+      </main>
     </div>
   );
 }

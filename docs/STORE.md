@@ -32,6 +32,9 @@ but checkout answers 503 and item pages say purchases aren't set up):
 If Stripe refuses the secret key (401/403), buyers only see "payments are unavailable"; the
 details are logged.
 
+In demo mode (`DEMO_MODE=true`, [DEMO.md](DEMO.md)) only test keys are accepted, live-mode
+webhook events are ignored, and visitors' purchases are cleared daily.
+
 No publishable key is needed: Checkout is hosted by Stripe, so no Stripe JavaScript runs on the
 frontend. Refund policy and terms of sale should be linked from each item store page (the store
 message supports plain text; put the links in the community's external links or an FAQ).

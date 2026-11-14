@@ -1,0 +1,15 @@
+# Reverse proxy for docker-compose.demo.yml: HTTPS certificates are issued and renewed
+# automatically. SITE_DOMAIN and API_DOMAIN come from the root `.env`, e.g.
+#   SITE_DOMAIN=gnet.example.com
+#   API_DOMAIN=api.gnet.example.com
+# Both must already resolve (DNS A/AAAA records) to this machine, with ports 80 and 443 open.
+
+{$SITE_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy frontend:3000
+}
+
+{$API_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy backend:8080
+}
