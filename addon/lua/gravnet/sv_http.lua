@@ -1,30 +1,30 @@
--- Thin wrapper around HTTP() for talking to the GarryNet backend.
+-- Thin wrapper around HTTP() for talking to the GravNet backend.
 -- Backend routes used by the addon (docs/ADDON.md):
 --   POST /gnet/server/link                  access key as the authorization header -> server JWT
 --   *    /gnet/server/{SERVER_ID}/[route]   authorized with the server JWT
 
-GarryNet.HTTP = GarryNet.HTTP or {}
+GravNet.HTTP = GravNet.HTTP or {}
 
--- Base URL from the garrynet_api_url convar, without a trailing slash. Returns "" if unset.
-function GarryNet.HTTP.GetBaseUrl()
-	local cvar = GetConVar("garrynet_api_url")
+-- Base URL from the gravnet_api_url convar, without a trailing slash. Returns "" if unset.
+function GravNet.HTTP.GetBaseUrl()
+	local cvar = GetConVar("gravnet_api_url")
 	if not cvar then return "" end
 	local url = string.Trim(cvar:GetString())
 	return (string.gsub(url, "/+$", ""))
 end
 
-function GarryNet.HTTP.IsConfigured()
-	return GarryNet.HTTP.GetBaseUrl() ~= ""
+function GravNet.HTTP.IsConfigured()
+	return GravNet.HTTP.GetBaseUrl() ~= ""
 end
 
-GarryNet.HTTP.InsecureWarning = "garrynet_api_url doesn't use https://, so this server's access key and token "
-	.. "are sent unencrypted and can be stolen in transit. Use an https:// URL unless GarryNet is on a "
+GravNet.HTTP.InsecureWarning = "gravnet_api_url doesn't use https://, so this server's access key and token "
+	.. "are sent unencrypted and can be stolen in transit. Use an https:// URL unless GravNet is on a "
 	.. "private network you fully trust."
 
 -- True when the backend is reached over plain HTTP on another machine, where the access key and
 -- server token could be read or altered in transit. Loopback hosts are fine: nothing leaves the box.
-function GarryNet.HTTP.IsInsecure()
-	local url = string.lower(GarryNet.HTTP.GetBaseUrl())
+function GravNet.HTTP.IsInsecure()
+	local url = string.lower(GravNet.HTTP.GetBaseUrl())
 	if url == "" or string.sub(url, 1, 8) == "https://" then return false end
 
 	local rest = string.match(url, "^[%a][%w+.-]*://(.*)$") or url
@@ -37,11 +37,11 @@ end
 -- Warn in the server console once the URL is known (server.cfg runs after autorun), and again
 -- whenever it's changed to an insecure one.
 local function WarnIfInsecure()
-	if GarryNet.HTTP.IsInsecure() then GarryNet.Util.Warn(GarryNet.HTTP.InsecureWarning) end
+	if GravNet.HTTP.IsInsecure() then GravNet.Util.Warn(GravNet.HTTP.InsecureWarning) end
 end
 
-hook.Add("InitPostEntity", "GarryNet.HTTP.InsecureWarning", WarnIfInsecure)
-cvars.AddChangeCallback("garrynet_api_url", WarnIfInsecure, "GarryNet.HTTP.InsecureWarning")
+hook.Add("InitPostEntity", "GravNet.HTTP.InsecureWarning", WarnIfInsecure)
+cvars.AddChangeCallback("gravnet_api_url", WarnIfInsecure, "GravNet.HTTP.InsecureWarning")
 
 -- A human-readable reason a request failed, for logs and the menu.
 local function Describe(status, body, reason)
@@ -49,7 +49,7 @@ local function Describe(status, body, reason)
 		return body.error .. " (HTTP " .. status .. ")"
 	end
 	if status == 0 then
-		return "GarryNet could not be reached: " .. tostring(reason or "unknown error")
+		return "GravNet could not be reached: " .. tostring(reason or "unknown error")
 	end
 	return "HTTP " .. status
 end
@@ -61,13 +61,13 @@ end
 --   callback: function(success: boolean, status: number, body: table|nil, err: string|nil)
 --             `body` is the decoded JSON response, if any; `err` describes a failure.
 --             `status` is 0 if no response was received.
-function GarryNet.HTTP.Request(method, path, opts, callback)
+function GravNet.HTTP.Request(method, path, opts, callback)
 	opts = opts or {}
 	callback = callback or function() end
 
-	local base = GarryNet.HTTP.GetBaseUrl()
+	local base = GravNet.HTTP.GetBaseUrl()
 	if base == "" then
-		callback(false, 0, nil, "garrynet_api_url is not set (see server.cfg)")
+		callback(false, 0, nil, "gravnet_api_url is not set (see server.cfg)")
 		return
 	end
 
@@ -80,7 +80,7 @@ function GarryNet.HTTP.Request(method, path, opts, callback)
 		url = base .. path,
 		method = method,
 		headers = headers,
-		timeout = GarryNet.Config.HttpTimeout,
+		timeout = GravNet.Config.HttpTimeout,
 
 		success = function(status, raw)
 			local body = nil
@@ -109,29 +109,29 @@ function GarryNet.HTTP.Request(method, path, opts, callback)
 end
 
 -- Request to /gnet/server/{SERVER_ID}<route> using the stored JWT. Stores a rotated JWT when
--- the response carries one. A 401 means the server and GarryNet are out of sync; callers
--- decide what to do about it (see GarryNet.Link.OnOutOfSync).
---   callback: same as GarryNet.HTTP.Request, plus a 5th argument: whether the credentials used
+-- the response carries one. A 401 means the server and GravNet are out of sync; callers
+-- decide what to do about it (see GravNet.Link.OnOutOfSync).
+--   callback: same as GravNet.HTTP.Request, plus a 5th argument: whether the credentials used
 --             are still the stored ones (false if the server re-linked or unlinked meanwhile).
-function GarryNet.HTTP.ServerRequest(method, route, body, callback)
+function GravNet.HTTP.ServerRequest(method, route, body, callback)
 	callback = callback or function() end
 
-	if not GarryNet.Storage.IsLinked() then
-		callback(false, 0, nil, "This server is not linked to GarryNet.", false)
+	if not GravNet.Storage.IsLinked() then
+		callback(false, 0, nil, "This server is not linked to GravNet.", false)
 		return
 	end
 
-	local server_id = GarryNet.Storage.GetServerId()
-	local token = GarryNet.Storage.GetToken()
+	local server_id = GravNet.Storage.GetServerId()
+	local token = GravNet.Storage.GetToken()
 
-	GarryNet.HTTP.Request(method, "/gnet/server/" .. server_id .. route, {
+	GravNet.HTTP.Request(method, "/gnet/server/" .. server_id .. route, {
 		body = body,
 		headers = { Authorization = "Bearer " .. token },
 	}, function(ok, status, data, err)
-		local current = GarryNet.Storage.GetServerId() == server_id and GarryNet.Storage.GetToken() == token
+		local current = GravNet.Storage.GetServerId() == server_id and GravNet.Storage.GetToken() == token
 
 		if ok and current and istable(data) and isstring(data.token) and data.token ~= "" then
-			GarryNet.Storage.SetCredentials(server_id, data.token)
+			GravNet.Storage.SetCredentials(server_id, data.token)
 		end
 
 		callback(ok, status, data, err, current)

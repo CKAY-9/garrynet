@@ -16,7 +16,7 @@ export const GMOD_CALLBACKS = [
 export type GmodCallback = (typeof GMOD_CALLBACKS)[number];
 
 /** Window property holding calls made before React took over. */
-export const GMOD_QUEUE = "__garrynetGmodQueue";
+export const GMOD_QUEUE = "__gravnetGmodQueue";
 
 declare global {
   interface Window {

@@ -17,7 +17,7 @@ import type {
 } from "./types";
 
 /**
- * The public profile of the user with GarryNet id `id`, or `null` if there is no such
+ * The public profile of the user with GravNet id `id`, or `null` if there is no such
  * user. Sent as the current user, so a private profile's details come back for its owner
  * and staff. Request-time (status and last seen change constantly), so render anything
  * that uses this inside a `<Suspense>` boundary.

@@ -9,7 +9,7 @@ pub struct UserPlayer {
     pub id: i64,
     pub server_id: i64,
     pub steam_id: String,
-    /// GarryNet user id, if the player has an account.
+    /// GravNet user id, if the player has an account.
     pub user_id: Option<i64>,
     pub ingame_name: String,
     /// Equals `first_joined` until the player returns.
@@ -60,7 +60,7 @@ impl UserPlayer {
     }
 
     /// Records players reported by the server's addon in a heartbeat. Creates the record on
-    /// a first visit, links it to the player's GarryNet account if they have one, adds the
+    /// a first visit, links it to the player's GravNet account if they have one, adds the
     /// reported playtime, and merges the gamemode stats: reported values replace the stored
     /// ones, counters are added to them (a stored value that isn't a number counts as 0).
     /// Stats the heartbeat doesn't mention are kept.

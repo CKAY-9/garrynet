@@ -104,7 +104,7 @@ export function LegalEditor({ documents }: { documents: LegalDocument[] }) {
       <form id="legal-panel" role="tabpanel" aria-labelledby={`legal-tab-${active}`} className={styles.editor} onSubmit={onSubmit}>
         {current.last_updated === null ? (
           <p className={legal.notice}>
-            This is still GarryNet&apos;s default template. Replace the text in [square brackets], remove anything that
+            This is still GravNet&apos;s default template. Replace the text in [square brackets], remove anything that
             doesn&apos;t apply to your community, and check it against the law where you and your players live.
           </p>
         ) : (

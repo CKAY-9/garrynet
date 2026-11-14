@@ -1,6 +1,6 @@
 # Permissions
 
-Part of [GarryNet Design](README.md).
+Part of [GravNet Design](README.md).
 
 Permissions are managed through usergroups. Each usergroup has a bit flag field that stores its permissions.
 

@@ -45,7 +45,7 @@ pub enum ApiError {
     StripeUnavailable(String),
 
     /// A feature that needs configuration this deployment doesn't have (e.g. Stripe keys).
-    #[error("{0} is not configured on this GarryNet")]
+    #[error("{0} is not configured on this GravNet")]
     NotConfigured(&'static str),
 
     #[error(transparent)]

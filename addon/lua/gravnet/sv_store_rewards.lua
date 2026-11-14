@@ -1,24 +1,24 @@
 -- Store rewards in-game (docs/STORE.md "Rewards"): usergroups (permanent or timed), DarkRP money
 -- and permanent weapons. Lasting rewards are remembered per player in
--- garrysmod/data/garrynet/store_grants.json, keyed by the fulfillment that granted them, so a
+-- garrysmod/data/gravnet/store_grants.json, keyed by the fulfillment that granted them, so a
 -- refund takes exactly that purchase back and timed usergroups can expire.
 --
 -- Usergroups are set through an adapter: ULX (persisted by ULib) when it's installed, otherwise
--- plain Player:SetUserGroup, which GarryNet re-applies whenever the player joins. Other admin
--- mods can plug in with GarryNet.Rewards.SetUsergroupAdapter.
+-- plain Player:SetUserGroup, which GravNet re-applies whenever the player joins. Other admin
+-- mods can plug in with GravNet.Rewards.SetUsergroupAdapter.
 --
 -- Staff are never demoted: a store usergroup only replaces a group listed in
--- GarryNet.Config.Store.OverridableGroups, or one the store set itself.
+-- GravNet.Config.Store.OverridableGroups, or one the store set itself.
 
-GarryNet.Rewards = GarryNet.Rewards or {}
-local R = GarryNet.Rewards
+GravNet.Rewards = GravNet.Rewards or {}
+local R = GravNet.Rewards
 
-local FILE = GarryNet.Config.DataDir .. "/store_grants.json"
+local FILE = GravNet.Config.DataDir .. "/store_grants.json"
 
-local function Cfg() return GarryNet.Config.Store end
+local function Cfg() return GravNet.Config.Store end
 
 -- Per SteamID64:
---   applied = the store usergroup GarryNet last put the player in, or nil
+--   applied = the store usergroup GravNet last put the player in, or nil
 --   grants  = { { fulfillment_id, kind = "usergroup" | "weapon", usergroup, duration, class, granted_at } }
 --             `duration` is in seconds; nil means permanent.
 local Players = {}
@@ -30,7 +30,7 @@ function R.Save()
 	for steam_id, entry in pairs(Players) do
 		list[#list + 1] = { steam_id = steam_id, applied = entry.applied, grants = entry.grants }
 	end
-	if not file.IsDir(GarryNet.Config.DataDir, "DATA") then file.CreateDir(GarryNet.Config.DataDir) end
+	if not file.IsDir(GravNet.Config.DataDir, "DATA") then file.CreateDir(GravNet.Config.DataDir) end
 	file.Write(FILE, util.TableToJSON(list, true))
 end
 
@@ -39,7 +39,7 @@ local function Load()
 	if not raw or raw == "" then return end
 	local list = util.JSONToTable(raw)
 	if not istable(list) then
-		GarryNet.Util.Warn("Ignoring unreadable " .. FILE)
+		GravNet.Util.Warn("Ignoring unreadable " .. FILE)
 		return
 	end
 	for _, item in ipairs(list) do
@@ -230,15 +230,15 @@ function R.Reconcile(steam_id, quiet)
 		if current ~= target then
 			local ok, result = pcall(adapter.Set, steam_id, ply, target)
 			if not ok then
-				GarryNet.Util.Warn(string.format("Couldn't set %s's usergroup to %s with %s: %s",
+				GravNet.Util.Warn(string.format("Couldn't set %s's usergroup to %s with %s: %s",
 					steam_id, target, adapter.name, tostring(result)))
 				done = false
 			else
 				done = result ~= false
 				if done then
-					GarryNet.Util.Log(string.format("Store: %s is now in usergroup %s", steam_id, target))
+					GravNet.Util.Log(string.format("Store: %s is now in usergroup %s", steam_id, target))
 					if not quiet and ply and entry.applied and desired ~= entry.applied then
-						GarryNet.NotifyPlayer(ply, "Your " .. entry.applied .. " usergroup from the store has ended.", nil)
+						GravNet.NotifyPlayer(ply, "Your " .. entry.applied .. " usergroup from the store has ended.", nil)
 					end
 				end
 			end
@@ -280,7 +280,7 @@ local function GiveWeapons(ply)
 	end
 end
 
-hook.Add("PlayerSpawn", "GarryNet.Rewards.Weapons", function(ply)
+hook.Add("PlayerSpawn", "GravNet.Rewards.Weapons", function(ply)
 	timer.Simple(1, function() GiveWeapons(ply) end)
 end)
 
@@ -328,7 +328,7 @@ function R.Validate(rewards, ply)
 		if r.type == "usergroup" then
 			if not isstring(r.usergroup) or r.usergroup == "" then return "invalid", "usergroup reward without a usergroup" end
 			if IsProtected(r.usergroup) then
-				return "invalid", "refusing to grant the protected usergroup " .. r.usergroup .. " (GarryNet.Config.Store.ProtectedGroups)"
+				return "invalid", "refusing to grant the protected usergroup " .. r.usergroup .. " (GravNet.Config.Store.ProtectedGroups)"
 			end
 			if not adapter.GroupExists(r.usergroup) then
 				return "invalid", "usergroup " .. r.usergroup .. " doesn't exist in " .. adapter.name
@@ -414,7 +414,7 @@ function R.Revoke(fulfillment)
 	R.Reconcile(steam_id, true)
 end
 
--- The player's lasting grants, for the garrynet_store_grants command.
+-- The player's lasting grants, for the gravnet_store_grants command.
 function R.GetGrants(steam_id)
 	local entry = Players[steam_id]
 	return entry and entry.grants or {}, entry and entry.applied
@@ -423,7 +423,7 @@ end
 -- Expiries and joins ---------------------------------------------------------------------------
 
 -- Re-check every known player once a minute, so timed usergroups end on time.
-timer.Create("GarryNet.Rewards.Reconcile", GarryNet.Config.Store.ReconcileSeconds, 0, function()
+timer.Create("GravNet.Rewards.Reconcile", GravNet.Config.Store.ReconcileSeconds, 0, function()
 	local ids = table.GetKeys(Players)
 	for _, steam_id in ipairs(ids) do
 		R.Reconcile(steam_id)
@@ -432,10 +432,10 @@ end)
 
 -- On join (once the admin mod has set the player's group), re-apply a plain usergroup and end
 -- any that ran out while they were away.
-hook.Add("PlayerInitialSpawn", "GarryNet.Rewards.Join", function(ply)
+hook.Add("PlayerInitialSpawn", "GravNet.Rewards.Join", function(ply)
 	if ply:IsBot() then return end
 	local steam_id = ply:SteamID64()
-	timer.Simple(GarryNet.Config.Store.JoinDelay, function()
+	timer.Simple(GravNet.Config.Store.JoinDelay, function()
 		if IsValid(ply) then R.Reconcile(steam_id) end
 	end)
 end)

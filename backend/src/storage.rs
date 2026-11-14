@@ -176,7 +176,7 @@ impl Storage {
         // Domain-separated from the JWT signing key it's derived from.
         let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes())
             .map_err(|e| format!("invalid JWT_SECRET: {e}"))?;
-        mac.update(b"garrynet file upload");
+        mac.update(b"gravnet file upload");
         let upload_secret = mac.finalize().into_bytes().to_vec();
 
         Ok(Self(Arc::new(Inner {
@@ -436,7 +436,7 @@ mod tests {
     }
 
     fn temp_dir(name: &str) -> std::path::PathBuf {
-        let dir = std::env::temp_dir().join(format!("garrynet-storage-{name}-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("gravnet-storage-{name}-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         dir
     }

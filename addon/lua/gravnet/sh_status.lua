@@ -2,8 +2,8 @@
 -- read and write it the same way. Never contains the JWT.
 --
 -- status = {
---     configured = bool,         -- garrynet_api_url is set
---     insecure = bool,           -- garrynet_api_url is plain HTTP to another machine
+--     configured = bool,         -- gravnet_api_url is set
+--     insecure = bool,           -- gravnet_api_url is plain HTTP to another machine
 --     linked = bool,
 --     server_id = number|nil,    -- when linked
 --     server_name = string,      -- when linked; "" if unknown
@@ -22,9 +22,9 @@
 --     },
 -- }
 
-GarryNet.Status = GarryNet.Status or {}
+GravNet.Status = GravNet.Status or {}
 
-function GarryNet.Status.Write(status)
+function GravNet.Status.Write(status)
 	net.WriteBool(status.configured)
 	net.WriteBool(status.insecure == true)
 	net.WriteBool(status.linked)
@@ -51,7 +51,7 @@ function GarryNet.Status.Write(status)
 	net.WriteString(messages.skipped or "")
 end
 
-function GarryNet.Status.Read()
+function GravNet.Status.Read()
 	local status = {}
 	status.configured = net.ReadBool()
 	status.insecure = net.ReadBool()

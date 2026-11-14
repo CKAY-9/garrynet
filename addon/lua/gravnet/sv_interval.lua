@@ -1,19 +1,19 @@
--- The GNet interval: every minute, sync server and player information to GarryNet.
--- POST /gnet/server/{SERVER_ID}/heartbeat (see GarryNet.HTTP.ServerRequest).
+-- The GNet interval: every minute, sync server and player information to GravNet.
+-- POST /gnet/server/{SERVER_ID}/heartbeat (see GravNet.HTTP.ServerRequest).
 -- The first successful sync after linking is the server's first heartbeat: the backend fills in
 -- gamemode and map from it (docs/SERVERS.md).
 
-GarryNet.Interval = GarryNet.Interval or {}
+GravNet.Interval = GravNet.Interval or {}
 
-local TIMER = "GarryNet.Interval"
+local TIMER = "GravNet.Interval"
 
--- Player sessions by SteamID64. Kept across failed syncs so no playtime is lost while GarryNet
+-- Player sessions by SteamID64. Kept across failed syncs so no playtime is lost while GravNet
 -- is unreachable; a disconnected player's session is dropped once it has been reported.
 --   { name, usergroup, connected_at (unix seconds), counted_at, pending (unreported seconds), online,
 --     stats (latest gamemode stat values), counters (unreported gamemode counters) }
 -- Gamemode stats come from sv_stats.lua.
-GarryNet.Interval.Sessions = GarryNet.Interval.Sessions or {}
-local Sessions = GarryNet.Interval.Sessions
+GravNet.Interval.Sessions = GravNet.Interval.Sessions or {}
+local Sessions = GravNet.Interval.Sessions
 
 -- Sessions kept across a Lua refresh may predate the stat fields.
 for _, session in pairs(Sessions) do
@@ -26,7 +26,7 @@ end
 local MAX_COUNTER = 1000000
 
 -- The backend refuses a heartbeat with more than 256 players or a body over 256 KiB. Sessions
--- pile up while GarryNet is unreachable (disconnected players are kept until reported), so a
+-- pile up while GravNet is unreachable (disconnected players are kept until reported), so a
 -- heartbeat reports at most this much, online players first, and the rest wait for the next
 -- ones. Otherwise one oversized heartbeat would be refused every minute forever.
 local MAX_PLAYERS = 256
@@ -41,11 +41,11 @@ local AwaitingFirst = false
 -- The latest sync attempt: { time = os.time(), ok = bool, message = string } or nil.
 local LastSync = nil
 
-function GarryNet.Interval.IsBusy()
+function GravNet.Interval.IsBusy()
 	return InFlight
 end
 
-function GarryNet.Interval.GetLastSync()
+function GravNet.Interval.GetLastSync()
 	return LastSync
 end
 
@@ -73,13 +73,13 @@ end
 -- Refresh a session's gamemode stat values. A value the gamemode doesn't have right now (e.g.
 -- DarkRP money before it has loaded) keeps its last known value.
 local function SampleStats(ply, session)
-	for key, value in pairs(GarryNet.Stats.Sample(ply)) do
+	for key, value in pairs(GravNet.Stats.Sample(ply)) do
 		session.stats[key] = value
 	end
 end
 
--- Add to one of a player's gamemode counters (see GarryNet.Stats.Count).
-function GarryNet.Interval.Count(ply, key, amount)
+-- Add to one of a player's gamemode counters (see GravNet.Stats.Count).
+function GravNet.Interval.Count(ply, key, amount)
 	if not isnumber(amount) or amount <= 0 then return end
 	local session = Track(ply)
 	if session then session.counters[key] = (session.counters[key] or 0) + amount end
@@ -91,11 +91,11 @@ local function Accrue(session, now)
 	session.counted_at = now
 end
 
-hook.Add("PlayerInitialSpawn", "GarryNet.Interval.Track", function(ply)
+hook.Add("PlayerInitialSpawn", "GravNet.Interval.Track", function(ply)
 	Track(ply)
 end)
 
-hook.Add("PlayerDisconnected", "GarryNet.Interval.Track", function(ply)
+hook.Add("PlayerDisconnected", "GravNet.Interval.Track", function(ply)
 	if ply:IsBot() then return end
 	local session = Sessions[ply:SteamID64()]
 	if session and session.online then
@@ -113,7 +113,7 @@ end
 -- MAX_PLAYERS of them and about MAX_BODY_BYTES (online players first, then the sessions of those
 -- who left, oldest first). Returns the JSON body; per reported SteamID64, the whole minutes and
 -- the counters it reports (to commit on success); and how many sessions wait for a later sync.
-function GarryNet.Interval.BuildPayload()
+function GravNet.Interval.BuildPayload()
 	local now = os.time()
 	for _, ply in ipairs(player.GetHumans()) do
 		local session = Track(ply)
@@ -188,17 +188,17 @@ end
 local function Record(ok, message)
 	local changed = not LastSync or LastSync.ok ~= ok or LastSync.message ~= message
 	LastSync = { time = os.time(), ok = ok, message = message }
-	-- Log failures once rather than every minute while GarryNet is down.
-	if not ok and changed then GarryNet.Util.Warn("Sync failed: " .. message) end
+	-- Log failures once rather than every minute while GravNet is down.
+	if not ok and changed then GravNet.Util.Warn("Sync failed: " .. message) end
 end
 
 -- Run one sync immediately. Also used by the "force interval update" menu option.
 --   callback: function(success: boolean, message: string)
-function GarryNet.Interval.Run(callback)
+function GravNet.Interval.Run(callback)
 	callback = callback or function() end
 
-	if not GarryNet.Storage.IsLinked() then
-		callback(false, "This server is not linked to GarryNet.")
+	if not GravNet.Storage.IsLinked() then
+		callback(false, "This server is not linked to GravNet.")
 		return
 	end
 	if InFlight then
@@ -207,22 +207,22 @@ function GarryNet.Interval.Run(callback)
 	end
 
 	InFlight = true
-	local payload, reported, waiting = GarryNet.Interval.BuildPayload()
+	local payload, reported, waiting = GravNet.Interval.BuildPayload()
 
-	GarryNet.HTTP.ServerRequest("POST", "/heartbeat", payload, function(ok, status, data, err, current)
+	GravNet.HTTP.ServerRequest("POST", "/heartbeat", payload, function(ok, status, data, err, current)
 		InFlight = false
 
 		if not current then
 			-- Re-linked or unlinked while the request was in flight; the result is stale.
 			callback(false, "The link changed during the sync.")
-			GarryNet.BroadcastStatus()
+			GravNet.BroadcastStatus()
 			return
 		end
 
 		if ok then
 			Commit(reported)
 			if istable(data) and istable(data.server) then
-				GarryNet.Storage.SetServerName(data.server.name)
+				GravNet.Storage.SetServerName(data.server.name)
 			end
 
 			local message = string.format("Synced %d player(s).", #payload.players)
@@ -233,34 +233,34 @@ function GarryNet.Interval.Run(callback)
 
 			if AwaitingFirst then
 				AwaitingFirst = false
-				local name = GarryNet.Storage.GetServerName() or ""
-				GarryNet.Util.Log("First heartbeat accepted")
-				GarryNet.NotifyAdmins("First heartbeat accepted. \"" .. name .. "\" now shows as Online on GarryNet.", true)
+				local name = GravNet.Storage.GetServerName() or ""
+				GravNet.Util.Log("First heartbeat accepted")
+				GravNet.NotifyAdmins("First heartbeat accepted. \"" .. name .. "\" now shows as Online on GravNet.", true)
 			end
 
 			callback(true, message)
 		elseif status == 401 then
-			GarryNet.Link.OnOutOfSync()
-			callback(false, "GarryNet rejected the server token; the server has been unlinked.")
+			GravNet.Link.OnOutOfSync()
+			callback(false, "GravNet rejected the server token; the server has been unlinked.")
 		else
 			Record(false, err or "unknown error")
 			callback(false, "Sync failed: " .. (err or "unknown error"))
 		end
 
-		GarryNet.BroadcastStatus()
+		GravNet.BroadcastStatus()
 	end)
 end
 
 -- Start the repeating timer (no-op if not linked).
-function GarryNet.Interval.Start()
-	if not GarryNet.Storage.IsLinked() then return end
+function GravNet.Interval.Start()
+	if not GravNet.Storage.IsLinked() then return end
 
-	timer.Create(TIMER, GarryNet.Config.IntervalSeconds, 0, function()
-		GarryNet.Interval.Run()
+	timer.Create(TIMER, GravNet.Config.IntervalSeconds, 0, function()
+		GravNet.Interval.Run()
 	end)
 end
 
-function GarryNet.Interval.Stop()
+function GravNet.Interval.Stop()
 	timer.Remove(TIMER)
 	AwaitingFirst = false
 	LastSync = nil
@@ -268,26 +268,26 @@ end
 
 -- Called after a successful link: start the timer and send the first heartbeat now, so the
 -- website shows the server as online straight away.
-function GarryNet.Interval.OnLinked()
+function GravNet.Interval.OnLinked()
 	AwaitingFirst = true
 	LastSync = nil
-	GarryNet.Interval.Start()
-	GarryNet.Interval.Run()
+	GravNet.Interval.Start()
+	GravNet.Interval.Run()
 end
 
-hook.Add("InitPostEntity", "GarryNet.Interval.Start", function()
-	if not GarryNet.Storage.IsLinked() then
-		GarryNet.Util.Log("Not linked. A superadmin can link this server with " .. GarryNet.Config.ChatCommand .. ".")
+hook.Add("InitPostEntity", "GravNet.Interval.Start", function()
+	if not GravNet.Storage.IsLinked() then
+		GravNet.Util.Log("Not linked. A superadmin can link this server with " .. GravNet.Config.ChatCommand .. ".")
 		return
 	end
 
-	GarryNet.Util.Log(string.format("Linked as server #%d (%s)",
-		GarryNet.Storage.GetServerId(), GarryNet.Storage.GetServerName() or "?"))
-	if not GarryNet.HTTP.IsConfigured() then
-		GarryNet.Util.Warn("garrynet_api_url is not set; syncing is paused until it is.")
+	GravNet.Util.Log(string.format("Linked as server #%d (%s)",
+		GravNet.Storage.GetServerId(), GravNet.Storage.GetServerName() or "?"))
+	if not GravNet.HTTP.IsConfigured() then
+		GravNet.Util.Warn("gravnet_api_url is not set; syncing is paused until it is.")
 	end
 
-	GarryNet.Interval.Start()
+	GravNet.Interval.Start()
 	-- HTTP isn't usable until the server has ticked a few times.
-	timer.Simple(5, function() GarryNet.Interval.Run() end)
+	timer.Simple(5, function() GravNet.Interval.Run() end)
 end)

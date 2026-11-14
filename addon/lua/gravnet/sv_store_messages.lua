@@ -1,17 +1,17 @@
 -- Store chat messages (docs/ADDON.md "Store chat messages"): when a superadmin turns them on in the
 -- !gnet menu, every player gets a chat message advertising the store every few minutes. The
--- settings are saved in garrysmod/data/garrynet/store_messages.json.
+-- settings are saved in garrysmod/data/gravnet/store_messages.json.
 --
--- Before each message the addon asks GarryNet whether the server still has an enabled store
+-- Before each message the addon asks GravNet whether the server still has an enabled store
 -- (GET /gnet/server/{SERVER_ID}/store), so a disabled or missing store is never advertised.
 
-GarryNet.StoreMessages = GarryNet.StoreMessages or {}
-local M = GarryNet.StoreMessages
+GravNet.StoreMessages = GravNet.StoreMessages or {}
+local M = GravNet.StoreMessages
 
-local FILE = GarryNet.Config.DataDir .. "/store_messages.json"
-local TIMER = "GarryNet.StoreMessages"
+local FILE = GravNet.Config.DataDir .. "/store_messages.json"
+local TIMER = "GravNet.StoreMessages"
 
-local function Cfg() return GarryNet.Config.StoreMessages end
+local function Cfg() return GravNet.Config.StoreMessages end
 
 local Settings = {
 	enabled = false,
@@ -22,7 +22,7 @@ local Settings = {
 -- Why the last message wasn't sent, or nil if it was (or none is due yet).
 local Skipped = nil
 
--- True while asking GarryNet about the store.
+-- True while asking GravNet about the store.
 local Checking = false
 
 -- Settings, cleaned up; or nil and why they're refused.
@@ -44,31 +44,31 @@ end
 local function SetSkipped(reason)
 	if reason == Skipped then return end
 	Skipped = reason
-	GarryNet.BroadcastStatus() -- open !gnet menus show it
+	GravNet.BroadcastStatus() -- open !gnet menus show it
 end
 
 -- Send the message to everyone, if the server has a store to advertise.
 local function Send()
 	if Checking or #player.GetHumans() == 0 then return end
-	if not GarryNet.Storage.IsLinked() or not GarryNet.HTTP.IsConfigured() then
-		SetSkipped("this server isn't linked to GarryNet.")
+	if not GravNet.Storage.IsLinked() or not GravNet.HTTP.IsConfigured() then
+		SetSkipped("this server isn't linked to GravNet.")
 		return
 	end
 
 	Checking = true
-	GarryNet.HTTP.ServerRequest("GET", "/store", nil, function(ok, status, data, err, current)
+	GravNet.HTTP.ServerRequest("GET", "/store", nil, function(ok, status, data, err, current)
 		Checking = false
-		if current and status == 401 then GarryNet.Link.OnOutOfSync() end
+		if current and status == 401 then GravNet.Link.OnOutOfSync() end
 		if not ok or not current or not istable(data) then
-			SetSkipped("GarryNet couldn't be reached (" .. (err or "unexpected response") .. ").")
+			SetSkipped("GravNet couldn't be reached (" .. (err or "unexpected response") .. ").")
 			return
 		end
 		if not istable(data.store) then
-			SetSkipped("this server has no store, or it's disabled, on GarryNet.")
+			SetSkipped("this server has no store, or it's disabled, on GravNet.")
 			return
 		end
 
-		GarryNet.NotifyAll(Settings.message)
+		GravNet.NotifyAll(Settings.message)
 		SetSkipped(nil)
 	end)
 end
@@ -88,7 +88,7 @@ local function Load()
 	local data = util.JSONToTable(raw)
 	local settings = istable(data) and Validate(data.enabled, data.minutes, data.message)
 	if not settings then
-		GarryNet.Util.Warn("Ignoring unreadable " .. FILE)
+		GravNet.Util.Warn("Ignoring unreadable " .. FILE)
 		return
 	end
 	Settings = settings
@@ -115,7 +115,7 @@ function M.Save(enabled, minutes, message)
 
 	local reschedule = settings.enabled ~= Settings.enabled or settings.minutes ~= Settings.minutes
 	Settings = settings
-	if not file.IsDir(GarryNet.Config.DataDir, "DATA") then file.CreateDir(GarryNet.Config.DataDir) end
+	if not file.IsDir(GravNet.Config.DataDir, "DATA") then file.CreateDir(GravNet.Config.DataDir) end
 	file.Write(FILE, util.TableToJSON(Settings))
 	if reschedule then
 		Skipped = nil

@@ -1,11 +1,11 @@
 # Legal Documents
 
-Part of [GarryNet Design](README.md).
+Part of [GravNet Design](README.md).
 
-GarryNet logs users in with Steam, stores player data and takes payments, so every deployment needs terms of service, a privacy policy and a refund policy. Each community writes its own. GarryNet ships templates to start from.
+GravNet logs users in with Steam, stores player data and takes payments, so every deployment needs terms of service, a privacy policy and a refund policy. Each community writes its own. GravNet ships templates to start from.
 
 > [!IMPORTANT]
-> The templates are a starting point, not legal advice. They describe what GarryNet itself stores. They don't cover anything you add (analytics, other addons, a Discord bot) or the laws that apply to you and your players.
+> The templates are a starting point, not legal advice. They describe what GravNet itself stores. They don't cover anything you add (analytics, other addons, a Discord bot) or the laws that apply to you and your players.
 
 ## Documents
 

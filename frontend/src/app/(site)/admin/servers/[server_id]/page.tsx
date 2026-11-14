@@ -88,7 +88,7 @@ async function ServerSettings({ id }: { id: string }) {
           Loading screen
         </h2>
         <p className={styles.note}>
-          Add this to the server&apos;s <code>server.cfg</code> to use the GarryNet{" "}
+          Add this to the server&apos;s <code>server.cfg</code> to use the GravNet{" "}
           <Link href="/admin/loading-screen">loading screen</Link>.
         </p>
         <pre className={styles.code}>

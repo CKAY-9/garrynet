@@ -1,4 +1,4 @@
-> **This is GarryNet's default template.** Replace the text in [square brackets], remove anything that doesn't apply to your community, and delete this note. It is a starting point, not legal advice. Check what the law where you and your players live requires.
+> **This is GravNet's default template.** Replace the text in [square brackets], remove anything that doesn't apply to your community, and delete this note. It is a starting point, not legal advice. Check what the law where you and your players live requires.
 
 These terms apply to this website and the game servers run by [Community Name] ("we", "us"). By logging in, posting, playing on our servers or buying something, you agree to them.
 

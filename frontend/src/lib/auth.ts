@@ -9,7 +9,7 @@ import { hasPermission } from "./permissions";
 import type { CurrentUser } from "./types";
 
 /** httpOnly cookie the backend sets after Steam login. Must match `AUTH_COOKIE` in the backend. */
-export const AUTH_COOKIE = "garrynet_token";
+export const AUTH_COOKIE = "gravnet_token";
 
 /**
  * The user's JWT, read from the request cookies. Server-only: the cookie is httpOnly, so

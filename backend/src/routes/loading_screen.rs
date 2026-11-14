@@ -65,16 +65,16 @@ struct LoadingScreen {
 #[derive(Serialize)]
 struct Player {
     steam_id: String,
-    /// GarryNet username, else the in-game name, else the Steam name.
+    /// GravNet username, else the in-game name, else the Steam name.
     name: String,
     avatar_url: Option<String>,
-    /// GarryNet user id, if the player has an account.
+    /// GravNet user id, if the player has an account.
     user_id: Option<i64>,
     /// The player's record on this server; `None` on their first visit.
     record: Option<UserPlayer>,
 }
 
-/// How long the loading screen waits on Steam for a player without a GarryNet account.
+/// How long the loading screen waits on Steam for a player without a GravNet account.
 const STEAM_LOOKUP_TIMEOUT: Duration = Duration::from_secs(3);
 
 /// Data for a server's loading screen, for the player with `?steam_id=`. Public: the
@@ -124,7 +124,7 @@ async fn find_player(
         });
     }
 
-    // No GarryNet account, so ask Steam for their name and avatar. The loading screen
+    // No GravNet account, so ask Steam for their name and avatar. The loading screen
     // still works without them, so a slow or failing Steam (or a spent lookup budget, see
     // `SteamProfiles`) only costs the avatar.
     let summary = steam_profile(state, &steam_id).await;

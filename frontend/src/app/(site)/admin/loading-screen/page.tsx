@@ -42,7 +42,7 @@ async function LoadingScreenSettings() {
           Server setup
         </h2>
         <p className={styles.note}>
-          Pick a server to fill in its GarryNet id, then add the line to that server&apos;s <code>server.cfg</code>
+          Pick a server to fill in its GravNet id, then add the line to that server&apos;s <code>server.cfg</code>
           (each server&apos;s page under <Link href="/admin/servers">Servers</Link> shows its own line too).
           Garry&apos;s Mod fills in the player&apos;s SteamID (<code>%s</code>) and the map (<code>%m</code>).
         </p>

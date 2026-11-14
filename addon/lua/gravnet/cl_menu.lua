@@ -3,11 +3,11 @@
 -- Not linked: text box for the server access key (+ "Link" button).
 -- Linked:     link details, last sync, and buttons for "Sync now" and "Unlink".
 
-GarryNet.Menu = GarryNet.Menu or {}
+GravNet.Menu = GravNet.Menu or {}
 
-local UI = GarryNet.UI
+local UI = GravNet.UI
 local Colors = UI.Colors
-GarryNet.Menu.Colors = Colors -- cl_net.lua's chat notices use these
+GravNet.Menu.Colors = Colors -- cl_net.lua's chat notices use these
 
 local WIDTH = 480
 local PAD = 24
@@ -24,7 +24,7 @@ local SaveWaitUntil = 0 -- RealTime() until which saved store chat message setti
 local SavePending = false -- the next store chat message settings from the server are what we saved
 
 local function IsBusy()
-	return GarryNet.ClientState.busy or RealTime() < PendingUntil
+	return GravNet.ClientState.busy or RealTime() < PendingUntil
 end
 
 -- Rows are laid out top to bottom; a row whose height is 0 is skipped.
@@ -112,11 +112,11 @@ local function ButtonRow(parent, buttons)
 end
 
 local function Header(parent)
-	AddRow(UI.Header(parent, "Server link", function() GarryNet.Menu.Close() end), 52, 16)
+	AddRow(UI.Header(parent, "Server link", function() GravNet.Menu.Close() end), 52, 16)
 end
 
 local function ResultBlock(parent)
-	local block = TextBlock(parent, "GarryNet.Small", Colors.Muted, "")
+	local block = TextBlock(parent, "GravNet.Small", Colors.Muted, "")
 	Refs.result = block
 	return block
 end
@@ -131,31 +131,31 @@ local function UpdateResult()
 end
 
 local function NotConfiguredWarning(parent)
-	local state = GarryNet.ClientState
+	local state = GravNet.ClientState
 	local text = ""
 	if not state.configured then
-		text = "garrynet_api_url is not set on this server. Add it to server.cfg before linking."
+		text = "gravnet_api_url is not set on this server. Add it to server.cfg before linking."
 	elseif state.insecure then
-		text = "garrynet_api_url doesn't use https://, so the access key and server token are sent unencrypted. "
-			.. "Use an https:// URL unless GarryNet is on a private network you fully trust."
+		text = "gravnet_api_url doesn't use https://, so the access key and server token are sent unencrypted. "
+			.. "Use an https:// URL unless GravNet is on a private network you fully trust."
 	end
-	TextBlock(parent, "GarryNet.Small", Colors.Warning, text)
+	TextBlock(parent, "GravNet.Small", Colors.Warning, text)
 end
 
 local function BuildUnlinked(card)
-	TextBlock(card, "GarryNet.Body", Colors.Text, "This server isn't linked to GarryNet.")
-	TextBlock(card, "GarryNet.Small", Colors.Muted,
+	TextBlock(card, "GravNet.Body", Colors.Text, "This server isn't linked to GravNet.")
+	TextBlock(card, "GravNet.Small", Colors.Muted,
 		"Register the server on the website (Admin > Servers), then paste the access key it gives you here. Keys only work once.")
 	NotConfiguredWarning(card)
 
-	local entry = UI.TextEntry(card, "GarryNet.Body", "gnet_...")
+	local entry = UI.TextEntry(card, "GravNet.Body", "gnet_...")
 	AddRow(entry, 38)
 	Refs.entry = entry
 
 	local function Submit()
 		if IsBusy() then return end
 		local key = string.Trim(entry:GetValue())
-		if not GarryNet.Util.IsValidAccessKeyFormat(key) then
+		if not GravNet.Util.IsValidAccessKeyFormat(key) then
 			Result = { success = false, message = "That isn't an access key. Keys look like gnet_ followed by 64 hex characters." }
 			UpdateResult()
 			return
@@ -163,7 +163,7 @@ local function BuildUnlinked(card)
 		PendingUntil = RealTime() + 20
 		Result = nil
 		UpdateResult()
-		GarryNet.SendLink(key)
+		GravNet.SendLink(key)
 	end
 	entry.OnEnter = Submit
 
@@ -207,12 +207,12 @@ end
 -- Repeating store chat messages: a switch, the interval, the message and Save. Nothing changes
 -- on the server until Save. Returns the view's update function.
 local function StoreMessagesForm(card)
-	local cfg = GarryNet.Config.StoreMessages
+	local cfg = GravNet.Config.StoreMessages
 
 	local title = vgui.Create("DPanel", card)
 	local switch = UI.Switch(title)
 	function title:Paint(w, h)
-		draw.SimpleText("Store chat messages", "GarryNet.Body", 0, h / 2, Colors.Text, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+		draw.SimpleText("Store chat messages", "GravNet.Body", 0, h / 2, Colors.Text, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
 		return true
 	end
 	function title:PerformLayout(w, h)
@@ -220,19 +220,19 @@ local function StoreMessagesForm(card)
 	end
 	AddRow(title, 24, 6)
 
-	TextBlock(card, "GarryNet.Small", Colors.Muted,
-		"Advertise the store to every player in chat. Only sent while this server has a store on GarryNet.")
+	TextBlock(card, "GravNet.Small", Colors.Muted,
+		"Advertise the store to every player in chat. Only sent while this server has a store on GravNet.")
 
 	local interval = vgui.Create("DPanel", card)
-	local minutes = UI.TextEntry(interval, "GarryNet.Body")
+	local minutes = UI.TextEntry(interval, "GravNet.Body")
 	minutes:SetNumeric(true)
 	function interval:Paint(w, h)
-		draw.SimpleText("Send every", "GarryNet.Small", 0, h / 2, Colors.Muted, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
-		draw.SimpleText("minutes", "GarryNet.Small", self.after_x or 0, h / 2, Colors.Muted, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+		draw.SimpleText("Send every", "GravNet.Small", 0, h / 2, Colors.Muted, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+		draw.SimpleText("minutes", "GravNet.Small", self.after_x or 0, h / 2, Colors.Muted, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
 		return true
 	end
 	function interval:PerformLayout(w, h)
-		surface.SetFont("GarryNet.Small")
+		surface.SetFont("GravNet.Small")
 		local label_w = surface.GetTextSize("Send every")
 		minutes:SetPos(label_w + 8, 0)
 		minutes:SetSize(64, h)
@@ -240,7 +240,7 @@ local function StoreMessagesForm(card)
 	end
 	AddRow(interval, 32)
 
-	local message = UI.TextEntry(card, "GarryNet.Small")
+	local message = UI.TextEntry(card, "GravNet.Small")
 	message:SetMultiline(true)
 	-- Stop typing at the limit (pasting can still go over; Save then explains).
 	function message:AllowInput()
@@ -248,12 +248,12 @@ local function StoreMessagesForm(card)
 	end
 	function message:PaintOver(w, h)
 		local count = utf8.len(self:GetValue()) or 0
-		draw.SimpleText(count .. "/" .. cfg.MaxLength, "GarryNet.Small", w - 6, h - 4,
+		draw.SimpleText(count .. "/" .. cfg.MaxLength, "GravNet.Small", w - 6, h - 4,
 			count > cfg.MaxLength and Colors.Error or Colors.Muted, TEXT_ALIGN_RIGHT, TEXT_ALIGN_BOTTOM)
 	end
 	AddRow(message, 64)
 
-	local info = TextBlock(card, "GarryNet.Small", Colors.Muted, "")
+	local info = TextBlock(card, "GravNet.Small", Colors.Muted, "")
 
 	-- The settings as last saved on the server, and the form's values.
 	local saved = nil
@@ -287,12 +287,12 @@ local function StoreMessagesForm(card)
 		SavePending = true
 		Result = nil
 		UpdateResult()
-		GarryNet.SendStoreMessages(c.enabled, c.minutes, c.message)
+		GravNet.SendStoreMessages(c.enabled, c.minutes, c.message)
 	end)
 	ButtonRow(card, { save })
 
 	return function()
-		local s = GarryNet.ClientState.store_messages
+		local s = GravNet.ClientState.store_messages
 		if not s then return end
 
 		if not saved then
@@ -327,14 +327,14 @@ local function StoreMessagesForm(card)
 end
 
 local function BuildLinked(card)
-	local linked_as = TextBlock(card, "GarryNet.Body", Colors.Text, "")
-	local sync = TextBlock(card, "GarryNet.Small", Colors.Muted, "")
+	local linked_as = TextBlock(card, "GravNet.Body", Colors.Text, "")
+	local sync = TextBlock(card, "GravNet.Small", Colors.Muted, "")
 	NotConfiguredWarning(card)
 
 	local sync_button = Button(card, "Sync now", Colors.Accent, function()
 		if IsBusy() then return end
 		PendingUntil = RealTime() + 20
-		GarryNet.SendForceSync()
+		GravNet.SendForceSync()
 	end)
 
 	local unlink = Button(card, "Unlink", Colors.Danger, function()
@@ -345,7 +345,7 @@ local function BuildLinked(card)
 		end
 		ConfirmUnlinkUntil = 0
 		PendingUntil = RealTime() + 20
-		GarryNet.SendUnlink()
+		GravNet.SendUnlink()
 	end)
 
 	ButtonRow(card, { sync_button, unlink })
@@ -359,7 +359,7 @@ local function BuildLinked(card)
 	return function()
 		update_messages()
 
-		local state = GarryNet.ClientState
+		local state = GravNet.ClientState
 		linked_as:SetContent(string.format("Linked as \"%s\" (#%d)", state.server_name or "", state.server_id or 0))
 
 		local last = state.last_sync
@@ -385,7 +385,7 @@ local function Build()
 
 	Card = UI.Card(Overlay)
 	Header(Card)
-	View = GarryNet.ClientState.linked and "linked" or "unlinked"
+	View = GravNet.ClientState.linked and "linked" or "unlinked"
 	Refs.update = View == "linked" and BuildLinked(Card) or BuildUnlinked(Card)
 	Refs.update()
 	UpdateResult()
@@ -400,38 +400,38 @@ local function Build()
 	end
 end
 
-function GarryNet.Menu.IsOpen()
+function GravNet.Menu.IsOpen()
 	return IsValid(Overlay)
 end
 
-function GarryNet.Menu.Close()
+function GravNet.Menu.Close()
 	if IsValid(Overlay) then Overlay:Remove() end
 	Overlay, Card, View = nil, nil, nil
 	Rows, Refs = {}, {}
 	Result = nil
 end
 
--- Build and show the menu for the current GarryNet.ClientState.
-function GarryNet.Menu.Open()
-	if GarryNet.Menu.IsOpen() then
-		GarryNet.Menu.Refresh()
+-- Build and show the menu for the current GravNet.ClientState.
+function GravNet.Menu.Open()
+	if GravNet.Menu.IsOpen() then
+		GravNet.Menu.Refresh()
 		return
 	end
 
-	-- One GarryNet menu at a time.
-	if GarryNet.StoreMenu then GarryNet.StoreMenu.Close() end
+	-- One GravNet menu at a time.
+	if GravNet.StoreMenu then GravNet.StoreMenu.Close() end
 
-	Overlay = UI.Overlay(GarryNet.Menu.Close)
+	Overlay = UI.Overlay(GravNet.Menu.Close)
 	Build()
 end
 
 -- Rebuild the content after a status change.
-function GarryNet.Menu.Refresh()
-	if not GarryNet.Menu.IsOpen() then return end
+function GravNet.Menu.Refresh()
+	if not GravNet.Menu.IsOpen() then return end
 	-- A status update means the server finished (or started) what we asked for.
-	if not GarryNet.ClientState.busy then PendingUntil = 0 end
+	if not GravNet.ClientState.busy then PendingUntil = 0 end
 
-	local view = GarryNet.ClientState.linked and "linked" or "unlinked"
+	local view = GravNet.ClientState.linked and "linked" or "unlinked"
 	if view ~= View then
 		Build()
 	elseif Refs.update then
@@ -440,7 +440,7 @@ function GarryNet.Menu.Refresh()
 end
 
 -- Show an action result (success/failure message) inside the menu.
-function GarryNet.Menu.ShowResult(success, message)
+function GravNet.Menu.ShowResult(success, message)
 	PendingUntil = 0
 	SaveWaitUntil = 0
 	if not success then SavePending = false end

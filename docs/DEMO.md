@@ -1,6 +1,6 @@
 # Demo Mode
 
-Part of [GarryNet Design](README.md).
+Part of [GravNet Design](README.md).
 
 A public demo lets anyone log in and try every feature without real payments, and without what they post piling up. Demo mode is turned on with `DEMO_MODE=true` in the backend's environment. `docker-compose.demo.yml` sets it, on top of the regular Docker deployment (see [Deploying](#deploying)).
 

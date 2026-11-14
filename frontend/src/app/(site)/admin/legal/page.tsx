@@ -33,7 +33,7 @@ async function LegalSettings() {
         Legal
       </h2>
       <p className={styles.note}>
-        Your terms, privacy policy and refund policy, linked from every page, the login button and the store. GarryNet
+        Your terms, privacy policy and refund policy, linked from every page, the login button and the store. GravNet
         fills them with templates to start from; they aren&apos;t legal advice.
       </p>
       {documents.length > 0 ? (

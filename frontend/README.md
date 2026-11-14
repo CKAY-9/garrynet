@@ -1,6 +1,6 @@
-# GarryNet Frontend
+# GravNet Frontend
 
-The GarryNet website and loading screen, built with [Next.js](https://nextjs.org) (App Router) and TypeScript. Deployment is covered in the [main README](../README.md); the design docs are in [docs/](../docs/README.md).
+The GravNet website and loading screen, built with [Next.js](https://nextjs.org) (App Router) and TypeScript. Deployment is covered in the [main README](../README.md); the design docs are in [docs/](../docs/README.md).
 
 ## Development
 
@@ -27,6 +27,6 @@ src/components/      UI components, one folder each, with their SCSS modules and
 src/lib/             backend API clients, shared types, permissions and helpers
 ```
 
-Pages fetch from the backend on the server through the client in `src/lib/backend.ts`. To act as the logged-in user, they read the httpOnly `garrynet_token` cookie and send it as a bearer token (`authHeaders()` in `src/lib/auth.ts`). Mutations go through server actions (`actions.ts` files) that call the backend the same way.
+Pages fetch from the backend on the server through the client in `src/lib/backend.ts`. To act as the logged-in user, they read the httpOnly `gravnet_token` cookie and send it as a bearer token (`authHeaders()` in `src/lib/auth.ts`). Mutations go through server actions (`actions.ts` files) that call the backend the same way.
 
 This Next.js version has breaking changes from older releases. Before relying on an API, check the docs bundled in `node_modules/next/dist/docs/` (see [AGENTS.md](./AGENTS.md)).

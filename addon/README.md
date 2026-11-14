@@ -1,16 +1,16 @@
-# GarryNet Addon
+# GravNet Addon
 
-Garry's Mod addon that connects a server to a GarryNet deployment. See [docs/ADDON.md](../docs/ADDON.md),
+Garry's Mod addon that connects a server to a GravNet deployment. See [docs/ADDON.md](../docs/ADDON.md),
 [docs/SERVERS.md](../docs/SERVERS.md) and [docs/USER_STORIES.md](../docs/USER_STORIES.md) for the design.
 
 **Status:** linking, unlinking, the per-minute heartbeat (server details, player records, gamemode stats), store delivery and ban enforcement work. Pushing config changes from the website is not implemented yet.
 
 ## Install
 
-Copy or symlink this folder to `garrysmod/addons/garrynet`, then set the backend URL in `server.cfg`:
+Copy or symlink this folder to `garrysmod/addons/gravnet`, then set the backend URL in `server.cfg`:
 
 ```
-garrynet_api_url "https://api.example.com"
+gravnet_api_url "https://api.example.com"
 ```
 
 This is the backend's public URL (its `BACKEND_URL`). If the backend is on the same machine or a private network, start the
@@ -18,12 +18,12 @@ server with `-allowlocalhttp`, since Garry's Mod blocks HTTP to local addresses 
 
 To link, register the server on the website (Admin > Servers), then a superadmin runs `!gnet` in chat and pastes the access key.
 Superadmins get a chat notice once it's linked and once the first heartbeat is accepted; the website then shows the server as
-Online. From the server console: `garrynet_link <key>`, `garrynet_status`, `garrynet_sync`, `garrynet_unlink`.
+Online. From the server console: `gravnet_link <key>`, `gravnet_status`, `gravnet_sync`, `gravnet_unlink`.
 
 ## Gamemode Stats
 
 Each heartbeat carries per-player stats for the running gamemode: DarkRP money and job, and Sandbox props spawned and tool uses.
-Other addons can register their own with `GarryNet.Stats.Register` and `GarryNet.Stats.Count`; see
+Other addons can register their own with `GravNet.Stats.Register` and `GravNet.Stats.Count`; see
 [docs/ADDON.md](../docs/ADDON.md#gamemode-stats).
 
 ## Store
@@ -40,29 +40,29 @@ player joins, and buyers get a chat notice. Players who are offline get their pu
 - A short sound plays for the buyer on delivery (`Store.RewardSound` in `sh_config.lua`, `""` to disable).
 - **Refunds** take usergroups and weapons back; money stays.
 
-Other admin mods can plug in with `GarryNet.Rewards.SetUsergroupAdapter` (see `sv_store_rewards.lua`). Console:
-`garrynet_store_sync` delivers now, `garrynet_store_grants <SteamID64>` lists a player's store usergroups and weapons.
-State is kept in `garrysmod/data/garrynet/store_grants.json` and `store_pending.json`; don't delete them while purchases
+Other admin mods can plug in with `GravNet.Rewards.SetUsergroupAdapter` (see `sv_store_rewards.lua`). Console:
+`gravnet_store_sync` delivers now, `gravnet_store_grants <SteamID64>` lists a player's store usergroups and weapons.
+State is kept in `garrysmod/data/gravnet/store_grants.json` and `store_pending.json`; don't delete them while purchases
 are being delivered.
 
 ## Bans
 
-When "Keep banned users off game servers" is on in the website's Admin > Community, players banned on GarryNet are refused
+When "Keep banned users off game servers" is on in the website's Admin > Community, players banned on GravNet are refused
 when they connect and kicked if they're playing, with the reason, the end of the ban and where to appeal. The ban list is
 fetched every minute, so a new ban takes up to a minute to apply. The last list is kept in
-`garrysmod/data/garrynet/bans.json` and still enforced while GarryNet is unreachable. Suspensions don't apply in-game. See
+`garrysmod/data/gravnet/bans.json` and still enforced while GravNet is unreachable. Suspensions don't apply in-game. See
 [docs/ADDON.md](../docs/ADDON.md#ban-enforcement).
 
 ## Layout
 
 ```
 addon.json
-lua/autorun/garrynet.lua    bootstrap: global table, ordered file loader (realm picked by prefix)
-lua/garrynet/
+lua/autorun/gravnet.lua    bootstrap: global table, ordered file loader (realm picked by prefix)
+lua/gravnet/
   sh_config.lua             constants, convar, net message names
   sh_util.lua               logging, access key format check
   sh_status.lua             link status sent to the menu (net read/write)
-  sv_storage.lua            persisted server id + JWT (garrysmod/data/garrynet/)
+  sv_storage.lua            persisted server id + JWT (garrysmod/data/gravnet/)
   sv_http.lua               HTTP wrapper for /gnet/server/... requests, JWT rotation
   sv_link.lua               link (access key -> JWT) and unlink
   sv_interval.lua           player sessions, per-minute heartbeat, force sync
@@ -71,12 +71,12 @@ lua/garrynet/
   sv_store.lua              store delivery: fetch the queue, apply, acknowledge
   sv_bans.lua               ban enforcement: fetch the ban list, refuse and kick banned players
   sv_net.lua                net handlers for the menu (superadmin-checked)
-  sv_commands.lua           !gnet chat command, garrynet_* console commands
+  sv_commands.lua           !gnet chat command, gravnet_* console commands
   cl_net.lua                client net handlers and senders
   cl_menu.lua               dark-blue blurred menu (not linked / linked views)
 ```
 
-Add new files to the `FILES` list in `lua/autorun/garrynet.lua`; the prefix (`sh_`, `sv_`, `cl_`) decides the realm.
+Add new files to the `FILES` list in `lua/autorun/gravnet.lua`; the prefix (`sh_`, `sv_`, `cl_`) decides the realm.
 
 ## Backend routes
 

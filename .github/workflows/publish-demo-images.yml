@@ -15,7 +15,7 @@ permissions:
 env:
   REGISTRY: ghcr.io
   # GHCR image names must be lowercase.
-  IMAGE_PREFIX: ghcr.io/ckay-9/garrynet
+  IMAGE_PREFIX: ghcr.io/ckay-9/gravnet
   DEMO_API_URL: https://api.gnet.ckay9.dev
 
 jobs:

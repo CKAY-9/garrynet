@@ -36,7 +36,7 @@ export function AccessKeyReveal({ accessKey }: { accessKey: string }) {
         </button>
       </div>
       <p className={styles.keyHint}>
-        On the server, run <code>!gnet</code> as a superadmin and paste the key to link it to GarryNet.
+        On the server, run <code>!gnet</code> as a superadmin and paste the key to link it to GravNet.
       </p>
     </div>
   );

@@ -1,6 +1,6 @@
 # Security Policy
 
-GarryNet handles logins, payments and game server credentials, so security reports are taken seriously.
+GravNet handles logins, payments and game server credentials, so security reports are taken seriously.
 
 ## Reporting a Vulnerability
 
@@ -16,7 +16,7 @@ You'll get a response as soon as possible. Please give a reasonable amount of ti
 
 ## Supported Versions
 
-GarryNet is in active development and has no versioned releases yet. Fixes go to the `main` branch, so keep your deployment up to date with it.
+GravNet is in active development and has no versioned releases yet. Fixes go to the `main` branch, so keep your deployment up to date with it.
 
 ## Scope
 

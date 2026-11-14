@@ -98,7 +98,7 @@ async function StoreAdmin() {
             Create a store
           </h2>
           <p className={styles.note}>
-            Each server can have one store. GarryNet prohibits gambling, loot boxes and other luck-based items; item
+            Each server can have one store. GravNet prohibits gambling, loot boxes and other luck-based items; item
             names and descriptions must not imply random rewards.
           </p>
           <CreateStoreForm servers={withoutStore.map(({ id, name }) => ({ id, name }))} />

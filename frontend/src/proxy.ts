@@ -9,7 +9,7 @@ import { Permission, hasPermission } from "@/lib/permissions";
  */
 
 /** Must match `AUTH_COOKIE` in `@/lib/auth` (not imported: that module is server-render only). */
-const AUTH_COOKIE = "garrynet_token";
+const AUTH_COOKIE = "gravnet_token";
 
 /** What banned users may still open: support, the notifications about it, and their receipts. */
 const ALLOWED = ["/support", "/notifications", "/store/purchases", "/store/checkout"];
@@ -62,7 +62,7 @@ export const config = {
       // an extension (public/ assets such as /logo.svg).
       source: "/((?!api/|_next/|loading-screen|.*\\.[^/]+$).*)",
       // Logged-out requests never need the check.
-      has: [{ type: "cookie", key: "garrynet_token" }],
+      has: [{ type: "cookie", key: "gravnet_token" }],
     },
   ],
 };

@@ -1,6 +1,6 @@
 //! A cache of Steam profiles for the public loading screen (`routes::loading_screen`),
 //! which anyone can call with any SteamID64. Without it, each call for a player without a
-//! GarryNet account would spend a Steam Web API request, so a script could burn through the
+//! GravNet account would spend a Steam Web API request, so a script could burn through the
 //! API key's daily quota (which login also needs). Profiles are cached, and fresh lookups are
 //! capped per minute across everyone; past the cap the loading screen goes without an
 //! avatar, as it does when Steam is slow.

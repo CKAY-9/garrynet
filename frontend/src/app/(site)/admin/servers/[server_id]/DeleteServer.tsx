@@ -24,7 +24,7 @@ export function DeleteServer({ server }: { server: Server }) {
   return (
     <div className={`${form.group} ${styles.dangerGroup}`}>
       <p className={styles.panelText}>
-        Deleting a server removes it and every player record GarryNet has for it. This can&apos;t be undone.
+        Deleting a server removes it and every player record GravNet has for it. This can&apos;t be undone.
       </p>
       <label className={form.field}>
         <span className={form.label}>

@@ -3,7 +3,7 @@ import { themeScript } from "@/lib/theme";
 import "./globals.scss";
 
 export const metadata: Metadata = {
-  title: "GarryNet",
+  title: "GravNet",
   description: "An all-in-one web solution for Garry's Mod communities.",
 };
 
