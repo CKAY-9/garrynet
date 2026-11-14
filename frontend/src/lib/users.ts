@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { connection } from "next/server";
 import axios from "axios";
 import { backend } from "./backend";
@@ -21,7 +22,7 @@ import type {
  * and staff. Request-time (status and last seen change constantly), so render anything
  * that uses this inside a `<Suspense>` boundary.
  */
-export async function getUserProfile(id: string): Promise<UserProfile | null> {
+export const getUserProfile = cache(async (id: string): Promise<UserProfile | null> => {
   if (!/^\d+$/.test(id)) return null;
 
   // Axios reads the clock, which prerendering forbids.
@@ -34,7 +35,7 @@ export async function getUserProfile(id: string): Promise<UserProfile | null> {
     if (axios.isAxiosError(err) && err.response?.status === 404) return null;
     throw err;
   }
-}
+});
 
 /**
  * The user's punishments, newest first. Staff (Admin Access and User Management) get the

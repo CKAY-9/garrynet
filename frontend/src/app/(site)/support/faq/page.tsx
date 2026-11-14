@@ -1,10 +1,15 @@
 import { Suspense } from "react";
+import type { Metadata } from "next";
 import Form from "next/form";
 import Link from "next/link";
 import { FaqGrid, SupportNav } from "@/components/Support";
 import { getFaqs, getSupportViewer, readFaqCategory, type SearchParams } from "@/lib/support";
 import { faqCategories, faqCategoryLabels } from "@/lib/supportEnums";
 import styles from "@/components/Support/Support.module.scss";
+
+export const metadata: Metadata = {
+  title: "FAQ",
+};
 
 export default function FaqListPage({ searchParams }: PageProps<"/support/faq">) {
   return (

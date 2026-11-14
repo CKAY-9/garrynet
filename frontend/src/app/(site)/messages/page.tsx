@@ -7,7 +7,7 @@ import { getChats } from "@/lib/messages";
 import styles from "./messages.module.scss";
 
 export const metadata: Metadata = {
-  title: "Messages · GarryNet",
+  title: "Messages",
 };
 
 export default function MessagesPage() {

@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { UsergroupChip } from "@/components/UsergroupChip";
@@ -11,6 +12,10 @@ import servers from "../../servers/servers.module.scss";
 import { DeleteUsergroup } from "./DeleteUsergroup";
 import { UsergroupEditor } from "./UsergroupEditor";
 import { UsergroupMembers } from "./UsergroupMembers";
+
+export const metadata: Metadata = {
+  title: "Usergroup",
+};
 
 export default function UsergroupPage({ params }: PageProps<"/admin/usergroups/[usergroup_id]">) {
   return (

@@ -6,6 +6,8 @@ import { Permission } from "@/lib/permissions";
 import { formatMoney } from "@/lib/storeEnums";
 import styles from "./admin.module.scss";
 
+// No title of its own: the admin layout's "Admin" is the dashboard's.
+
 export default function AdminDashboard() {
   return (
     // The permission check reads the session cookie, so it runs behind the boundary.

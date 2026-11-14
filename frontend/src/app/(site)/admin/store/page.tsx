@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import type { Metadata } from "next";
 import Link from "next/link";
 import { forbidden } from "next/navigation";
 import { Avatar } from "@/components/Avatar";
@@ -10,6 +11,10 @@ import { storeName } from "@/lib/storeEnums";
 import styles from "../admin.module.scss";
 import { CreateStoreForm } from "./CreateStoreForm";
 import list from "./store.module.scss";
+
+export const metadata: Metadata = {
+  title: "Store",
+};
 
 export default function StoreAdminPage() {
   return (

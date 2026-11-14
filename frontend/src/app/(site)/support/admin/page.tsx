@@ -1,8 +1,13 @@
 import { Suspense } from "react";
+import type { Metadata } from "next";
 import { SupportNav, TicketFilterForm, TicketRows } from "@/components/Support";
 import { requirePermission } from "@/lib/auth";
 import { SUPPORT_TEAM, getAllTickets, readTicketFilters, type SearchParams } from "@/lib/support";
 import styles from "@/components/Support/Support.module.scss";
+
+export const metadata: Metadata = {
+  title: "Support Tickets",
+};
 
 export default function SupportAdminPage({ searchParams }: PageProps<"/support/admin">) {
   return (

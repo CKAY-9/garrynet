@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import type { Metadata } from "next";
 import Link from "next/link";
 import { Avatar } from "@/components/Avatar";
 import { requirePermission } from "@/lib/auth";
@@ -9,6 +10,10 @@ import styles from "../admin.module.scss";
 import { RegisterServer } from "./RegisterServer";
 import { StatusBadge } from "./StatusBadge";
 import list from "./servers.module.scss";
+
+export const metadata: Metadata = {
+  title: "Servers",
+};
 
 export default function ServersPage() {
   return (

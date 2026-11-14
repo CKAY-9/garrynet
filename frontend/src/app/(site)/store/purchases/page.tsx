@@ -1,8 +1,13 @@
 import { Suspense } from "react";
+import type { Metadata } from "next";
 import { unauthorized } from "next/navigation";
 import { PurchaseRows, StoreNav } from "@/components/Store";
 import { firstParam, getMyPurchases, getStoreViewer, type SearchParams } from "@/lib/store";
 import styles from "@/components/Store/Store.module.scss";
+
+export const metadata: Metadata = {
+  title: "My Purchases",
+};
 
 export default function PurchasesPage({ searchParams }: PageProps<"/store/purchases">) {
   return (

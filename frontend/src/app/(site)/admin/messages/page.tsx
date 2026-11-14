@@ -1,10 +1,15 @@
 import { Suspense } from "react";
+import type { Metadata } from "next";
 import { requirePermission } from "@/lib/auth";
 import { READ_ANY_MESSAGES } from "@/lib/messageEnums";
 import styles from "../admin.module.scss";
 import { LoggedNotice } from "./LoggedNotice";
 import page from "./messages.module.scss";
 import { UserSearch } from "./UserSearch";
+
+export const metadata: Metadata = {
+  title: "Messages",
+};
 
 export default function AdminMessagesPage() {
   return (

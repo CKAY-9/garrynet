@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requirePermission } from "@/lib/auth";
@@ -13,6 +14,10 @@ import servers from "../servers.module.scss";
 import { AccessKeyPanel } from "./AccessKeyPanel";
 import { DeleteServer } from "./DeleteServer";
 import { ServerEditor } from "./ServerEditor";
+
+export const metadata: Metadata = {
+  title: "Server",
+};
 
 export default function ServerPage({ params }: PageProps<"/admin/servers/[server_id]">) {
   return (

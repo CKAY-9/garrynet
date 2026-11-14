@@ -1,7 +1,17 @@
 import { Suspense } from "react";
+import type { Metadata, ResolvingMetadata } from "next";
 import { notFound } from "next/navigation";
 import { ForumCategoryPage } from "@/components/Forum";
 import { getForumCategory, getForumTemplate, getForumViewer } from "@/lib/forum";
+import { pageMetadata } from "@/lib/pageMetadata";
+
+export async function generateMetadata(
+  { params }: PageProps<"/forum/[category_id]">,
+  parent: ResolvingMetadata,
+): Promise<Metadata> {
+  const data = await getForumCategory((await params).category_id).catch(() => null);
+  return data ? pageMetadata(parent, data.category.name, data.category.description) : {};
+}
 
 export default function CategoryPage({ params, searchParams }: PageProps<"/forum/[category_id]">) {
   return (

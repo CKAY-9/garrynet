@@ -1,7 +1,17 @@
 import { Suspense } from "react";
+import type { Metadata, ResolvingMetadata } from "next";
 import { notFound } from "next/navigation";
 import { FaqView } from "@/components/Support";
+import { pageMetadata } from "@/lib/pageMetadata";
 import { getFaq, getSupportViewer } from "@/lib/support";
+
+export async function generateMetadata(
+  { params }: PageProps<"/support/faq/[faq_id]">,
+  parent: ResolvingMetadata,
+): Promise<Metadata> {
+  const faq = await getFaq((await params).faq_id).catch(() => null);
+  return faq ? pageMetadata(parent, faq.title, faq.subject) : {};
+}
 
 export default function FaqPage({ params }: PageProps<"/support/faq/[faq_id]">) {
   return (

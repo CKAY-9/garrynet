@@ -7,7 +7,7 @@ import { SettingsForm } from "./SettingsForm";
 import styles from "./settings.module.scss";
 
 export const metadata: Metadata = {
-  title: "Settings · GarryNet",
+  title: "Settings",
 };
 
 export default function SettingsPage() {

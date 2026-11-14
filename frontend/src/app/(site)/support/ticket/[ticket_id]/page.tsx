@@ -1,7 +1,14 @@
 import { Suspense } from "react";
+import type { Metadata } from "next";
 import { notFound, unauthorized } from "next/navigation";
 import { TicketView } from "@/components/Support";
 import { getSupportViewer, getTicket } from "@/lib/support";
+
+/** Tickets are private, so the title is only the number. */
+export async function generateMetadata({ params }: PageProps<"/support/ticket/[ticket_id]">): Promise<Metadata> {
+  const { ticket_id } = await params;
+  return { title: /^\d+$/.test(ticket_id) ? `Ticket #${ticket_id}` : "Ticket" };
+}
 
 export default function TicketPage({ params }: PageProps<"/support/ticket/[ticket_id]">) {
   return (

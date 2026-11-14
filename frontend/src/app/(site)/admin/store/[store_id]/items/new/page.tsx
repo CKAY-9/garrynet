@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requirePermission } from "@/lib/auth";
@@ -8,6 +9,10 @@ import { storeName } from "@/lib/storeEnums";
 import styles from "../../../../admin.module.scss";
 import list from "../../../store.module.scss";
 import { ItemForm } from "../ItemForm";
+
+export const metadata: Metadata = {
+  title: "New Item",
+};
 
 export default function NewItemPage({ params }: PageProps<"/admin/store/[store_id]/items/new">) {
   return (

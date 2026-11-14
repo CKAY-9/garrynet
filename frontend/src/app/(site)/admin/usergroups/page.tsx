@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { Suspense, type CSSProperties } from "react";
 import Link from "next/link";
 import { UsergroupChip } from "@/components/UsergroupChip";
@@ -8,6 +9,10 @@ import { getAdminUsergroups } from "@/lib/users";
 import styles from "../admin.module.scss";
 import { CreateUsergroup } from "./CreateUsergroup";
 import list from "./usergroups.module.scss";
+
+export const metadata: Metadata = {
+  title: "Usergroups",
+};
 
 export default function UsergroupsPage() {
   return (

@@ -8,7 +8,7 @@ import { getThread, hasSentMessage } from "@/lib/messages";
 import styles from "../messages.module.scss";
 
 export const metadata: Metadata = {
-  title: "Messages · GarryNet",
+  title: "Messages",
 };
 
 export default function ChatPage({ params }: PageProps<"/messages/[user_id]">) {

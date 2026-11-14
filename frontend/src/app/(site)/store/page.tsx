@@ -1,8 +1,13 @@
 import { Suspense } from "react";
+import type { Metadata } from "next";
 import Link from "next/link";
 import { StoreGrid, StoreNav } from "@/components/Store";
 import { getStores, getStoreViewer } from "@/lib/store";
 import styles from "@/components/Store/Store.module.scss";
+
+export const metadata: Metadata = {
+  title: "Store",
+};
 
 export default function StorePage() {
   return (

@@ -1,9 +1,14 @@
 import { Suspense } from "react";
+import type { Metadata } from "next";
 import { UserCard, UserCardGridSkeleton, UserSearchForm, UserSearchFormSkeleton } from "@/components/UserSearch";
 import { getUsergroups, searchUsers, UserSearchError } from "@/lib/users";
 import type { LastActivity, UserSearchFilters, UserSort } from "@/lib/types";
 import cardStyles from "@/components/UserSearch/UserSearch.module.scss";
 import styles from "./search.module.scss";
+
+export const metadata: Metadata = {
+  title: "Users",
+};
 
 type SearchParams = PageProps<"/users/search">["searchParams"];
 

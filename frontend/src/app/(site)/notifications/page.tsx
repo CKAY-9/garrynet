@@ -1,9 +1,14 @@
 import { Suspense } from "react";
+import type { Metadata } from "next";
 import { unauthorized } from "next/navigation";
 import { NotificationFilterNav, NotificationList } from "@/components/Notifications";
 import { getCurrentUser } from "@/lib/auth";
 import { getNotifications, readNotificationFilters, type SearchParams } from "@/lib/notifications";
 import styles from "@/components/Notifications/Notifications.module.scss";
+
+export const metadata: Metadata = {
+  title: "Notifications",
+};
 
 export default function NotificationsPage({ searchParams }: PageProps<"/notifications">) {
   return (
