@@ -15,8 +15,10 @@ use sqlx::PgPool;
 use tokio::sync::mpsc;
 
 use crate::{
+    demo,
     models::{Permissions, Punishment, User, Usergroup, punishment::PunishmentKind},
     notify,
+    state::AppState,
 };
 
 const HELP: &str = "\
@@ -30,6 +32,7 @@ commands:
   user logout <USER>                        sign a user out everywhere (revokes their tokens)
   user unban <USER>                         lift a user's ban
   user unsuspend <USER>                     lift a user's suspension
+  demo reset                                clear what non-admins created now (DEMO_MODE only)
 
   <USER>  GarryNet user id, or 17-digit SteamID64
   <GROUP> usergroup id or name (case-insensitive; quote names with spaces)";
@@ -40,6 +43,8 @@ pub enum CommandError {
     Invalid(String),
     #[error("database error: {0}")]
     Database(#[from] sqlx::Error),
+    #[error("{0}")]
+    Demo(#[from] demo::ResetError),
 }
 
 fn invalid<T>(msg: impl Into<String>) -> Result<T, CommandError> {
@@ -48,7 +53,7 @@ fn invalid<T>(msg: impl Into<String>) -> Result<T, CommandError> {
 
 /// Reads commands from stdin for as long as the server runs. Does nothing once stdin is
 /// closed (e.g. when started by a service manager with no terminal attached).
-pub fn spawn(db: PgPool) {
+pub fn spawn(state: AppState) {
     let (tx, mut rx) = mpsc::unbounded_channel::<String>();
 
     // A plain thread rather than `tokio::io::stdin`: tokio's stdin read can't be cancelled
@@ -85,7 +90,7 @@ pub fn spawn(db: PgPool) {
                     continue;
                 }
             };
-            match execute(&db, &args).await {
+            match execute(&state.db, Some(&state), &args).await {
                 Ok(out) if out.is_empty() => {}
                 Ok(out) => println!("{out}"),
                 Err(e) => eprintln!("error: {e}"),
@@ -99,7 +104,8 @@ pub fn spawn(db: PgPool) {
 }
 
 /// Runs one command. Returns text to print (empty for commands whose result is logged).
-pub async fn execute(db: &PgPool, args: &[String]) -> Result<String, CommandError> {
+/// `state` is the server's, for commands that need more than the database.
+pub async fn execute(db: &PgPool, state: Option<&AppState>, args: &[String]) -> Result<String, CommandError> {
     let args: Vec<&str> = args.iter().map(String::as_str).collect();
     match args.as_slice() {
         [] | ["help" | "?" | "--help" | "-h"] => Ok(HELP.to_owned()),
@@ -126,6 +132,16 @@ pub async fn execute(db: &PgPool, args: &[String]) -> Result<String, CommandErro
         ["user", "unban", user] => user_lift(db, user, PunishmentKind::Ban).await,
         ["user", "unsuspend", user] => user_lift(db, user, PunishmentKind::Suspend).await,
         ["user", ..] => invalid("usage: user show <USER> | logout <USER> | unban <USER> | unsuspend <USER>"),
+
+        ["demo", "reset"] => {
+            let Some(state) = state else {
+                return invalid("demo reset needs the backend's full configuration");
+            };
+            let summary = demo::reset(state).await?;
+            log::info!("demo reset from the shell: {summary}");
+            Ok(String::new())
+        }
+        ["demo", ..] => invalid("usage: demo reset"),
 
         [cmd, ..] => invalid(format!("unknown command `{cmd}`; type `help` for commands")),
     }

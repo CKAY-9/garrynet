@@ -18,6 +18,7 @@ export function BuyButton({
   currency,
   eligibility,
   cancelled,
+  demo = false,
 }: {
   item: PricedItem;
   currency: string;
@@ -25,6 +26,8 @@ export function BuyButton({
   eligibility: Eligibility | null;
   /** The buyer just backed out of Checkout. */
   cancelled: boolean;
+  /** A demo deployment: Stripe is in test mode. */
+  demo?: boolean;
 }) {
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -67,6 +70,12 @@ export function BuyButton({
       )}
       {eligibility.can_buy && !cancelled && !error && (
         <p className={styles.hint}>You&apos;ll pay on Stripe&apos;s secure checkout page and come straight back.</p>
+      )}
+      {eligibility.can_buy && demo && (
+        <p className={styles.notice}>
+          Demo store: pay with the test card <strong>4242 4242 4242 4242</strong>, any future expiry date and any CVC.
+          Nothing is charged.
+        </p>
       )}
       {eligibility.can_buy && (
         <p className={styles.hint}>

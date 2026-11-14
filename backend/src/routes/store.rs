@@ -457,6 +457,12 @@ async fn webhook(state: web::Data<AppState>, req: HttpRequest, body: web::Bytes)
         .and_then(|v| v.to_str().ok())
         .ok_or_else(|| ApiError::BadRequest("missing Stripe-Signature header".to_owned()))?;
     let event = stripe.verify_webhook(&body, signature, Utc::now().timestamp())?;
+    // Startup refuses live keys in demo mode; this guards against a live-mode webhook
+    // endpoint pointed at the demo anyway. Acknowledged, so Stripe doesn't redeliver it.
+    if state.config.demo && event.livemode {
+        log::warn!("ignoring live-mode stripe event {} ({}): demo mode only handles test mode", event.id, event.kind);
+        return Ok(HttpResponse::Ok().json(serde_json::json!({ "received": true })));
+    }
     handle_event(&state, &event).await?;
     Ok(HttpResponse::Ok().json(serde_json::json!({ "received": true })))
 }

@@ -76,6 +76,9 @@ pub struct Event {
     pub id: String,
     #[serde(rename = "type")]
     pub kind: String,
+    /// Whether the event is from live mode (real money) rather than test mode.
+    #[serde(default)]
+    pub livemode: bool,
     pub data: EventData,
 }
 

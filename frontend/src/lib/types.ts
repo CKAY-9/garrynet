@@ -248,6 +248,13 @@ export type KeyFigure = {
 };
 
 /** The community this deployment serves, from `GET /community`. */
+/** `GET /demo`: whether this deployment is a demo (docs/DEMO.md). */
+export type DemoStatus = {
+  enabled: boolean;
+  /** When what non-admins created is next cleared; `null` unless `enabled`. */
+  next_reset: string | null;
+};
+
 export type Community = {
   id: number;
   name: string;

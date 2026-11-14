@@ -112,7 +112,7 @@ Both the browser and your Garry's Mod servers must be able to reach the backend,
 
     `DATABASE_URL` and `BIND_ADDR` are set by Compose, so you can leave them alone.
 3. **Configure the frontend.** Copy `frontend/.env.example` to `frontend/.env` and set `NEXT_PUBLIC_API_URL` to the backend's public URL (the same as `BACKEND_URL`). `API_URL` is set by Compose.
-4. **Set a database password.** Create a `.env` in the repository root:
+4. **Set a database password.** Copy `.env.example` to `.env` in the repository root and set:
     ```sh
     POSTGRES_PASSWORD=<a strong password>
     ```
@@ -129,6 +129,14 @@ Both the browser and your Garry's Mod servers must be able to reach the backend,
     Reload the page and the Admin section appears in the navigation.
 
 `NEXT_PUBLIC_API_URL` is baked into the frontend at build time, so re-run with `--build` after changing it. Uploaded files are kept in the `uploads` volume, and the database in `db-data`.
+
+### Demo
+
+To run a public demo, with Stripe in test mode and everything non-admins create cleared daily, use `docker-compose.demo.yml`. It adds Caddy for HTTPS. See [docs/DEMO.md](./docs/DEMO.md#deploying).
+
+```sh
+docker compose -f docker-compose.yml -f docker-compose.demo.yml up -d --build
+```
 
 ### Manual
 
@@ -200,6 +208,7 @@ backend usergroup remove <USER_ID or SteamID64> <GROUP>
 backend user show <USER_ID or SteamID64>
 backend user unban <USER_ID or SteamID64>
 backend user unsuspend <USER_ID or SteamID64>
+backend demo reset          # demo deployments only: clear what non-admins created
 backend help
 ```
 

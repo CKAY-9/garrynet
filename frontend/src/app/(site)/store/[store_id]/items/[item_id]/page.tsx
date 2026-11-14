@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Breadcrumbs, BuyButton, ItemDetails } from "@/components/Store";
+import { getDemo } from "@/lib/demo";
 import { firstParam, getItem, getStoreViewer, type SearchParams } from "@/lib/store";
 import { storeName } from "@/lib/storeEnums";
 import styles from "@/components/Store/Store.module.scss";
@@ -19,7 +20,12 @@ export default function StoreItemPage({ params, searchParams }: PageProps<"/stor
 
 /** /store/{id}/items/{id}: an item's description, rewards and the buy button. Public. */
 async function Item({ storeId, itemId, searchParams }: { storeId: string; itemId: string; searchParams: SearchParams }) {
-  const [viewer, page, params] = await Promise.all([getStoreViewer(), getItem(storeId, itemId), searchParams]);
+  const [viewer, page, params, demo] = await Promise.all([
+    getStoreViewer(),
+    getItem(storeId, itemId),
+    searchParams,
+    getDemo(),
+  ]);
   if (!page) notFound();
   const { store, server, item, buyer } = page;
   const name = storeName(store, server);
@@ -34,7 +40,9 @@ async function Item({ storeId, itemId, searchParams }: { storeId: string; itemId
         {item.short_description && <p>{item.short_description}</p>}
       </header>
       <ItemDetails item={item} currency={store.currency}>
-        <BuyButton item={item} currency={store.currency} eligibility={buyer} cancelled={firstParam(params, "cancelled") === "1"} />
+        <BuyButton item={item} currency={store.currency} eligibility={buyer} cancelled={firstParam(params, "cancelled") === "1"}
+          demo={demo.enabled}
+        />
       </ItemDetails>
     </div>
   );
