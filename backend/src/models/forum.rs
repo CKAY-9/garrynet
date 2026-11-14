@@ -192,6 +192,24 @@ macro_rules! post_columns {
     };
 }
 
+/// A user's vote on a post. Each like counts +1 toward the author's reputation, each
+/// dislike -1.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Vote {
+    Like,
+    Dislike,
+}
+
+impl Vote {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Like => "like",
+            Self::Dislike => "dislike",
+        }
+    }
+}
+
 /// Which of a user's writing [`ForumPost::by_author`] lists.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AuthoredKind {
@@ -525,6 +543,30 @@ impl ForumPost {
         ))
         .bind(self.id)
         .bind(content)
+        .fetch_one(db)
+        .await
+    }
+
+    /// Sets `user_id`'s vote on the post: a like, a dislike, or neither (`None`). Idempotent,
+    /// and a like replaces a dislike and vice versa. The author's reputation follows by
+    /// trigger (see the `forum_reputation` migration).
+    pub async fn vote(&self, db: &PgPool, user_id: i64, vote: Option<Vote>) -> sqlx::Result<Self> {
+        // `$3` is NULL for no vote, which matches neither branch, so the user is removed
+        // from both lists.
+        sqlx::query_as(concat!(
+            "UPDATE forum_posts
+                SET likes = CASE WHEN $3 = 'like' AND $2 = ANY(likes) THEN likes
+                                 WHEN $3 = 'like' THEN array_append(likes, $2)
+                                 ELSE array_remove(likes, $2) END,
+                    dislikes = CASE WHEN $3 = 'dislike' AND $2 = ANY(dislikes) THEN dislikes
+                                    WHEN $3 = 'dislike' THEN array_append(dislikes, $2)
+                                    ELSE array_remove(dislikes, $2) END
+              WHERE id = $1
+              RETURNING ", post_columns!()
+        ))
+        .bind(self.id)
+        .bind(user_id)
+        .bind(vote.map(Vote::as_str))
         .fetch_one(db)
         .await
     }
