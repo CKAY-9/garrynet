@@ -25,6 +25,13 @@ end
 -- the next heartbeat.
 local MAX_COUNTER = 1000000
 
+-- The backend refuses a heartbeat with more than 256 players or a body over 256 KiB. Sessions
+-- pile up while GarryNet is unreachable (disconnected players are kept until reported), so a
+-- heartbeat reports at most this much, online players first, and the rest wait for the next
+-- ones. Otherwise one oversized heartbeat would be refused every minute forever.
+local MAX_PLAYERS = 256
+local MAX_BODY_BYTES = 200 * 1024
+
 -- True while a heartbeat is in flight. Two at once would report the same playtime twice.
 local InFlight = false
 
@@ -102,9 +109,10 @@ local function GamemodeName()
 	return (GAMEMODE and GAMEMODE.Name) or engine.ActiveGamemode()
 end
 
--- Collect what the backend needs for a sync: the server's gamemode/map and its players.
--- Returns the JSON body and, per SteamID64, the whole minutes and the counters it reports (to
--- commit on success).
+-- Collect what the backend needs for a sync: the server's gamemode/map and its players, at most
+-- MAX_PLAYERS of them and about MAX_BODY_BYTES (online players first, then the sessions of those
+-- who left, oldest first). Returns the JSON body; per reported SteamID64, the whole minutes and
+-- the counters it reports (to commit on success); and how many sessions wait for a later sync.
 function GarryNet.Interval.BuildPayload()
 	local now = os.time()
 	for _, ply in ipairs(player.GetHumans()) do
@@ -115,31 +123,51 @@ function GarryNet.Interval.BuildPayload()
 		end
 	end
 
-	local players, reported = {}, {}
+	local entries = {}
 	for steam_id, session in pairs(Sessions) do
 		local minutes = math.floor(session.pending / 60)
 		local counters = {}
 		for key, count in pairs(session.counters) do
 			counters[key] = math.min(math.floor(count), MAX_COUNTER)
 		end
-		players[#players + 1] = {
+		entries[#entries + 1] = {
 			steam_id = steam_id,
-			name = session.name,
-			usergroup = session.usergroup,
-			connected_at = session.connected_at,
-			minutes = minutes,
-			-- Left out when empty: util.TableToJSON writes an empty table as [].
-			stats = next(session.stats) and session.stats or nil,
-			counters = next(counters) and counters or nil,
+			online = session.online == true,
+			connected_at = session.connected_at or 0,
+			player = {
+				steam_id = steam_id,
+				name = session.name,
+				usergroup = session.usergroup,
+				connected_at = session.connected_at,
+				minutes = minutes,
+				-- Left out when empty: util.TableToJSON writes an empty table as [].
+				stats = next(session.stats) and session.stats or nil,
+				counters = next(counters) and counters or nil,
+			},
+			report = { minutes = minutes, counters = counters },
 		}
-		reported[steam_id] = { minutes = minutes, counters = counters }
+	end
+	table.sort(entries, function(a, b)
+		if a.online ~= b.online then return a.online end
+		if a.connected_at ~= b.connected_at then return a.connected_at < b.connected_at end
+		return a.steam_id < b.steam_id
+	end)
+
+	local players, reported, bytes = {}, {}, 0
+	for _, entry in ipairs(entries) do
+		if #players >= MAX_PLAYERS then break end
+		local size = #util.TableToJSON(entry.player) + 1
+		if #players > 0 and bytes + size > MAX_BODY_BYTES then break end
+		players[#players + 1] = entry.player
+		reported[entry.steam_id] = entry.report
+		bytes = bytes + size
 	end
 
 	return {
 		gamemode = GamemodeName(),
 		map = game.GetMap(),
 		players = players,
-	}, reported
+	}, reported, #entries - #players
 end
 
 -- The heartbeat was accepted: subtract the reported playtime and counters, drop finished sessions.
@@ -179,7 +207,7 @@ function GarryNet.Interval.Run(callback)
 	end
 
 	InFlight = true
-	local payload, reported = GarryNet.Interval.BuildPayload()
+	local payload, reported, waiting = GarryNet.Interval.BuildPayload()
 
 	GarryNet.HTTP.ServerRequest("POST", "/heartbeat", payload, function(ok, status, data, err, current)
 		InFlight = false
@@ -198,6 +226,9 @@ function GarryNet.Interval.Run(callback)
 			end
 
 			local message = string.format("Synced %d player(s).", #payload.players)
+			if waiting > 0 then
+				message = message .. string.format(" %d more will be reported in the next syncs.", waiting)
+			end
 			Record(true, message)
 
 			if AwaitingFirst then

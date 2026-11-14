@@ -194,7 +194,7 @@ All under `/gnet/server`. Errors are `{ "error": "..." }`.
 player's `stats`: numbers, booleans, or strings (truncated to 128 characters). `counters` (optional) are whole numbers
 added to those keys (a stored value that isn't a number counts as 0), at most 1,000,000 per heartbeat. Stats not mentioned
 are kept. Keys must match `[a-z0-9_]{1,64}`, and up to 32 of each are taken; invalid entries are dropped rather than
-failing the heartbeat. A player's record is created on their first visit and linked to their GarryNet account if they have one. At most 256 players per heartbeat. Returns `{ "server": {...} }`, plus `"token"` when the JWT was rotated.
+failing the heartbeat. A player's record is created on their first visit and linked to their GarryNet account if they have one. At most 256 players per heartbeat (and a body of at most 256 KiB). The addon keeps the sessions of players who left until they've been reported, so after GarryNet has been unreachable it can have more; it then reports online players first and the rest in the following heartbeats, rather than sending one the backend would refuse every minute. Returns `{ "server": {...} }`, plus `"token"` when the JWT was rotated.
 
 **POST `/gnet/server/{SERVER_ID}/unlink`**: `Authorization: Bearer <JWT>`. Unlinks the server and revokes its token and any access key. Returns 204.
 
