@@ -1,12 +1,15 @@
-# GarryNet: Postgres + backend + frontend.
+# GarryNet: Postgres + backend + frontend, behind Caddy (HTTPS, security headers and a
+# per-IP rate limit; see Caddyfile).
 #
 # Each service reads its own `.env` (backend/.env, frontend/.env) when present.
 # The values below are overridden because they only make sense inside the
 # compose network. Everything else (BACKEND_URL, FRONTEND_URL, JWT_SECRET,
 # STEAM_API_KEY, ...) comes from the .env files.
 #
-# Optional: a root `.env` can set POSTGRES_USER / POSTGRES_PASSWORD / POSTGRES_DB
-# and the published ports BACKEND_PORT / FRONTEND_PORT.
+# The root `.env` must set SITE_DOMAIN and API_DOMAIN, and can set POSTGRES_USER /
+# POSTGRES_PASSWORD / POSTGRES_DB and the RATE_LIMIT_* settings (see .env.example).
+# Only Caddy publishes ports (80 and 443): the frontend and backend are reached through it,
+# so the rate limit can't be bypassed.
 
 services:
   db:
@@ -43,8 +46,6 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    ports:
-      - "${BACKEND_PORT:-8080}:8080"
 
   frontend:
     build: ./frontend
@@ -58,9 +59,31 @@ services:
       API_URL: http://backend:8080
     depends_on:
       - backend
+
+  caddy:
+    build: ./caddy
+    restart: unless-stopped
+    environment:
+      SITE_DOMAIN: ${SITE_DOMAIN:?set SITE_DOMAIN in .env (e.g. gnet.example.com)}
+      API_DOMAIN: ${API_DOMAIN:?set API_DOMAIN in .env (e.g. api.gnet.example.com)}
+      RATE_LIMIT_EVENTS: ${RATE_LIMIT_EVENTS:-600}
+      RATE_LIMIT_GNET_EVENTS: ${RATE_LIMIT_GNET_EVENTS:-1200}
+      RATE_LIMIT_WINDOW: ${RATE_LIMIT_WINDOW:-1m}
     ports:
-      - "${FRONTEND_PORT:-3000}:3000"
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Certificates: keep them, or every restart asks Let's Encrypt for new ones.
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - frontend
+      - backend
 
 volumes:
   db-data:
   uploads:
+  caddy-data:
+  caddy-config:

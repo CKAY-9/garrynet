@@ -14,3 +14,8 @@ services:
     image: ghcr.io/ckay-9/garrynet-frontend:demo
     build: !reset null
     pull_policy: always
+
+  caddy:
+    image: ghcr.io/ckay-9/garrynet-caddy:demo
+    build: !reset null
+    pull_policy: always

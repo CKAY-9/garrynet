@@ -1,42 +1,13 @@
-# Demo deployment (docs/DEMO.md): GarryNet behind Caddy with HTTPS, with demo mode on.
-# Stripe only takes test keys, and everything users without Admin Access create is cleared
-# daily at midnight UTC.
+# Demo deployment (docs/DEMO.md): GarryNet with demo mode on. Stripe only takes test keys,
+# and everything users without Admin Access create is cleared daily at midnight UTC.
 #
 #   docker compose -f docker-compose.yml -f docker-compose.demo.yml up -d --build
 #
-# Needs SITE_DOMAIN and API_DOMAIN in the root `.env` (see Caddyfile), and backend/.env and
-# frontend/.env set up for those domains. Run it from its own clone: the .env files and
-# ports 80/443 can't be shared with another deployment on the same machine.
+# Needs the same setup as docker-compose.yml (SITE_DOMAIN and API_DOMAIN in the root `.env`,
+# backend/.env and frontend/.env set up for those domains). Run it from its own clone: the
+# .env files and ports 80/443 can't be shared with another deployment on the same machine.
 
 services:
   backend:
     environment:
       DEMO_MODE: "true"
-    # Reached through Caddy only.
-    ports: !reset []
-
-  frontend:
-    ports: !reset []
-
-  caddy:
-    image: caddy:2-alpine
-    restart: unless-stopped
-    environment:
-      SITE_DOMAIN: ${SITE_DOMAIN:?set SITE_DOMAIN in .env (e.g. gnet.example.com)}
-      API_DOMAIN: ${API_DOMAIN:?set API_DOMAIN in .env (e.g. api.gnet.example.com)}
-    ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      # Certificates: keep them, or every restart asks Let's Encrypt for new ones.
-      - caddy-data:/data
-      - caddy-config:/config
-    depends_on:
-      - frontend
-      - backend
-
-volumes:
-  caddy-data:
-  caddy-config:
