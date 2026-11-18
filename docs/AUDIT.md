@@ -1,6 +1,8 @@
 # Security and Store Flow Audit
 
-A read-only review of the backend, done on 2026-11-18 at commit `00942b6`. Unlike the other documents here, this one is a snapshot: it isn't kept up to date with the code. Line references point at that commit.
+A read-only review of the backend, done on 2026-11-18 at commit `00942b6`. Line references in the findings point at that commit. Unlike the other documents here, the findings are a snapshot; only the **Status** of each is updated as they're dealt with.
+
+**Status as of commit `e00cb4e`:** 6 fixed (#1, #3, #4, #7, #9, #14), 2 accepted as not an issue (#2, #8), 11 open.
 
 **Scope:** the backend (`backend/`): auth, permissions, the Stripe store flow, uploads and storage, Markdown handling, the addon API (`/gnet/server/*`) and the deployment config (Caddy, Compose). The addon's reward delivery was checked as part of the store flow. The frontend was out of scope.
 
@@ -8,31 +10,33 @@ A read-only review of the backend, done on 2026-11-18 at commit `00942b6`. Unlik
 
 ## Summary
 
-| # | Area | Finding | Severity |
-|---|------|---------|----------|
-| 1 | Store | Refund/dispute events arriving before their receipt are dropped | High |
-| 2 | Store | DarkRP money isn't taken back on refund or chargeback | Medium |
-| 3 | Store | No way to redeliver after a dispute is won | Medium |
-| 4 | Store | Deleting a server drops paid, undelivered fulfillments | Medium |
-| 5 | Store | Refunds are recorded before Stripe confirms them | Low–Medium |
-| 6 | Store | Partial refunds from the Stripe dashboard are invisible | Low |
-| 7 | Store | Receipt list capped at 500, no pagination | Low |
-| 8 | Store | Reinstated purchases skip stock and per-user limits | Low |
-| 9 | Store | Stripe IDs aren't namespaced per deployment | Low |
-| 10 | Security | No upload quota; S3 staging uploads are unbounded | Medium |
-| 11 | Security | `COOKIE_DOMAIN` advice sends the login token to every subdomain | Medium |
-| 12 | Privacy | Loading screen exposes private users' player records | Medium |
-| 13 | Security | No HSTS header | Low–Medium |
-| 14 | Abuse | No app-level rate limit on forum and support posting | Low–Medium |
-| 15 | Abuse | Unbounded or expensive public reads | Low |
-| 16 | Permissions | Users of equal rank can ban each other | Low |
-| 17 | Permissions | Usergroup editors can restyle groups that outrank them | Low |
-| 18 | Privacy | S3 private attachments readable at the public URL | Low |
-| 19 | Deployment | Postgres password defaults to `gravnet` | Low |
+| # | Area | Finding | Severity | Status |
+|---|------|---------|----------|--------|
+| 1 | Store | Refund/dispute events arriving before their receipt are dropped | High | Fixed (`e00cb4e`) |
+| 2 | Store | DarkRP money isn't taken back on refund or chargeback | Medium | Accepted |
+| 3 | Store | No way to redeliver after a dispute is won | Medium | Fixed (`e00cb4e`) |
+| 4 | Store | Deleting a server drops paid, undelivered fulfillments | Medium | Fixed (`39d69b8`) |
+| 5 | Store | Refunds are recorded before Stripe confirms them | Low–Medium | Open |
+| 6 | Store | Partial refunds from the Stripe dashboard are invisible | Low | Open |
+| 7 | Store | Receipt list capped at 500, no pagination | Low | Fixed (`e00cb4e`) |
+| 8 | Store | Reinstated purchases skip stock and per-user limits | Low | Accepted |
+| 9 | Store | Stripe IDs aren't namespaced per deployment | Low | Fixed (`e00cb4e`) |
+| 10 | Security | No upload quota; S3 staging uploads are unbounded | Medium | Open |
+| 11 | Security | `COOKIE_DOMAIN` advice sends the login token to every subdomain | Medium | Open |
+| 12 | Privacy | Loading screen exposes private users' player records | Medium | Open |
+| 13 | Security | No HSTS header | Low–Medium | Open |
+| 14 | Abuse | No app-level rate limit on forum and support posting | Low–Medium | Fixed (`e00cb4e`) |
+| 15 | Abuse | Unbounded or expensive public reads | Low | Open |
+| 16 | Permissions | Users of equal rank can ban each other | Low | Open |
+| 17 | Permissions | Usergroup editors can restyle groups that outrank them | Low | Open |
+| 18 | Privacy | S3 private attachments readable at the public URL | Low | Open |
+| 19 | Deployment | Postgres password defaults to `gravnet` | Low | Open |
 
 ## Store Flow
 
 ### 1. Refund and dispute events that arrive before their receipt are dropped (High)
+
+**Status:** Fixed in `e00cb4e`. A refund or dispute for a payment that isn't recorded yet is kept in `store_early_settlements` (a refund outranking a dispute) and applied by `Purchase::mark_paid` when the payment is recorded; both take an advisory lock per PaymentIntent, so neither can miss the other. Unclaimed entries are swept after 30 days. See STORE.md, "Refunds and Disputes".
 
 **Where:** `settle` in [routes/store.rs:627-649](../backend/src/routes/store.rs#L627-L649).
 
@@ -42,6 +46,8 @@ When `charge.refunded` or `charge.dispute.created` names a payment intent with n
 
 ### 2. DarkRP money isn't taken back on refund or chargeback (Medium)
 
+**Status:** Accepted; not considered an issue. Documented in STORE.md ("Money rewards are not clawed back"). The fix for #3 accounts for it: reinstating a delivered purchase leaves the money out of the second delivery.
+
 **Where:** [sv_store_rewards.lua:22](../addon/lua/gravnet/sv_store_rewards.lua#L22), [:379-380](../addon/lua/gravnet/sv_store_rewards.lua#L379-L380).
 
 The addon records usergroup and weapon grants so a revocation can take them back, but `darkrp_money` is applied with `addMoney` and never recorded. A buyer can buy money, spend it, then dispute the charge and keep it.
@@ -50,6 +56,8 @@ The addon records usergroup and weapon grants so a revocation can take them back
 
 ### 3. No way to redeliver after a dispute is won (Medium)
 
+**Status:** Fixed in `e00cb4e`. `charge.dispute.closed` records the outcome on the receipt (`dispute_outcome`), and `POST /admin/store/receipts/{id}/reinstate` (Store Finance, with a button on `/admin/store/receipts`) moves a disputed receipt whose dispute was won (`won` or `warning_closed`) back to PAID and has the addon deliver its rewards again. Rewards that had been delivered come back without their DarkRP money (see #2). The buyer is notified.
+
 **Where:** `charge.dispute.closed` in [routes/store.rs:516-525](../backend/src/routes/store.rs#L516-L525); `Fulfillment::retry` in [models/store.rs:1247-1257](../backend/src/models/store.rs#L1247-L1257); `Receipt::set_status` in [models/store.rs:1153-1156](../backend/src/models/store.rs#L1153-L1156).
 
 A won dispute leaves the receipt DISPUTED and its fulfillment REVOKED, "until staff act". But staff have nothing to act with: `retry` only works on PAID receipts, and `set_status` never moves a receipt back to PAID. A buyer whose payment stood gets no way back to their rewards.
@@ -57,6 +65,8 @@ A won dispute leaves the receipt DISPUTED and its fulfillment REVOKED, "until st
 **Suggested fix:** an admin action (Store Finance) that moves a DISPUTED receipt back to PAID and creates or resets its fulfillment, or do this automatically on a won `charge.dispute.closed`.
 
 ### 4. Deleting a server drops paid, undelivered fulfillments (Medium)
+
+**Status:** Fixed in `39d69b8`. `DELETE /servers/{id}` returns 400 while paid purchases from the server's store are undelivered, checked again under a lock on the server's row as it's deleted. Store Finance can refund them all at once with `POST /admin/store/servers/{id}/undelivered/refund`, from the server's admin page, which also disables its delete button meanwhile. Unapplied revocations don't block deletion.
 
 **Where:** `delete_server` in [routes/servers.rs:95-109](../backend/src/routes/servers.rs#L95-L109); `store_fulfillments.server_id` in [create_store.sql:143](../backend/migrations/20261109000005_create_store.sql#L143).
 
@@ -82,6 +92,8 @@ Only full refunds (`refunded: true`) are acted on. A partial refund leaves the r
 
 ### 7. Receipt list capped at 500, no pagination (Low)
 
+**Status:** Fixed in `e00cb4e`. `GET /admin/store/receipts` takes `limit` (1 to 500, default 100) and `cursor`, and returns `{ items, next_cursor }`; the receipts page links to older pages and back.
+
 **Where:** `MAX_RECEIPTS` in [routes/store_admin.rs:68](../backend/src/routes/store_admin.rs#L68).
 
 Older receipts can only be reached through the buyer or store filters, so on a busy store they're hard to find and refund from the admin pages.
@@ -90,11 +102,15 @@ Older receipts can only be reached through the buyer or store filters, so on a b
 
 ### 8. Reinstated purchases skip stock and per-user limits (Low)
 
+**Status:** Accepted; not considered an issue. It needs a payment on a session GravNet had already cancelled, and the buyer has paid.
+
 **Where:** `Purchase::mark_paid` in [models/store.rs:981-989](../backend/src/models/store.rs#L981-L989).
 
 A cancelled purchase that turns out to have been paid is reinstated, taking its stock again but clamping at zero, and without rechecking `max_per_user`. Limited items can oversell. This is documented and rare (it needs a payment on a session GravNet had cancelled), but worth knowing.
 
 ### 9. Stripe IDs aren't namespaced per deployment (Low)
+
+**Status:** Fixed in `e00cb4e`. Checkout Sessions and their PaymentIntents carry `gravnet_deployment` (the backend's host and port, from `BACKEND_URL`) in their metadata, and idempotency keys are prefixed with it. Checkout events for another deployment's sessions are ignored, and `metadata.purchase_id` is only trusted on this deployment's sessions. Changing `BACKEND_URL`'s host renames the deployment; the stale-purchase sweeper still records checkouts opened before the change.
 
 **Where:** [stripe.rs:133-138](../backend/src/stripe.rs#L133-L138), [:156](../backend/src/stripe.rs#L156); [models/store.rs:951-957](../backend/src/models/store.rs#L951-L957).
 
@@ -137,6 +153,8 @@ Caddy redirects HTTP to HTTPS but doesn't send `Strict-Transport-Security` unles
 **Suggested fix:** add `?Strict-Transport-Security "max-age=31536000; includeSubDomains"` to `security_headers` (drop `includeSubDomains` if other subdomains may still serve HTTP).
 
 ### 14. No app-level rate limit on forum and support posting (Low–Medium)
+
+**Status:** Fixed in `e00cb4e`. Per user: 3 forum threads per 10 minutes and 6 forum posts per minute (threads' first posts included; users with Thread Management exempt), and 6 support messages per minute for ticket owners (new tickets' first messages included; the Support Team exempt). Over the limit is a 429 with `Retry-After`. Votes aren't limited: they're stored on the post without timestamps, and each user has one per post.
 
 **Where:** `create_thread`, `create_post` and `vote_post` in [routes/forum.rs:220](../backend/src/routes/forum.rs#L220), [:294](../backend/src/routes/forum.rs#L294), [:447](../backend/src/routes/forum.rs#L447); `create_message` in `routes/support.rs`.
 
