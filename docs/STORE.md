@@ -82,11 +82,20 @@ against the list, so an item saved before the change can't grant it. Public stor
 `grantable_usergroups` empty; only the admin routes show it.
 
 Deleting a server deletes its store, items, pending purchases and fulfillments. Receipts are kept
-(see below). Before that, the store is disabled and every pending checkout is closed (its Stripe
-session expired), so nobody can pay for a purchase that's about to be deleted. If one can't be
-closed, because it has been paid or has a delayed payment clearing, or Stripe can't be reached,
-nothing is deleted (400, or 502), the store is put back as it was, and the server can be deleted once
-the purchase has settled. Stores themselves are never deleted on their own; disable one instead.
+(see below). A server can't be deleted while paid purchases from its store haven't been delivered
+(fulfillments `PENDING` or `FAILED`, held ones included, whose receipt is `PAID`): deleting would
+drop them with nobody told. They have to be delivered by the addon or refunded first (400 until
+then, with nothing changed); users with `Store Finance` can refund them all at once (see
+[Refunds and Disputes](#refunds-and-disputes)). Revocations the addon hasn't applied yet don't
+block deletion: their receipts are already settled, and a server being deleted is usually gone.
+The check is repeated under a lock on the server's row as it's deleted, so a payment recorded at
+that moment is either counted or fails for want of its server (and is logged for staff to refund).
+
+Next the store is disabled and every pending checkout is closed (its Stripe session expired), so
+nobody can pay for a purchase that's about to be deleted. If one can't be closed, because it has
+been paid or has a delayed payment clearing, or Stripe can't be reached, nothing is deleted (400,
+or 502), the store is put back as it was, and the server can be deleted once the purchase has
+settled. Stores themselves are never deleted on their own; disable one instead.
 
 ## Store Discounts
 
@@ -296,6 +305,12 @@ status_changed_at?: utc timestamp
   granted usergroups and weapons on its next sync. Money rewards are not clawed back.
 - Refunds are issued by users with `Store Finance` from `/admin/store/receipts`, which refunds the
   payment through Stripe and revokes the fulfillment immediately.
+- Users with `Store Finance` can also refund every undelivered purchase of a server at once, from
+  the server's admin page, to settle them before deleting it. Each is refunded as above, oldest
+  first, and a purchase delivered while the run is underway is left alone. A purchase Stripe
+  refuses is reported and skipped; a Stripe outage stops the run. A run starts no new refund after
+  about 20 seconds (and handles at most 100), so a large store can take several; each reports how
+  many are left.
 - Refunded stock is not automatically returned to `remaining_stock`. A refund does take the purchase
   off `all_time_purchases`, and it no longer counts towards the buyer's `max_per_user`.
 - A payment already refunded from the Stripe dashboard is treated as refunded.
@@ -338,6 +353,8 @@ Everything is JSON; errors are `{ "error": "..." }`. "Manage" means Admin Access
 - GET `/admin/store/receipts?status=&store=&buyer=`: receipts, newest first (at most 500); blank filters are ignored
 - POST `/admin/store/receipts/{id}/refund`: full refund through Stripe; 400 unless the receipt is paid
 - POST `/admin/store/fulfillments/{id}/retry`: resets a failed fulfillment's attempts so the addon tries again; returns the receipt. 400 unless it's failed and its receipt is paid
+- GET `/admin/store/servers/{server_id}/undelivered`: `{ count, store_id }`, how many paid purchases from the server's store haven't been delivered (which blocks deleting the server). Server Management or Finance; 404 for an unknown server
+- POST `/admin/store/servers/{server_id}/undelivered/refund`: refunds them in full, oldest first; returns `{ refunded, failed: [{ receipt_id, error }], remaining }`, `remaining` being how many are still undelivered (the failed ones, and any left for another run). 503 Stripe not configured
 
 **Addon** (server JWT; see [ADDON.md](ADDON.md))
 

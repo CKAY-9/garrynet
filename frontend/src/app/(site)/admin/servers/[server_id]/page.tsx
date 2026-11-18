@@ -3,8 +3,9 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requirePermission } from "@/lib/auth";
-import { Permission } from "@/lib/permissions";
+import { hasPermission, Permission } from "@/lib/permissions";
 import { getServer, serverStatus } from "@/lib/servers";
+import { getUndelivered } from "@/lib/store";
 import { loadingUrlLine } from "@/lib/loadingUrl";
 import { siteOrigin } from "@/lib/site";
 import { dateFormat, fullFormat, timeAgo } from "@/lib/time";
@@ -14,6 +15,7 @@ import servers from "../servers.module.scss";
 import { AccessKeyPanel } from "./AccessKeyPanel";
 import { DeleteServer } from "./DeleteServer";
 import { ServerEditor } from "./ServerEditor";
+import { UndeliveredPurchases } from "./UndeliveredPurchases";
 
 export const metadata: Metadata = {
   title: "Server",
@@ -31,10 +33,10 @@ export default function ServerPage({ params }: PageProps<"/admin/servers/[server
 }
 
 async function ServerSettings({ id }: { id: string }) {
-  await requirePermission(Permission.AdminAccess | Permission.ServerManagement);
+  const user = await requirePermission(Permission.AdminAccess | Permission.ServerManagement);
   const server = await getServer(id);
   if (!server) notFound();
-  const origin = await siteOrigin();
+  const [origin, undelivered] = await Promise.all([siteOrigin(), getUndelivered(server.id)]);
 
   return (
     <>
@@ -100,7 +102,13 @@ async function ServerSettings({ id }: { id: string }) {
         <h2 id="danger-heading" className={styles.sectionTitle}>
           Danger zone
         </h2>
-        <DeleteServer server={server} />
+        <UndeliveredPurchases
+          serverId={server.id}
+          count={undelivered.count}
+          storeId={undelivered.store_id}
+          canRefund={hasPermission(user.permissions, Permission.AdminAccess | Permission.StoreFinance)}
+        />
+        <DeleteServer server={server} blocked={undelivered.count > 0} />
       </section>
     </>
   );

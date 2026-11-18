@@ -6,8 +6,11 @@ import form from "../../community/editor.module.scss";
 import { deleteServer } from "../actions";
 import styles from "../servers.module.scss";
 
-/** Deletes the server after the admin types its name. */
-export function DeleteServer({ server }: { server: Server }) {
+/**
+ * Deletes the server after the admin types its name. `blocked` while paid purchases from its
+ * store haven't been delivered (see `UndeliveredPurchases`); the backend refuses then too.
+ */
+export function DeleteServer({ server, blocked }: { server: Server; blocked: boolean }) {
   const [typed, setTyped] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -33,7 +36,7 @@ export function DeleteServer({ server }: { server: Server }) {
         <input className={form.input} value={typed} onChange={(e) => setTyped(e.target.value)} autoComplete="off" />
       </label>
       <div className={styles.inlineActions}>
-        <button type="button" className={styles.danger} onClick={onDelete} disabled={!matches || pending}>
+        <button type="button" className={styles.danger} onClick={onDelete} disabled={blocked || !matches || pending}>
           {pending ? "Deleting..." : "Delete server"}
         </button>
         {error && <p className={`${form.message} ${form.error}`} role="status">{error}</p>}

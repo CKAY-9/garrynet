@@ -2,6 +2,8 @@
 //! Store Management; a store's grantable usergroups need Elevated Control on top; receipts
 //! and refunds need Admin Access and Store Finance.
 
+use std::time::{Duration, Instant};
+
 use actix_web::{HttpResponse, delete, get, post, put, web};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -23,6 +25,7 @@ use crate::{
         validate::{bad, optional_url, required_text, text},
     },
     state::AppState,
+    stripe::Stripe,
 };
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
@@ -32,6 +35,8 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .service(list_receipts)
         .service(refund)
         .service(retry_fulfillment)
+        .service(undelivered)
+        .service(refund_undelivered)
         .service(get_store)
         .service(update_store)
         .service(set_grantable_usergroups)
@@ -370,6 +375,18 @@ async fn refund(
     if receipt.status != ReceiptStatus::Paid {
         return Err(bad(format!("receipt is already {}", format!("{:?}", receipt.status).to_lowercase())));
     }
+    refund_receipt(&state, stripe, &receipt, user.0.id).await?;
+    let updated = Receipt::find_by_id(&state.db, receipt.id)
+        .await?
+        .ok_or(ApiError::NotFound("receipt"))?;
+    Ok(HttpResponse::Ok().json(updated))
+}
+
+/// Refunds a paid receipt in full through Stripe, marks it refunded (revoking its
+/// fulfillment) and tells the buyer; `by` is the staff member. 400 for a receipt recorded
+/// without a payment. Stripe refunds are idempotent per receipt, so refunding one twice, even
+/// at the same moment, refunds it once.
+async fn refund_receipt(state: &AppState, stripe: &Stripe, receipt: &Receipt, by: i64) -> Result<(), ApiError> {
     // Sessions that needed no payment are recorded with a placeholder instead of a
     // PaymentIntent; there's nothing to refund through Stripe.
     if receipt.stripe_payment_intent_id.starts_with("session:") {
@@ -377,24 +394,135 @@ async fn refund(
     }
     // `None` if it was already refunded in full (e.g. from the Stripe dashboard, with the
     // webhook not yet arrived); the receipt is still marked refunded below.
-    let refund = stripe
+    let stripe_refund = stripe
         .refund(&receipt.stripe_payment_intent_id, &format!("refund-receipt-{}", receipt.id))
         .await?;
     // The `charge.refunded` webhook does the same later; it finds nothing left to change
     // (or, if it got here first, we don't), so the buyer is notified once.
     if let Some((refunded, _)) = Receipt::set_status(&state.db, receipt.id, ReceiptStatus::Refunded).await? {
-        notify::purchase_refunded(&state.db, &refunded, Some(user.0.id)).await;
+        notify::purchase_refunded(&state.db, &refunded, Some(by)).await;
     }
     log::info!(
-        "user {} refunded receipt {} ({} {}) for user {}: stripe refund {} ({})",
-        user.0.id, receipt.id, receipt.price, receipt.currency, receipt.buyer_id,
-        refund.as_ref().map_or("none", |r| r.id.as_str()),
-        refund.as_ref().and_then(|r| r.status.as_deref()).unwrap_or("already refunded")
+        "user {by} refunded receipt {} ({} {}) for user {}: stripe refund {} ({})",
+        receipt.id, receipt.price, receipt.currency, receipt.buyer_id,
+        stripe_refund.as_ref().map_or("none", |r| r.id.as_str()),
+        stripe_refund.as_ref().and_then(|r| r.status.as_deref()).unwrap_or("already refunded")
     );
-    let updated = Receipt::find_by_id(&state.db, receipt.id)
+    Ok(())
+}
+
+/// Paid purchases from a server's store that haven't been delivered yet.
+#[derive(Serialize)]
+struct Undelivered {
+    count: i64,
+    /// The server's store, if it has one (for linking to its receipts).
+    store_id: Option<i64>,
+}
+
+/// How many paid purchases from a server's store haven't been delivered, which keeps the
+/// server from being deleted. Requires Admin Access and Server Management or Store Finance.
+#[get("/admin/store/servers/{server_id}/undelivered")]
+async fn undelivered(state: web::Data<AppState>, user: AuthUser, server_id: web::Path<i64>) -> Result<HttpResponse, ApiError> {
+    let permissions = user.require(&state.db, Permissions::ADMIN_ACCESS).await?;
+    if !permissions.contains(Permissions::SERVER_MANAGEMENT) && !permissions.contains(Permissions::STORE_FINANCE) {
+        return Err(ApiError::Forbidden(format!(
+            "{} or {}",
+            Permissions::SERVER_MANAGEMENT.name(),
+            Permissions::STORE_FINANCE.name()
+        )));
+    }
+    let server_id = server_id.into_inner();
+    Server::find_by_id(&state.db, server_id)
         .await?
-        .ok_or(ApiError::NotFound("receipt"))?;
-    Ok(HttpResponse::Ok().json(updated))
+        .ok_or(ApiError::NotFound("server"))?;
+    let count = Receipt::count_undelivered(&mut *state.db.acquire().await?, server_id).await?;
+    let store = ItemStore::find_by_server(&state.db, server_id).await?;
+    Ok(HttpResponse::Ok().json(Undelivered { count, store_id: store.map(|s| s.id) }))
+}
+
+/// What a mass refund did.
+#[derive(Serialize)]
+struct MassRefund {
+    /// Receipts refunded by this request.
+    refunded: usize,
+    /// Receipts that couldn't be refunded, and why.
+    failed: Vec<RefundFailure>,
+    /// Paid purchases still undelivered afterwards: ones that failed, and any left for
+    /// another request.
+    remaining: i64,
+}
+
+#[derive(Serialize)]
+struct RefundFailure {
+    receipt_id: i64,
+    error: String,
+}
+
+/// At most this many receipts are refunded per request...
+const MASS_REFUND_MAX: i64 = 100;
+/// ...and no refund is started after this long, so the request stays well within the
+/// frontend's timeout. Each refund is a request to Stripe; the rest wait for the next run.
+const MASS_REFUND_BUDGET: Duration = Duration::from_secs(20);
+
+/// Refunds every paid purchase from a server's store that hasn't been delivered, oldest
+/// first, as `POST /admin/store/receipts/{id}/refund` would one by one: in full through
+/// Stripe, revoking each fulfillment and telling each buyer. For settling a server's
+/// purchases before it's deleted. Requires Admin Access and Store Finance.
+///
+/// A receipt Stripe refuses is reported and skipped; a Stripe outage stops the run. Large
+/// stores take several runs (see [`MASS_REFUND_BUDGET`]); `remaining` says how many are left.
+#[post("/admin/store/servers/{server_id}/undelivered/refund")]
+async fn refund_undelivered(
+    state: web::Data<AppState>,
+    user: AuthUser,
+    server_id: web::Path<i64>,
+) -> Result<HttpResponse, ApiError> {
+    user.require(&state.db, FINANCE).await?;
+    let stripe = state.stripe()?;
+    let server_id = server_id.into_inner();
+    Server::find_by_id(&state.db, server_id)
+        .await?
+        .ok_or(ApiError::NotFound("server"))?;
+
+    let started = Instant::now();
+    let mut refunded = 0;
+    let mut failed = Vec::new();
+    for receipt in Receipt::undelivered(&state.db, server_id, MASS_REFUND_MAX).await? {
+        if started.elapsed() >= MASS_REFUND_BUDGET {
+            break;
+        }
+        // Delivered (or refunded) since the list was read: leave it be.
+        if !Receipt::is_undelivered(&state.db, server_id, receipt.id).await? {
+            continue;
+        }
+        let error = match refund_receipt(&state, stripe, &receipt, user.0.id).await {
+            Ok(()) => {
+                refunded += 1;
+                continue;
+            }
+            // Stripe's own message, or ours; both are safe to show.
+            Err(ApiError::StripeRejected(message) | ApiError::BadRequest(message)) => message,
+            Err(ApiError::StripeUnavailable(e)) => {
+                log::warn!("mass refund of server {server_id} stopped at receipt {}: {e}", receipt.id);
+                failed.push(RefundFailure {
+                    receipt_id: receipt.id,
+                    error: "the payment provider couldn't be reached; try again later".to_owned(),
+                });
+                break;
+            }
+            Err(e) => return Err(e),
+        };
+        log::warn!("mass refund of server {server_id}: receipt {} not refunded: {error}", receipt.id);
+        failed.push(RefundFailure { receipt_id: receipt.id, error });
+    }
+
+    let remaining = Receipt::count_undelivered(&mut *state.db.acquire().await?, server_id).await?;
+    log::info!(
+        "user {} refunded {refunded} undelivered purchase(s) of server {server_id}; {} failed, {remaining} still undelivered",
+        user.0.id,
+        failed.len()
+    );
+    Ok(HttpResponse::Ok().json(MassRefund { refunded, failed, remaining }))
 }
 
 /// Offers a failed fulfillment to the server's addon again with a fresh set of attempts,

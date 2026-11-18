@@ -41,6 +41,7 @@ Requires: Server Management
 - The list shows each server's icon, accent color, gamemode, map, address and status.
 - Registering takes a name and description, then shows the access key once, with a copy button.
 - `/admin/servers/{id}` edits the details (name, description, icon, accent color, connection address, splash image), regenerates the access key (after confirming), shows the server's `sv_loadingurl` line and deletes the server (after typing its name).
+- While paid purchases from the server's store haven't been delivered, its danger zone says how many and the delete button is disabled. Users who also have Store Finance get a button to refund them all (after confirming) and a link to the store's receipts; the result lists any that couldn't be refunded.
 
 ## /admin/usergroups
 

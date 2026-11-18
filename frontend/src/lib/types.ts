@@ -717,6 +717,26 @@ export type ReceiptFilters = {
   buyer?: string;
 };
 
+/**
+ * Paid purchases from a server's store that haven't been delivered yet, from
+ * `GET /admin/store/servers/{id}/undelivered`. A server can't be deleted while it has any.
+ */
+export type UndeliveredPurchases = {
+  count: number;
+  /** The server's store, if it has one. */
+  store_id: number | null;
+};
+
+/** What `POST /admin/store/servers/{id}/undelivered/refund` did. */
+export type MassRefundResult = {
+  /** Receipts refunded by this run. */
+  refunded: number;
+  /** Receipts that couldn't be refunded, and why. */
+  failed: { receipt_id: number; error: string }[];
+  /** Paid purchases still undelivered: the failed ones, and any left for another run. */
+  remaining: number;
+};
+
 /** A store's management page, from `GET /admin/store/{id}`: every discount and unarchived item. */
 export type AdminStorePage = StoreWithServer & {
   discounts: StoreDiscount[];

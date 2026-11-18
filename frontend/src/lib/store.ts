@@ -6,7 +6,15 @@ import { authHeaders, getCurrentUser } from "./auth";
 import { backend } from "./backend";
 import { hasPermission, Permission } from "./permissions";
 import { receiptStatuses } from "./storeEnums";
-import type { AdminStorePage, ItemPage, ReceiptFilters, ReceiptView, StorePage, StoreWithServer } from "./types";
+import type {
+  AdminStorePage,
+  ItemPage,
+  ReceiptFilters,
+  ReceiptView,
+  StorePage,
+  StoreWithServer,
+  UndeliveredPurchases,
+} from "./types";
 
 /*
  * Store reads (docs/STORE.md). All request-time, so render anything that uses these inside
@@ -113,6 +121,18 @@ export async function getAdminStore(id: string): Promise<AdminStorePage | null> 
   if (!/^\d+$/.test(id)) return null;
   await connection();
   return getOr404(async () => backend.get<AdminStorePage>(`/admin/store/${id}`, { headers: await authHeaders() }));
+}
+
+/**
+ * How many paid purchases from server `serverId`'s store haven't been delivered, which keeps
+ * the server from being deleted. Requires Admin Access and Server Management or Store Finance.
+ */
+export async function getUndelivered(serverId: number): Promise<UndeliveredPurchases> {
+  await connection();
+  const { data } = await backend.get<UndeliveredPurchases>(`/admin/store/servers/${serverId}/undelivered`, {
+    headers: await authHeaders(),
+  });
+  return data;
 }
 
 /** Receipts matching the filters, newest first. Requires Admin Access and Store Finance. */

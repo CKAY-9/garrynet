@@ -1086,7 +1086,50 @@ macro_rules! select_receipt {
     };
 }
 
+/// Receipts of paid purchases whose rewards haven't been delivered: the fulfillment is
+/// waiting for the addon, or failed (including held deliveries and ones out of attempts).
+/// Revoked fulfillments don't count, since their receipt has been refunded or disputed.
+/// `$1` is the server's id. A server with any of these can't be deleted (see
+/// `Server::delete`).
+macro_rules! undelivered {
+    ($select:literal, $rest:literal) => {
+        concat!(
+            "SELECT ", $select, " FROM store_receipts r
+             JOIN store_fulfillments f ON f.receipt_id = r.id
+             WHERE f.server_id = $1 AND f.status IN ('PENDING', 'FAILED') AND r.status = 'PAID' ",
+            $rest
+        )
+    };
+}
+
 impl Receipt {
+    /// How many paid purchases server `server_id` still has to deliver (see `undelivered!`).
+    pub async fn count_undelivered(conn: &mut PgConnection, server_id: i64) -> sqlx::Result<i64> {
+        sqlx::query_scalar(undelivered!("count(*)", ""))
+            .bind(server_id)
+            .fetch_one(conn)
+            .await
+    }
+
+    /// The oldest `limit` receipts whose rewards server `server_id` hasn't delivered (see
+    /// `undelivered!`).
+    pub async fn undelivered(db: &PgPool, server_id: i64, limit: i64) -> sqlx::Result<Vec<Receipt>> {
+        sqlx::query_as(undelivered!("r.*", "ORDER BY r.purchased_at, r.id LIMIT $2"))
+            .bind(server_id)
+            .bind(limit)
+            .fetch_all(db)
+            .await
+    }
+
+    /// Whether receipt `id`, of server `server_id`, is still paid with its rewards undelivered.
+    pub async fn is_undelivered(db: &PgPool, server_id: i64, id: i64) -> sqlx::Result<bool> {
+        sqlx::query_scalar(undelivered!("count(*) > 0", "AND r.id = $2"))
+            .bind(server_id)
+            .bind(id)
+            .fetch_one(db)
+            .await
+    }
+
     pub async fn find_by_id(db: &PgPool, id: i64) -> sqlx::Result<Option<ReceiptView>> {
         sqlx::query_as(select_receipt!("WHERE r.id = $1"))
             .bind(id)
