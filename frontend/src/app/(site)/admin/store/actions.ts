@@ -135,6 +135,20 @@ export async function retryFulfillment(id: number): Promise<ActionResult<Receipt
   });
 }
 
+/**
+ * Moves a disputed receipt whose dispute was won back to paid, so the server's addon
+ * delivers its rewards again. Needs Store Finance.
+ */
+export async function reinstateReceipt(id: number): Promise<ActionResult<ReceiptView>> {
+  return runAction("reinstate the purchase", async () => {
+    const { data } = await backend.post<ReceiptView>(`/admin/store/receipts/${id}/reinstate`, null, {
+      headers: await authHeaders(),
+    });
+    refresh();
+    return data;
+  });
+}
+
 /** Refunds a receipt in full through Stripe and revokes its fulfillment. Needs Store Finance. */
 export async function refundReceipt(id: number): Promise<ActionResult<ReceiptView>> {
   return runAction(

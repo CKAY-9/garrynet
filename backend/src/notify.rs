@@ -209,6 +209,25 @@ pub async fn purchase_refunded(db: &PgPool, receipt: &Receipt, by: Option<i64>) 
     .await;
 }
 
+/// Staff (`by`) reinstated a purchase whose dispute was won, so its rewards are delivered
+/// again.
+pub async fn purchase_reinstated(db: &PgPool, receipt: &Receipt, by: i64) {
+    send(
+        db,
+        &[receipt.buyer_id],
+        Some(by),
+        NotificationType::Store,
+        "purchase_reinstated",
+        format!("Reinstated: {}", receipt.item_name),
+        format!(
+            "Your purchase of {} from {} was reinstated after its payment dispute closed. Its rewards will be delivered in-game again.",
+            receipt.item_name, receipt.store_name
+        ),
+        Some(PURCHASES_URL.to_owned()),
+    )
+    .await;
+}
+
 /// The server's addon delivered a purchase's rewards in-game.
 pub async fn fulfillment_delivered(db: &PgPool, fulfillment: &Fulfillment) {
     let Some(receipt) = receipt_of(db, fulfillment).await else { return };

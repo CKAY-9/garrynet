@@ -6,13 +6,21 @@ import { Avatar } from "@/components/Avatar";
 import { FulfillmentBadge, ReceiptStatusBadge, When } from "@/components/Store";
 import { requirePermission } from "@/lib/auth";
 import { Permission } from "@/lib/permissions";
-import { getAdminStores, getReceipts, readReceiptFilters, type SearchParams } from "@/lib/store";
+import {
+  firstParam,
+  getAdminStores,
+  getReceipts,
+  readReceiptFilters,
+  receiptParams,
+  type SearchParams,
+} from "@/lib/store";
 import { formatMoney, receiptStatuses, receiptStatusLabels, storeName } from "@/lib/storeEnums";
 import type { ReceiptFilters, StoreWithServer } from "@/lib/types";
 import styles from "../../admin.module.scss";
 import form from "../../community/editor.module.scss";
 import list from "../store.module.scss";
 import { RefundButton } from "./RefundButton";
+import { ReinstateButton } from "./ReinstateButton";
 import { RetryButton } from "./RetryButton";
 
 export const metadata: Metadata = {
@@ -28,11 +36,23 @@ export default function ReceiptsPage({ searchParams }: PageProps<"/admin/store/r
   );
 }
 
-/** /admin/store/receipts: every receipt, with refunds. Requires Store Finance. */
+/** How a disputed receipt's dispute stands, by Stripe's status for it once it closed. */
+const disputeOutcomes: Record<string, string> = {
+  won: "dispute won",
+  warning_closed: "inquiry closed",
+  lost: "dispute lost",
+};
+
+/** Dispute outcomes that let a disputed receipt be reinstated. Must match `DISPUTE_WON` in the backend. */
+const disputeWon = ["won", "warning_closed"];
+
+/** /admin/store/receipts: every receipt, a page at a time, with refunds. Requires Store Finance. */
 async function Receipts({ searchParams }: { searchParams: SearchParams }) {
   await requirePermission(Permission.AdminAccess | Permission.StoreFinance);
   const filters = await readReceiptFilters(searchParams);
-  const [receipts, stores] = await Promise.all([getReceipts(filters), getAdminStores()]);
+  const cursor = firstParam(await searchParams, "cursor");
+  const [page, stores] = await Promise.all([getReceipts(filters, cursor), getAdminStores()]);
+  const receipts = page.items;
   const filtered = Object.values(filters).some((v) => v?.trim());
   const totals = new Map<string, number>();
   for (const r of receipts) {
@@ -51,7 +71,8 @@ async function Receipts({ searchParams }: { searchParams: SearchParams }) {
           </h2>
           <span className={list.cardMeta}>
             {receipts.length} {receipts.length === 1 ? "receipt" : "receipts"}
-            {filtered ? " match" : " (latest 500)"}
+            {filtered && " match"}
+            {(cursor || page.next_cursor) && " on this page"}
             {totals.size > 0 &&
               ` · paid: ${[...totals].map(([currency, amount]) => formatMoney(amount, currency)).join(", ")}`}
           </span>
@@ -122,6 +143,11 @@ async function Receipts({ searchParams }: { searchParams: SearchParams }) {
                             <When iso={r.status_changed_at} />
                           </span>
                         )}
+                        {r.status === "DISPUTED" && (
+                          <span className={list.cellMeta}>
+                            {r.dispute_outcome ? (disputeOutcomes[r.dispute_outcome] ?? r.dispute_outcome) : "dispute open"}
+                          </span>
+                        )}
                       </span>
                     </td>
                     <td>
@@ -146,12 +172,25 @@ async function Receipts({ searchParams }: { searchParams: SearchParams }) {
                         )}
                       </span>
                     </td>
-                    <td>{r.status === "PAID" && <RefundButton receiptId={r.id} amount={formatMoney(r.price, r.currency)} />}</td>
+                    <td>
+                      {r.status === "PAID" && <RefundButton receiptId={r.id} amount={formatMoney(r.price, r.currency)} />}
+                      {r.status === "DISPUTED" && r.dispute_outcome && disputeWon.includes(r.dispute_outcome) && (
+                        <ReinstateButton receiptId={r.id} />
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+        )}
+        {(cursor || page.next_cursor) && (
+          <nav className={list.inlineActions} aria-label="Receipt pages">
+            {cursor && <Link href={`/admin/store/receipts?${receiptParams(filters)}`}>← Newest</Link>}
+            {page.next_cursor && (
+              <Link href={`/admin/store/receipts?${receiptParams(filters, page.next_cursor)}`}>Older receipts →</Link>
+            )}
+          </nav>
         )}
       </section>
     </>

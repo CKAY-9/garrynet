@@ -682,6 +682,11 @@ export type Receipt = {
   price: number;
   currency: string;
   status_changed_at: string | null;
+  /**
+   * How its dispute ended, once it has: Stripe's dispute status (`won`, `lost`, or
+   * `warning_closed` for an inquiry closed without a chargeback).
+   */
+  dispute_outcome: string | null;
 };
 
 /** Delivery of a receipt's rewards in-game, done by the server's addon. */
@@ -706,6 +711,12 @@ export type Fulfillment = {
 export type ReceiptView = Receipt & {
   buyer: UserRef;
   fulfillment: Fulfillment | null;
+};
+
+/** A page of `GET /admin/store/receipts`, newest first. `next_cursor` is `null` on the last page. */
+export type ReceiptPage = {
+  items: ReceiptView[];
+  next_cursor: string | null;
 };
 
 /** Filters for `GET /admin/store/receipts`. Blank values are ignored. */

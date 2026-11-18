@@ -101,4 +101,4 @@ Requires: Store Management or Store Finance (and Admin Access, like every admin 
 - Lists every store (enabled or not) with its server, currency, grantable usergroups and item count; creating one picks a server without a store.
 - `/admin/store/{id}`: the store's settings (name, currency, message, enabled), its grantable usergroups (editable with Elevated Control), its items and its store-wide discounts.
 - `/admin/store/{id}/items/new` and `/admin/store/{id}/items/{id}`: the item editor (details, pricing, stock, limits, rewards) and archiving.
-- `/admin/store/receipts`: every receipt with buyer, item, price, status and delivery, filterable by status, store and buyer, with full refunds. Requires Store Finance.
+- `/admin/store/receipts`: every receipt with buyer, item, price, status and delivery, 100 per page (newest first, with links to older pages and back), filterable by status, store and buyer, with full refunds. Disputed receipts show how their dispute stands (open, won, lost, or inquiry closed), and ones whose dispute was won can be reinstated (after a second click), delivering their rewards again. Requires Store Finance.

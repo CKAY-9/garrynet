@@ -15,14 +15,14 @@ use crate::{
     models::{
         Permissions, Server, Usergroup,
         store::{
-            Begin, CHECKOUT_TTL_MINUTES, ItemStore, MAX_PENDING_PER_BUYER, MarkPaid, PricedItem, Purchase, PurchaseStatus,
-            Receipt, ReceiptStatus, ReceiptView, StoreDiscount, StoreItem, StoreSummary,
+            Begin, CHECKOUT_TTL_MINUTES, DISPUTE_WON, ItemStore, MAX_PENDING_PER_BUYER, MarkPaid, PricedItem, Purchase,
+            PurchaseStatus, Receipt, ReceiptStatus, ReceiptView, Settle, StoreDiscount, StoreItem, StoreSummary,
             ungrantable_usergroup,
         },
     },
     notify,
     state::AppState,
-    stripe::{CheckoutParams, Event},
+    stripe::{CheckoutParams, DEPLOYMENT_METADATA, Event},
 };
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
@@ -467,12 +467,42 @@ async fn webhook(state: web::Data<AppState>, req: HttpRequest, body: web::Bytes)
     Ok(HttpResponse::Ok().json(serde_json::json!({ "received": true })))
 }
 
+/// Which deployment opened a Checkout Session, by the one named in its metadata (see
+/// `Config::deployment`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Opener {
+    Us,
+    /// Another deployment sharing the Stripe account.
+    Other,
+    /// No deployment named: another integration, or a session opened before sessions named
+    /// theirs. Found by its session id only.
+    Unnamed,
+}
+
+fn opener(session: &serde_json::Value, deployment: &str) -> Opener {
+    match session
+        .get("metadata")
+        .and_then(|m| m.get(DEPLOYMENT_METADATA))
+        .and_then(|v| v.as_str())
+    {
+        Some(d) if d == deployment => Opener::Us,
+        Some(_) => Opener::Other,
+        None => Opener::Unnamed,
+    }
+}
+
 async fn handle_event(state: &AppState, event: &Event) -> Result<(), ApiError> {
     let object = &event.data.object;
     let str_field = |key: &str| object.get(key).and_then(|v| v.as_str()).map(str::to_owned);
+    let session_opener = || opener(object, state.stripe.as_ref().map_or("", |s| s.deployment()));
     match event.kind.as_str() {
         "checkout.session.completed" | "checkout.session.async_payment_succeeded" => {
             let session = str_field("id").ok_or_else(|| ApiError::BadRequest("event has no session id".to_owned()))?;
+            let opener = session_opener();
+            if opener == Opener::Other {
+                log::debug!("ignoring checkout session {session} of another deployment ({})", event.id);
+                return Ok(());
+            }
             // With delayed payment methods the session completes before it's paid; the
             // `async_payment_succeeded` event follows once it is.
             let paid = matches!(str_field("payment_status").as_deref(), Some("paid" | "no_payment_required"));
@@ -482,13 +512,15 @@ async fn handle_event(state: &AppState, event: &Event) -> Result<(), ApiError> {
             }
             let payment_intent = str_field("payment_intent").unwrap_or_else(|| format!("session:{session}"));
             // Sessions are opened with the purchase id in their metadata (and as the client
-            // reference), which finds a purchase whose session id was never recorded.
+            // reference), which finds a purchase whose session id was never recorded. Only
+            // trusted on sessions we opened: other deployments' purchase ids overlap ours.
             let purchase_id = object
                 .get("metadata")
                 .and_then(|m| m.get("purchase_id"))
                 .and_then(|v| v.as_str())
                 .or_else(|| object.get("client_reference_id").and_then(|v| v.as_str()))
-                .and_then(|id| id.parse::<i64>().ok());
+                .and_then(|id| id.parse::<i64>().ok())
+                .filter(|_| opener == Opener::Us);
             // What Stripe charged before tax, to check against what the purchase recorded.
             let charged = object
                 .get("amount_subtotal")
@@ -498,6 +530,10 @@ async fn handle_event(state: &AppState, event: &Event) -> Result<(), ApiError> {
         }
         "checkout.session.expired" | "checkout.session.async_payment_failed" => {
             let session = str_field("id").ok_or_else(|| ApiError::BadRequest("event has no session id".to_owned()))?;
+            if session_opener() == Opener::Other {
+                log::debug!("ignoring checkout session {session} of another deployment ({})", event.id);
+                return Ok(());
+            }
             if let Some(purchase) = Purchase::find_by_session(&state.db, &session).await?
                 && let Some(cancelled) = Purchase::cancel(&state.db, purchase.id).await?
             {
@@ -514,14 +550,21 @@ async fn handle_event(state: &AppState, event: &Event) -> Result<(), ApiError> {
             settle(state, str_field("payment_intent"), ReceiptStatus::Disputed, &event.kind).await?;
         }
         // A disputed receipt stays DISPUTED and its rewards revoked even if the dispute is
-        // won: whether to deliver them again is left to staff.
-        "charge.dispute.closed" if str_field("status").as_deref() == Some("won") => {
-            log::warn!(
-                "dispute {} on payment {} was won; its receipt stays disputed and its rewards revoked until staff act ({})",
-                str_field("id").unwrap_or_default(),
-                str_field("payment_intent").unwrap_or_default(),
-                event.id
-            );
+        // won: whether to deliver them again is left to staff, who can reinstate it then
+        // (`routes::store_admin::reinstate`).
+        "charge.dispute.closed" => {
+            let (Some(payment_intent), Some(outcome)) = (str_field("payment_intent"), str_field("status")) else {
+                log::warn!("stripe {} event without a payment intent or status ({})", event.kind, event.id);
+                return Ok(());
+            };
+            match Receipt::record_dispute_outcome(&state.db, &payment_intent, &outcome).await? {
+                Some(receipt) if DISPUTE_WON.contains(&outcome.as_str()) => log::warn!(
+                    "dispute on receipt {} closed ({outcome}): it stays disputed and its rewards revoked until someone with Store Finance reinstates it ({})",
+                    receipt.id, event.id
+                ),
+                Some(receipt) => log::info!("dispute on receipt {} closed ({outcome}) ({})", receipt.id, event.id),
+                None => log::warn!("stripe {} for unknown payment intent {payment_intent} ({})", event.kind, event.id),
+            }
         }
         other => log::debug!("ignoring stripe event {} ({other})", event.id),
     }
@@ -556,7 +599,19 @@ async fn record_paid(
                     receipt.id, receipt.price, receipt.currency, fulfillment.id
                 );
             }
-            notify::purchase_paid(&state.db, &receipt).await;
+            // Stripe reported a refund or dispute before this payment (see
+            // `Receipt::settle_payment`), so the receipt was settled as it was written.
+            match receipt.status {
+                ReceiptStatus::Paid => notify::purchase_paid(&state.db, &receipt).await,
+                ReceiptStatus::Refunded => {
+                    log::info!("receipt {} was refunded before its payment was recorded; delivery {} is revoked ({source})", receipt.id, fulfillment.id);
+                    notify::purchase_refunded(&state.db, &receipt, None).await;
+                }
+                ReceiptStatus::Disputed => log::warn!(
+                    "receipt {} was disputed before its payment was recorded; delivery {} is revoked ({source})",
+                    receipt.id, fulfillment.id
+                ),
+            }
         }
         MarkPaid::AlreadyPaid => log::debug!("checkout session {session} already handled ({source})"),
         // Ours, but the purchase is gone (its server was deleted): the buyer paid for
@@ -623,27 +678,31 @@ pub async fn sweep_stale_purchases(state: &AppState, minutes: i64) -> Result<(us
     Ok((cancelled, paid))
 }
 
-/// Moves the receipt of `payment_intent` to `status`, revoking its fulfillment.
+/// Moves the receipt of `payment_intent` to `status`, revoking its fulfillment, or, if the
+/// payment isn't recorded yet, keeps the status for when it is.
 async fn settle(state: &AppState, payment_intent: Option<String>, status: ReceiptStatus, kind: &str) -> Result<(), ApiError> {
     let Some(payment_intent) = payment_intent else {
         log::warn!("stripe {kind} event without a payment intent");
         return Ok(());
     };
-    let Some(receipt) = Receipt::find_by_payment_intent(&state.db, &payment_intent).await? else {
-        log::warn!("stripe {kind} for unknown payment intent {payment_intent}");
-        return Ok(());
-    };
-    if let Some((receipt, fulfillment)) = Receipt::set_status(&state.db, receipt.id, status).await? {
-        log::info!(
-            "receipt {} is now {:?} ({kind}); fulfillment {} revoked",
-            receipt.id,
-            receipt.status,
-            fulfillment.map_or("none".to_owned(), |f| f.id.to_string())
-        );
-        // Disputes aren't a user notification; staff handle them from the admin pages.
-        if receipt.status == ReceiptStatus::Refunded {
-            notify::purchase_refunded(&state.db, &receipt, None).await;
+    match Receipt::settle_payment(&state.db, &payment_intent, status).await? {
+        Settle::Settled(receipt, fulfillment) => {
+            log::info!(
+                "receipt {} is now {:?} ({kind}); fulfillment {} revoked",
+                receipt.id,
+                receipt.status,
+                fulfillment.map_or("none".to_owned(), |f| f.id.to_string())
+            );
+            // Disputes aren't a user notification; staff handle them from the admin pages.
+            if receipt.status == ReceiptStatus::Refunded {
+                notify::purchase_refunded(&state.db, &receipt, None).await;
+            }
         }
+        Settle::Unchanged => log::debug!("stripe {kind} for payment intent {payment_intent} changes nothing"),
+        // Its own event may still be on its way (or failing and being retried).
+        Settle::Deferred => log::warn!(
+            "stripe {kind} for payment intent {payment_intent}, which isn't recorded (yet); it's applied if it is"
+        ),
     }
     Ok(())
 }
@@ -674,5 +733,16 @@ mod tests {
         assert!(!valid_cancel_token("another-secret-at-least-32-bytes-long", 42, &token));
         assert!(!valid_cancel_token(secret, 42, ""));
         assert!(!valid_cancel_token(secret, 42, "zz"));
+    }
+
+    #[test]
+    fn openers() {
+        let ours = serde_json::json!({ "metadata": { "gravnet_deployment": "api.example.com", "purchase_id": "7" } });
+        let theirs = serde_json::json!({ "metadata": { "gravnet_deployment": "staging.example.com" } });
+        let unnamed = serde_json::json!({ "metadata": { "purchase_id": "7" } });
+        assert_eq!(opener(&ours, "api.example.com"), Opener::Us);
+        assert_eq!(opener(&theirs, "api.example.com"), Opener::Other);
+        assert_eq!(opener(&unnamed, "api.example.com"), Opener::Unnamed);
+        assert_eq!(opener(&serde_json::json!({}), "api.example.com"), Opener::Unnamed);
     }
 }

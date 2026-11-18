@@ -529,6 +529,19 @@ impl MessageAudience {
 }
 
 impl SupportMessage {
+    /// How many support messages (including tickets' first messages) `author_id` wrote in
+    /// the past `seconds`, and when the oldest of them was, for the rate limit.
+    pub async fn recent_by(db: &PgPool, author_id: i64, seconds: f64) -> sqlx::Result<(i64, Option<DateTime<Utc>>)> {
+        sqlx::query_as(
+            "SELECT count(*), min(created_at) FROM support_messages
+             WHERE author_id = $1 AND created_at > now() - make_interval(secs => $2)",
+        )
+        .bind(author_id)
+        .bind(seconds)
+        .fetch_one(db)
+        .await
+    }
+
     pub async fn find_by_id(db: &PgPool, id: i64) -> sqlx::Result<Option<Self>> {
         sqlx::query_as(concat!(
             "SELECT ", message_columns!("m"), " FROM support_messages m WHERE m.id = $1"

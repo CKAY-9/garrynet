@@ -79,6 +79,24 @@ impl Config {
     pub fn steam_return_to(&self, state: &str) -> String {
         format!("{}/auth/steam/callback?state={state}", self.backend_url)
     }
+
+    /// Names this deployment to Stripe (docs/STORE.md): the backend's host, and port if it
+    /// has one. Deployments sharing a Stripe account (staging and production, say) get each
+    /// other's webhooks, and their purchase ids overlap.
+    pub fn deployment(&self) -> String {
+        deployment(&self.backend_url)
+    }
+}
+
+fn deployment(backend_url: &str) -> String {
+    match url::Url::parse(backend_url) {
+        Ok(url) => match (url.host_str(), url.port()) {
+            (Some(host), Some(port)) => format!("{host}:{port}"),
+            (Some(host), None) => host.to_owned(),
+            (None, _) => backend_url.to_owned(),
+        },
+        Err(_) => backend_url.to_owned(),
+    }
 }
 
 /// Whether item prices include tax (`inclusive`) or Stripe Tax adds it on top (`exclusive`).
@@ -226,5 +244,13 @@ mod tests {
         assert!(!is_test_key("sk_live_abc"));
         assert!(!is_test_key("rk_live_abc"));
         assert!(!is_test_key("sk_abc"));
+    }
+
+    #[test]
+    fn deployments() {
+        assert_eq!(deployment("https://api.example.com"), "api.example.com");
+        assert_eq!(deployment("https://API.example.com/"), "api.example.com");
+        assert_eq!(deployment("http://localhost:8080"), "localhost:8080");
+        assert_eq!(deployment("not a url"), "not a url");
     }
 }

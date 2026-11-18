@@ -394,6 +394,19 @@ impl ForumThread {
             .await
     }
 
+    /// How many threads `author_id` started in the past `seconds`, and when the oldest of
+    /// them was, for the rate limit.
+    pub async fn recent_by(db: &PgPool, author_id: i64, seconds: f64) -> sqlx::Result<(i64, Option<DateTime<Utc>>)> {
+        sqlx::query_as(
+            "SELECT count(*), min(created_at) FROM forum_threads
+             WHERE author_id = $1 AND created_at > now() - make_interval(secs => $2)",
+        )
+        .bind(author_id)
+        .bind(seconds)
+        .fetch_one(db)
+        .await
+    }
+
     /// Creates a thread and its first post together.
     #[allow(clippy::too_many_arguments)]
     pub async fn create(
@@ -527,6 +540,19 @@ pub struct ThreadChanges {
 }
 
 impl ForumPost {
+    /// How many posts (threads' first posts and replies) `author_id` wrote in the past
+    /// `seconds`, and when the oldest of them was, for the rate limit.
+    pub async fn recent_by(db: &PgPool, author_id: i64, seconds: f64) -> sqlx::Result<(i64, Option<DateTime<Utc>>)> {
+        sqlx::query_as(
+            "SELECT count(*), min(created_at) FROM forum_posts
+             WHERE author_id = $1 AND created_at > now() - make_interval(secs => $2)",
+        )
+        .bind(author_id)
+        .bind(seconds)
+        .fetch_one(db)
+        .await
+    }
+
     pub async fn find_by_id(db: &PgPool, id: i64) -> sqlx::Result<Option<Self>> {
         sqlx::query_as(concat!("SELECT ", post_columns!(), " FROM forum_posts WHERE id = $1"))
             .bind(id)

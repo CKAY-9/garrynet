@@ -13,9 +13,11 @@ use crate::{
     error::ApiError,
     models::{
         Permissions, Server,
+        cursor::{Cursor, Page},
         store::{
-            DiscountDetails, Fulfillment, ItemDetails, ItemStore, PricedItem, Receipt, ReceiptFilter, ReceiptStatus,
-            CURRENCIES, ReceiptView, Reward, StoreDetails, StoreDiscount, StoreItem, StoreSummary,
+            CURRENCIES, DISPUTE_WON, DiscountDetails, Fulfillment, FulfillmentStatus, ItemDetails, ItemStore, PricedItem,
+            Receipt, ReceiptFilter, ReceiptStatus, ReceiptView, Reward, StoreDetails, StoreDiscount, StoreItem,
+            StoreSummary,
         },
     },
     notify,
@@ -34,6 +36,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .service(create_store)
         .service(list_receipts)
         .service(refund)
+        .service(reinstate)
         .service(retry_fulfillment)
         .service(undelivered)
         .service(refund_undelivered)
@@ -70,6 +73,8 @@ const MAX_WEAPON_CLASS: usize = 128;
 const MAX_MONEY: i64 = 1_000_000_000_000;
 /// A granted usergroup may last at most ten years.
 const MAX_DURATION_SECONDS: i64 = 10 * 365 * 24 * 60 * 60;
+/// Receipts per page of the finance list.
+const DEFAULT_RECEIPTS: i64 = 100;
 const MAX_RECEIPTS: i64 = 500;
 
 /// Every store, enabled or not, with its server. Requires Admin Access and Store Management
@@ -343,9 +348,14 @@ struct ReceiptQuery {
     status: Option<String>,
     store: Option<String>,
     buyer: Option<String>,
+    /// 1 to [`MAX_RECEIPTS`]; [`DEFAULT_RECEIPTS`] by default.
+    limit: Option<String>,
+    /// The previous page's `next_cursor`.
+    cursor: Option<String>,
 }
 
-/// Receipts, newest first (at most 500). Requires Admin Access and Store Finance.
+/// Receipts matching the filters, newest first, a page at a time: `{ items, next_cursor }`.
+/// Requires Admin Access and Store Finance.
 #[get("/admin/store/receipts")]
 async fn list_receipts(
     state: web::Data<AppState>,
@@ -355,7 +365,53 @@ async fn list_receipts(
     user.require(&state.db, FINANCE).await?;
     let filter = parse_receipt_filter(query.into_inner())?;
     let receipts: Vec<ReceiptView> = Receipt::list(&state.db, &filter).await?;
-    Ok(HttpResponse::Ok().json(receipts))
+    let page = Page::new(receipts, filter.limit, |r| Cursor { created_at: r.receipt.purchased_at, id: r.receipt.id });
+    Ok(HttpResponse::Ok().json(page))
+}
+
+/// Moves a disputed receipt whose dispute was won back to paid and has the server's addon
+/// deliver its rewards again (see `Receipt::reinstate`). Requires Admin Access and Store
+/// Finance. 400 unless the receipt is disputed and its dispute won.
+#[post("/admin/store/receipts/{receipt_id}/reinstate")]
+async fn reinstate(
+    state: web::Data<AppState>,
+    user: AuthUser,
+    receipt_id: web::Path<i64>,
+) -> Result<HttpResponse, ApiError> {
+    user.require(&state.db, FINANCE).await?;
+    let id = receipt_id.into_inner();
+    let receipt = Receipt::find_by_id(&state.db, id)
+        .await?
+        .ok_or(ApiError::NotFound("receipt"))?
+        .receipt;
+    if receipt.status != ReceiptStatus::Disputed {
+        return Err(bad("only a disputed receipt can be reinstated".to_owned()));
+    }
+    if !receipt.dispute_outcome.as_deref().is_some_and(|o| DISPUTE_WON.contains(&o)) {
+        return Err(bad(match receipt.dispute_outcome.as_deref() {
+            None => "its dispute hasn't closed yet; it can be reinstated once the dispute is won".to_owned(),
+            Some(outcome) => format!("its dispute wasn't won ({outcome}), so the payment wasn't kept"),
+        }));
+    }
+    let (reinstated, fulfillment) = Receipt::reinstate(&state.db, id)
+        .await?
+        .ok_or_else(|| bad("this receipt has changed meanwhile; reload and try again".to_owned()))?;
+    log::info!(
+        "user {} reinstated disputed receipt {} for user {}; fulfillment {} is {}",
+        user.0.id,
+        reinstated.id,
+        reinstated.buyer_id,
+        fulfillment.as_ref().map_or("none".to_owned(), |f| f.id.to_string()),
+        fulfillment.as_ref().map_or("missing", |f| match f.status {
+            FulfillmentStatus::Fulfilled => "delivered already",
+            _ => "to be delivered again",
+        }),
+    );
+    notify::purchase_reinstated(&state.db, &reinstated, user.0.id).await;
+    let updated = Receipt::find_by_id(&state.db, id)
+        .await?
+        .ok_or(ApiError::NotFound("receipt"))?;
+    Ok(HttpResponse::Ok().json(updated))
 }
 
 /// Refunds a receipt in full through Stripe and revokes its fulfillment. Requires Admin
@@ -717,11 +773,19 @@ fn parse_receipt_filter(query: ReceiptQuery) -> Result<ReceiptFilter, ApiError> 
                 .map_err(|_| bad(format!("status must be one of paid, refunded, disputed, got {v:?}")))
         })
         .transpose()?;
+    let limit = id("limit", query.limit)?.unwrap_or(DEFAULT_RECEIPTS);
+    if !(1..=MAX_RECEIPTS).contains(&limit) {
+        return Err(bad(format!("limit must be between 1 and {MAX_RECEIPTS}")));
+    }
+    let after = present(query.cursor)
+        .map(|v| Cursor::parse(&v).ok_or_else(|| bad("cursor is not a next_cursor value".to_owned())))
+        .transpose()?;
     Ok(ReceiptFilter {
         status,
         store_id: id("store", query.store)?,
         buyer_id: id("buyer", query.buyer)?,
-        limit: MAX_RECEIPTS,
+        after,
+        limit,
     })
 }
 
@@ -834,12 +898,28 @@ mod tests {
         assert!(normalize_discount(DiscountBody { discount: 25, message: String::new(), starts_at: None, ends_at: Some(now) }).is_ok());
         assert!(normalize_discount(DiscountBody { discount: 200, message: String::new(), starts_at: None, ends_at: None }).is_err());
 
-        let f = parse_receipt_filter(ReceiptQuery { status: Some("refunded".into()), store: Some("3".into()), buyer: Some("".into()) }).unwrap();
+        let f = parse_receipt_filter(ReceiptQuery { status: Some("refunded".into()), store: Some("3".into()), buyer: Some("".into()), limit: None, cursor: None }).unwrap();
         assert_eq!(f.status, Some(ReceiptStatus::Refunded));
         assert_eq!(f.store_id, Some(3));
         assert_eq!(f.buyer_id, None);
-        assert!(parse_receipt_filter(ReceiptQuery { status: Some("pending".into()), store: None, buyer: None }).is_err());
-        assert!(parse_receipt_filter(ReceiptQuery { status: None, store: Some("x".into()), buyer: None }).is_err());
+        assert!(parse_receipt_filter(ReceiptQuery { status: Some("pending".into()), store: None, buyer: None, limit: None, cursor: None }).is_err());
+        assert!(parse_receipt_filter(ReceiptQuery { status: None, store: Some("x".into()), buyer: None, limit: None, cursor: None }).is_err());
+        let page = |limit: &str, cursor: &str| {
+            parse_receipt_filter(ReceiptQuery {
+                status: None,
+                store: None,
+                buyer: None,
+                limit: Some(limit.into()),
+                cursor: Some(cursor.into()),
+            })
+        };
+        let f = page("", "").unwrap();
+        assert_eq!((f.limit, f.after), (DEFAULT_RECEIPTS, None));
+        let f = page("50", "1794000000123456-42").unwrap();
+        assert_eq!((f.limit, f.after), (50, Cursor::parse("1794000000123456-42")));
+        assert!(page("0", "").is_err());
+        assert!(page(&(MAX_RECEIPTS + 1).to_string(), "").is_err());
+        assert!(page("", "nope").is_err());
         assert!(normalize_usergroups(vec!["vip".into(), " vip".into(), "donor".into()]).unwrap().len() == 2);
         assert!(normalize_usergroups(vec!["super admin".into()]).is_err());
     }

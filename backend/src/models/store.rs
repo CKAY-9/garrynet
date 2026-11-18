@@ -6,7 +6,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::{PgConnection, PgPool, Postgres, QueryBuilder, types::Json};
 
-use super::support::UserRef;
+use super::{cursor::Cursor, support::UserRef};
 
 /// What an item gives the buyer in-game.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -238,7 +238,13 @@ pub struct Receipt {
     pub price: i64,
     pub currency: String,
     pub status_changed_at: Option<DateTime<Utc>>,
+    /// How its dispute ended (Stripe's dispute status: `won`, `lost` or `warning_closed`),
+    /// once it has.
+    pub dispute_outcome: Option<String>,
 }
+
+/// Dispute outcomes that leave the merchant with the money (see [`Receipt::reinstate`]).
+pub const DISPUTE_WON: [&str; 2] = ["won", "warning_closed"];
 
 #[derive(Clone, Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Fulfillment {
@@ -294,7 +300,20 @@ pub struct ReceiptFilter {
     pub status: Option<ReceiptStatus>,
     pub store_id: Option<i64>,
     pub buyer_id: Option<i64>,
+    /// Only receipts before this one (by `purchased_at`, then id): the next page.
+    pub after: Option<Cursor>,
     pub limit: i64,
+}
+
+/// What became of a refund or dispute Stripe reported; see [`Receipt::settle_payment`].
+#[allow(clippy::large_enum_variant, reason = "returned once and matched at once")]
+pub enum Settle {
+    /// The receipt moved to the new status and its fulfillment was revoked.
+    Settled(Receipt, Option<Fulfillment>),
+    /// The receipt already has that status, or one it can't move from.
+    Unchanged,
+    /// No receipt has the payment yet; the status is applied once one does.
+    Deferred,
 }
 
 /// Revenue in one currency.
@@ -948,6 +967,9 @@ impl Purchase {
         charged: Option<(i64, &str)>,
     ) -> sqlx::Result<MarkPaid> {
         let mut tx = db.begin().await?;
+        // Taken by `Receipt::settle_payment` too, so a refund or dispute reported meanwhile is
+        // either recorded before the receipt is written (and applied below) or finds it.
+        lock_payment(&mut tx, payment_intent).await?;
         let before: Option<Purchase> = sqlx::query_as(
             "SELECT * FROM store_purchases
              WHERE stripe_checkout_session_id = $1
@@ -991,7 +1013,7 @@ impl Purchase {
             .bind(purchase.item_id)
             .execute(&mut *tx)
             .await?;
-        let receipt: Receipt = sqlx::query_as(
+        let mut receipt: Receipt = sqlx::query_as(
             "INSERT INTO store_receipts
                 (stripe_checkout_session_id, stripe_payment_intent_id, buyer_id, item_id, item_name,
                  store_id, server_id, store_name, quantity, list_price, discount_percentage, price,
@@ -1023,7 +1045,7 @@ impl Purchase {
             Some(_) => (FulfillmentStatus::Failed, MAX_ATTEMPTS),
             None => (FulfillmentStatus::Pending, 0),
         };
-        let fulfillment: Fulfillment = sqlx::query_as(
+        let mut fulfillment: Fulfillment = sqlx::query_as(
             "INSERT INTO store_fulfillments
                 (receipt_id, buyer_id, steam_id, item_id, server_id, rewards, status, attempts, last_error)
              SELECT $1, $2, $3, $4, s.server_id, $5, $7, $8, $9 FROM item_stores s WHERE s.id = $6
@@ -1040,9 +1062,77 @@ impl Purchase {
         .bind(held)
         .fetch_one(&mut *tx)
         .await?;
+        // A refund or dispute that arrived before this payment did.
+        let early: Option<ReceiptStatus> = sqlx::query_scalar(
+            "DELETE FROM store_early_settlements WHERE stripe_payment_intent_id = $1 RETURNING status",
+        )
+        .bind(payment_intent)
+        .fetch_optional(&mut *tx)
+        .await?;
+        if let Some(status) = early
+            && let Some((settled, revoked)) = set_status_in(&mut tx, receipt.id, status).await?
+        {
+            receipt = settled;
+            fulfillment = revoked.unwrap_or(fulfillment);
+        }
         tx.commit().await?;
         Ok(MarkPaid::Paid(receipt, fulfillment))
     }
+}
+
+/// Serializes the transactions that write a payment's receipt and settle it (see
+/// [`Purchase::mark_paid`] and [`Receipt::settle_payment`]) until the transaction ends.
+async fn lock_payment(conn: &mut PgConnection, payment_intent: &str) -> sqlx::Result<()> {
+    sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended('store-payment:' || $1, 0))")
+        .bind(payment_intent)
+        .execute(conn)
+        .await?;
+    Ok(())
+}
+
+/// [`Receipt::set_status`], as part of a transaction.
+async fn set_status_in(
+    conn: &mut PgConnection,
+    id: i64,
+    status: ReceiptStatus,
+) -> sqlx::Result<Option<(Receipt, Option<Fulfillment>)>> {
+    if status == ReceiptStatus::Paid {
+        return Ok(None);
+    }
+    let receipt: Option<Receipt> = sqlx::query_as(
+        "UPDATE store_receipts SET status = $2, status_changed_at = now()
+          WHERE id = $1
+            AND (status = 'PAID' OR (status = 'DISPUTED' AND $2 = 'REFUNDED'::receipt_status))
+          RETURNING *",
+    )
+    .bind(id)
+    .bind(status)
+    .fetch_optional(&mut *conn)
+    .await?;
+    let Some(receipt) = receipt else {
+        return Ok(None);
+    };
+    if status == ReceiptStatus::Refunded
+        && let Some(item_id) = receipt.item_id
+    {
+        sqlx::query(
+            "UPDATE store_items SET all_time_purchases = GREATEST(0, all_time_purchases - $2)
+              WHERE id = $1",
+        )
+        .bind(item_id)
+        .bind(receipt.quantity)
+        .execute(&mut *conn)
+        .await?;
+    }
+    let fulfillment = sqlx::query_as(
+        "UPDATE store_fulfillments SET status = 'REVOKED', revoked_at = COALESCE(revoked_at, now())
+          WHERE receipt_id = $1
+          RETURNING *",
+    )
+    .bind(id)
+    .fetch_optional(&mut *conn)
+    .await?;
+    Ok(Some((receipt, fulfillment)))
 }
 
 /// Cancels purchase `id` if it's pending and returns its stock. Part of a transaction.
@@ -1137,12 +1227,6 @@ impl Receipt {
             .await
     }
 
-    pub async fn find_by_payment_intent(db: &PgPool, payment_intent: &str) -> sqlx::Result<Option<Receipt>> {
-        sqlx::query_as("SELECT * FROM store_receipts WHERE stripe_payment_intent_id = $1")
-            .bind(payment_intent)
-            .fetch_optional(db)
-            .await
-    }
 
     /// The buyer's receipts, newest first.
     pub async fn list_for_buyer(db: &PgPool, buyer_id: i64) -> sqlx::Result<Vec<ReceiptView>> {
@@ -1172,7 +1256,8 @@ impl Receipt {
         .await
     }
 
-    /// Receipts matching every filter, newest first.
+    /// Receipts matching every filter, newest first, at most `filter.limit + 1` of them (the
+    /// extra one tells whether there's another page; see `cursor::Page`).
     pub async fn list(db: &PgPool, filter: &ReceiptFilter) -> sqlx::Result<Vec<ReceiptView>> {
         let mut q: QueryBuilder<Postgres> = QueryBuilder::new(select_receipt!("WHERE true"));
         if let Some(status) = filter.status {
@@ -1184,7 +1269,14 @@ impl Receipt {
         if let Some(buyer_id) = filter.buyer_id {
             q.push(" AND r.buyer_id = ").push_bind(buyer_id);
         }
-        q.push(" ORDER BY r.purchased_at DESC, r.id DESC LIMIT ").push_bind(filter.limit);
+        if let Some(after) = filter.after {
+            q.push(" AND (r.purchased_at, r.id) < (")
+                .push_bind(after.created_at)
+                .push(", ")
+                .push_bind(after.id)
+                .push(")");
+        }
+        q.push(" ORDER BY r.purchased_at DESC, r.id DESC LIMIT ").push_bind(filter.limit + 1);
         q.build_query_as().fetch_all(db).await
     }
 
@@ -1192,41 +1284,110 @@ impl Receipt {
     /// forward (PAID to DISPUTED or REFUNDED, DISPUTED to REFUNDED), so repeated or
     /// out-of-order webhooks are harmless. A refund also takes the purchase off the item's
     /// `all_time_purchases`. `None` if there is no such receipt or the move isn't allowed
-    /// from its status; always `None` for `Paid`, which receipts never go back to.
+    /// from its status; always `None` for `Paid` (see [`Receipt::reinstate`] for that).
     pub async fn set_status(db: &PgPool, id: i64, status: ReceiptStatus) -> sqlx::Result<Option<(Receipt, Option<Fulfillment>)>> {
-        if status == ReceiptStatus::Paid {
-            return Ok(None);
-        }
+        let mut tx = db.begin().await?;
+        let settled = set_status_in(&mut tx, id, status).await?;
+        tx.commit().await?;
+        Ok(settled)
+    }
+
+    /// Settles the receipt of `payment_intent` as refunded or disputed, as Stripe reported,
+    /// like [`Receipt::set_status`]. Stripe doesn't guarantee the order of its events, so the
+    /// payment may not be recorded yet: the status is then kept (a refund outranking a
+    /// dispute) and applied when it is (see [`Purchase::mark_paid`]).
+    pub async fn settle_payment(db: &PgPool, payment_intent: &str, status: ReceiptStatus) -> sqlx::Result<Settle> {
+        let mut tx = db.begin().await?;
+        lock_payment(&mut tx, payment_intent).await?;
+        let id: Option<i64> = sqlx::query_scalar("SELECT id FROM store_receipts WHERE stripe_payment_intent_id = $1")
+            .bind(payment_intent)
+            .fetch_optional(&mut *tx)
+            .await?;
+        let outcome = match id {
+            Some(id) => match set_status_in(&mut tx, id, status).await? {
+                Some((receipt, fulfillment)) => Settle::Settled(receipt, fulfillment),
+                None => Settle::Unchanged,
+            },
+            None => {
+                sqlx::query(
+                    "INSERT INTO store_early_settlements (stripe_payment_intent_id, status) VALUES ($1, $2)
+                     ON CONFLICT (stripe_payment_intent_id) DO UPDATE SET status = 'REFUNDED'
+                     WHERE EXCLUDED.status = 'REFUNDED'",
+                )
+                .bind(payment_intent)
+                .bind(status)
+                .execute(&mut *tx)
+                .await?;
+                Settle::Deferred
+            }
+        };
+        tx.commit().await?;
+        Ok(outcome)
+    }
+
+    /// Forgets refunds and disputes reported over `days` days ago for payments that were never
+    /// recorded: not GravNet's, or long lost. Returns how many.
+    pub async fn sweep_early_settlements(db: &PgPool, days: i32) -> sqlx::Result<u64> {
+        Ok(sqlx::query("DELETE FROM store_early_settlements WHERE created_at < now() - make_interval(days => $1)")
+            .bind(days)
+            .execute(db)
+            .await?
+            .rows_affected())
+    }
+
+    /// Records how the dispute on `payment_intent` ended (Stripe's dispute status). Returns
+    /// the receipt, or `None` if no receipt has the payment.
+    pub async fn record_dispute_outcome(db: &PgPool, payment_intent: &str, outcome: &str) -> sqlx::Result<Option<Receipt>> {
+        sqlx::query_as("UPDATE store_receipts SET dispute_outcome = $2 WHERE stripe_payment_intent_id = $1 RETURNING *")
+            .bind(payment_intent)
+            .bind(outcome)
+            .fetch_optional(db)
+            .await
+    }
+
+    /// Moves a disputed receipt whose dispute was won (see [`DISPUTE_WON`]) back to paid, and
+    /// offers its rewards to the addon again. Rewards that had been delivered come back
+    /// without their DarkRP money, which revoking never takes back; if that leaves nothing,
+    /// the fulfillment is simply delivered again. `None` unless the receipt is disputed and its
+    /// dispute won.
+    ///
+    /// The addon either took the rewards back already (and delivers them again), or hasn't
+    /// yet (delivering them again changes nothing: it records usergroups and weapons per
+    /// fulfillment, and the money is left out), or does so while this runs (its report of the
+    /// revocation then changes nothing, so it delivers them again).
+    pub async fn reinstate(db: &PgPool, id: i64) -> sqlx::Result<Option<(Receipt, Option<Fulfillment>)>> {
         let mut tx = db.begin().await?;
         let receipt: Option<Receipt> = sqlx::query_as(
-            "UPDATE store_receipts SET status = $2, status_changed_at = now()
-              WHERE id = $1
-                AND (status = 'PAID' OR (status = 'DISPUTED' AND $2 = 'REFUNDED'::receipt_status))
+            "UPDATE store_receipts SET status = 'PAID', status_changed_at = now()
+              WHERE id = $1 AND status = 'DISPUTED' AND dispute_outcome = ANY($2)
               RETURNING *",
         )
         .bind(id)
-        .bind(status)
+        .bind(DISPUTE_WON.map(str::to_owned).to_vec())
         .fetch_optional(&mut *tx)
         .await?;
         let Some(receipt) = receipt else {
             return Ok(None);
         };
-        if status == ReceiptStatus::Refunded
-            && let Some(item_id) = receipt.item_id
-        {
-            sqlx::query(
-                "UPDATE store_items SET all_time_purchases = GREATEST(0, all_time_purchases - $2)
-                  WHERE id = $1",
-            )
-            .bind(item_id)
-            .bind(receipt.quantity)
-            .execute(&mut *tx)
-            .await?;
-        }
         let fulfillment = sqlx::query_as(
-            "UPDATE store_fulfillments SET status = 'REVOKED', revoked_at = COALESCE(revoked_at, now())
-              WHERE receipt_id = $1
-              RETURNING *",
+            "WITH old AS (
+                 SELECT id, fulfilled_at IS NOT NULL AS delivered,
+                        COALESCE((SELECT jsonb_agg(r) FROM jsonb_array_elements(rewards) r
+                                  WHERE r->>'type' <> 'darkrp_money'), '[]'::jsonb) AS lasting
+                 FROM store_fulfillments WHERE receipt_id = $1
+             )
+             UPDATE store_fulfillments f
+                SET rewards = CASE WHEN old.delivered AND old.lasting <> '[]'::jsonb
+                                   THEN old.lasting ELSE f.rewards END,
+                    status = CASE WHEN old.delivered AND old.lasting = '[]'::jsonb
+                                  THEN 'FULFILLED'::fulfillment_status
+                                  ELSE 'PENDING'::fulfillment_status END,
+                    fulfilled_at = CASE WHEN old.delivered AND old.lasting = '[]'::jsonb
+                                        THEN f.fulfilled_at END,
+                    attempts = 0, last_error = NULL, revoked_at = NULL, revocation_applied_at = NULL
+               FROM old
+              WHERE f.id = old.id
+              RETURNING f.*",
         )
         .bind(id)
         .fetch_optional(&mut *tx)

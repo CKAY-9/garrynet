@@ -28,7 +28,7 @@ use crate::{
     error::ApiError,
     models::{
         Community, File, Usergroup, legal::LegalDocument, notification::Notification,
-        support::SupportTicket,
+        store::Receipt, support::SupportTicket,
     },
     state::AppState,
     storage::Storage,
@@ -120,7 +120,10 @@ async fn build_state(config: Config) -> std::io::Result<AppState> {
         .build()
         .map_err(std::io::Error::other)?;
 
-    let stripe = config.stripe.clone().map(|stripe| Stripe::new(http.clone(), stripe));
+    let stripe = config
+        .stripe
+        .clone()
+        .map(|stripe| Stripe::new(http.clone(), stripe, config.deployment()));
     if stripe.is_none() {
         log::warn!("STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET are not set: the store can't take payments");
     }
@@ -208,8 +211,13 @@ fn spawn_notification_sweeper(db: PgPool) {
 /// webhook (or is a delayed payment still clearing).
 const STALE_PURCHASE_MINUTES: i64 = 90;
 
+/// Refunds and disputes reported for a payment that still isn't recorded after this long are
+/// forgotten: the payment isn't GravNet's. Stripe retries a failing webhook for 3 days.
+const EARLY_SETTLEMENT_DAYS: i32 = 30;
+
 /// Settles store purchases whose Checkout Session should long have been settled by a
-/// webhook (see `routes::store::sweep_stale_purchases`). Every 10 minutes.
+/// webhook (see `routes::store::sweep_stale_purchases`), and forgets refunds and disputes of
+/// payments that never turned up (see `Receipt::settle_payment`). Every 10 minutes.
 fn spawn_purchase_sweeper(state: AppState) {
     actix_web::rt::spawn(async move {
         let mut tick = tokio::time::interval(Duration::from_secs(10 * 60));
@@ -221,6 +229,11 @@ fn spawn_purchase_sweeper(state: AppState) {
                     log::info!("stale store purchases: {cancelled} cancelled, {paid} recorded as paid")
                 }
                 Err(e) => log::error!("failed to sweep stale store purchases: {e}"),
+            }
+            match Receipt::sweep_early_settlements(&state.db, EARLY_SETTLEMENT_DAYS).await {
+                Ok(0) => {}
+                Ok(n) => log::info!("forgot {n} refund(s) or dispute(s) of payments that were never recorded"),
+                Err(e) => log::error!("failed to sweep early store settlements: {e}"),
             }
         }
     });

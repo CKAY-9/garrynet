@@ -51,6 +51,7 @@ The backend creates notifications from the following events. The person who caus
 | Fulfillment delivered in-game | buyer | STORE | `/store/purchases` |
 | Fulfillment failed after 20 attempts | buyer | STORE | `/support/new` |
 | Purchase refunded or fulfillment revoked | buyer | STORE | `/store/purchases` |
+| Disputed purchase reinstated (its rewards are delivered again) | buyer | STORE | `/store/purchases` |
 | Reply to a thread | thread author | FORUM | `/forum/threads/{id}` |
 | Thread locked, or a post or thread deleted, by a moderator | post/thread author | FORUM | `/forum/threads/{id}` (none if deleted) |
 | Private message received | recipient | MESSAGE | `/messages/{author_id}` |

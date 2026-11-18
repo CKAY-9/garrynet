@@ -21,7 +21,7 @@ use crate::{
     routes::{
         files,
         markdown::{local_images_only, markdown},
-        validate::{bad, parse_enum, present, required_text},
+        validate::{bad, parse_enum, present, rate_limit, required_text},
     },
     state::AppState,
 };
@@ -52,6 +52,10 @@ const MAX_CONTENT: usize = 20_000;
 const MAX_ATTACHMENTS: usize = 10;
 const MAX_ASSOCIATED_USERS: usize = 10;
 const MAX_FAQ_LIMIT: i64 = 100;
+/// Messages (including a new ticket's first) a ticket owner may write in any
+/// [`MESSAGE_WINDOW_SECS`]. The Support Team isn't limited.
+const MESSAGE_LIMIT: i64 = 6;
+const MESSAGE_WINDOW_SECS: f64 = 60.0;
 
 /// Query string of the ticket lists. Every field is optional, and empty values are
 /// ignored, so a plain HTML form can submit all its fields.
@@ -108,7 +112,7 @@ struct TicketBody {
 }
 
 /// Opens a ticket with its initial message. Any logged-in user; 400 once they have
-/// [`MAX_ACTIVE_TICKETS`] tickets in progress.
+/// [`MAX_ACTIVE_TICKETS`] tickets in progress; 429 past the rate limit (see [`check_rate`]).
 #[post("/support/tickets")]
 async fn create_ticket(
     state: web::Data<AppState>,
@@ -117,6 +121,9 @@ async fn create_ticket(
 ) -> Result<HttpResponse, ApiError> {
     let mut details = normalize_ticket(body.into_inner(), user.0.id)?;
     local_images_only("content", &details.content, &files_base(&state))?;
+    if user.require(&state.db, SUPPORT_TEAM).await.is_err() {
+        check_rate(&state, user.0.id).await?;
+    }
     details.attachments = files::attachable(&state, user.0.id, &details.attachments, MAX_ATTACHMENTS).await?;
     let missing = User::missing_ids(&state.db, &details.associated_user_ids).await?;
     if let Some(id) = missing.first() {
@@ -186,8 +193,9 @@ struct MessageBody {
 }
 
 /// Adds a message to a ticket. The owner can reply while the ticket is in progress (423
-/// once resolved or closed), moving it to `AWAITING_ADMIN`. The Support Team can always
-/// reply, moving it to `AWAITING_USER`, or leave an internal note.
+/// once resolved or closed, 429 past the rate limit; see [`check_rate`]), moving it to
+/// `AWAITING_ADMIN`. The Support Team can always reply, moving it to `AWAITING_USER`, or
+/// leave an internal note.
 #[post("/support/tickets/{id}/messages")]
 async fn create_message(
     state: web::Data<AppState>,
@@ -212,6 +220,10 @@ async fn create_message(
         }
         if ticket.status.is_done() {
             return Err(ApiError::Locked("ticket"));
+        }
+        // Team members on their own tickets land here too; they aren't limited.
+        if user.require(&state.db, SUPPORT_TEAM).await.is_err() {
+            check_rate(&state, user.0.id).await?;
         }
         let message = ticket.reply_as_user(&state.db, &content, &attachments).await?;
         notify::ticket_owner_reply(&state.db, &ticket, &user.0).await;
@@ -378,6 +390,13 @@ fn message_markdown(state: &AppState, content: &str) -> Result<String, ApiError>
     let content = markdown("content", content, MAX_CONTENT)?;
     local_images_only("content", &content, &files_base(state))?;
     Ok(content)
+}
+
+/// 429 if the user has written [`MESSAGE_LIMIT`] support messages in the past
+/// [`MESSAGE_WINDOW_SECS`]. Callers skip it for the Support Team.
+async fn check_rate(state: &AppState, user_id: i64) -> Result<(), ApiError> {
+    let (count, oldest) = SupportMessage::recent_by(&state.db, user_id, MESSAGE_WINDOW_SECS).await?;
+    rate_limit(count, oldest, MESSAGE_LIMIT, MESSAGE_WINDOW_SECS)
 }
 
 /// Where this backend serves files from, e.g. `https://api.example.com/file/`.

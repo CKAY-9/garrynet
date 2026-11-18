@@ -198,10 +198,12 @@ completed_at?: utc timestamp
    the purchase is cancelled at once (and any session opened is expired).
 3. `checkout.session.completed` (with `payment_status` paid) or `checkout.session.async_payment_succeeded`:
    the purchase becomes `PAID`, a Receipt is written, `all_time_purchases` is incremented, and a
-   Fulfillment is created. The purchase is found by its session id or, if that was never recorded,
-   by the `purchase_id` in the session's metadata. A paid GravNet session whose purchase no longer
-   exists is logged as an error for staff to refund. (Deleting a server closes its checkouts first,
-   so this shouldn't happen.)
+   Fulfillment is created. The purchase is found by its session id or, if that was never recorded
+   and the session is this deployment's (see below), by the `purchase_id` in the session's
+   metadata. A paid GravNet session whose purchase no longer exists is logged as an error for
+   staff to refund. (Deleting a server closes its checkouts first, so this shouldn't happen.) If
+   Stripe already reported a refund or dispute of the payment, the receipt is settled as it's
+   written (see [Refunds and Disputes](#refunds-and-disputes)).
 4. `checkout.session.expired`, `checkout.session.async_payment_failed`, or the buyer backing out of
    Checkout (which lands on the frontend's `/store/checkout/cancel`): the purchase becomes
    `CANCELLED` and the reserved stock is released. Backing out also expires the Stripe session; if
@@ -226,6 +228,17 @@ an error is logged for staff; the purchase is still recorded as paid.
 
 Webhook handling is idempotent. Events are deduplicated using the unique Stripe ids on the Receipt
 and the purchase's status, so Stripe may redeliver any event.
+
+Several deployments may share one Stripe account (staging and production, say). Each gets every
+webhook, and their purchase ids overlap, so a deployment names itself on what it sends Stripe: by
+its backend's host (and port), taken from `BACKEND_URL`. Checkout Sessions and their
+PaymentIntents carry it as `gravnet_deployment` in their metadata, and idempotency keys are
+prefixed with it (`api.example.com:purchase-42`, `api.example.com:refund-receipt-7`). Checkout
+events for another deployment's sessions are ignored; sessions naming no deployment (another
+integration, or opened before sessions were named) are only matched by their session id, never
+by the `purchase_id` in their metadata. Changing `BACKEND_URL`'s host renames the deployment:
+webhooks for checkouts opened before then are ignored, and the stale-purchase sweeper records
+them instead (it looks sessions up by their recorded id).
 
 ## Item Fulfillment
 
@@ -292,6 +305,7 @@ discount_percentage: number // total percentage applied
 price: number // minor units, amount charged (before any tax Stripe added)
 currency: string
 status_changed_at?: utc timestamp
+dispute_outcome?: string // how its dispute ended: Stripe's "won", "lost" or "warning_closed" (an inquiry closed without a chargeback)
 ```
 
 ## Refunds and Disputes
@@ -299,10 +313,25 @@ status_changed_at?: utc timestamp
 - `charge.refunded` (for a full refund) sets the Receipt to `REFUNDED`. `charge.dispute.created` sets it to `DISPUTED`.
   Receipts only move forward (`PAID` to `DISPUTED` or `REFUNDED`, `DISPUTED` to `REFUNDED`), so
   redelivered or out-of-order events can't undo a refund.
-- A won dispute (`charge.dispute.closed`) is only logged: the receipt stays `DISPUTED` and the
-  rewards revoked until staff decide what to do.
+- Stripe doesn't guarantee the order of its events, and a payment's own event may be failing and
+  waiting to be retried, so a refund or dispute can arrive before the payment is recorded. It's
+  then kept (in `store_early_settlements`, a refund outranking a dispute) and applied when the
+  payment is recorded: the receipt is written already refunded or disputed, with its fulfillment
+  revoked, and a refunded buyer is told it was refunded. Recording a payment and settling it take
+  the same lock per PaymentIntent, so neither can miss the other. Ones whose payment never turns
+  up (payments that aren't GravNet's) are forgotten after 30 days.
 - Either one sets the Fulfillment to `REVOKED`. If it was already fulfilled, the addon removes the
   granted usergroups and weapons on its next sync. Money rewards are not clawed back.
+- `charge.dispute.closed` records how the dispute ended on the receipt (`dispute_outcome`). The
+  receipt stays `DISPUTED` and its rewards revoked whatever the outcome; whether to deliver them
+  again is left to staff. Users with `Store Finance` can reinstate a disputed receipt whose dispute
+  was won (`won`, or `warning_closed` for an inquiry that never became a chargeback) from
+  `/admin/store/receipts`: it's `PAID` again (counting towards income again) and the buyer is told.
+  Its fulfillment is offered to the addon again with fresh attempts. Rewards that had been
+  delivered come back without their DarkRP money, since revoking never took the money; if that
+  leaves nothing, the fulfillment is simply marked delivered again. Delivering usergroups and
+  weapons again is safe whether or not the addon already took them back, as it records them per
+  fulfillment.
 - Refunds are issued by users with `Store Finance` from `/admin/store/receipts`, which refunds the
   payment through Stripe and revokes the fulfillment immediately.
 - Users with `Store Finance` can also refund every undelivered purchase of a server at once, from
@@ -350,7 +379,8 @@ Everything is JSON; errors are `{ "error": "..." }`. "Manage" means Admin Access
 
 **Finance**
 
-- GET `/admin/store/receipts?status=&store=&buyer=`: receipts, newest first (at most 500); blank filters are ignored
+- GET `/admin/store/receipts?status=&store=&buyer=&limit=&cursor=`: receipts, newest first, a page at a time: `{ items, next_cursor }` (`limit` 1 to 500, default 100; `cursor` is the previous page's `next_cursor`, which is `null` on the last page). Blank filters are ignored
+- POST `/admin/store/receipts/{id}/reinstate`: moves a disputed receipt whose dispute was won back to `PAID` and offers its rewards to the addon again (see [Refunds and Disputes](#refunds-and-disputes)); returns the receipt. 400 unless it's disputed and its dispute was won
 - POST `/admin/store/receipts/{id}/refund`: full refund through Stripe; 400 unless the receipt is paid
 - POST `/admin/store/fulfillments/{id}/retry`: resets a failed fulfillment's attempts so the addon tries again; returns the receipt. 400 unless it's failed and its receipt is paid
 - GET `/admin/store/servers/{server_id}/undelivered`: `{ count, store_id }`, how many paid purchases from the server's store haven't been delivered (which blocks deleting the server). Server Management or Finance; 404 for an unknown server

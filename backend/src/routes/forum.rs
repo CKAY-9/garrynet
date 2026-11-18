@@ -19,7 +19,7 @@ use crate::{
     routes::{
         files,
         markdown::markdown,
-        validate::{bad, hex_color, optional_url, required_text, text},
+        validate::{bad, hex_color, optional_url, rate_limit, required_text, text},
     },
     state::AppState,
 };
@@ -60,6 +60,14 @@ const MAX_CONTENT: usize = 20_000;
 /// Files per post.
 const MAX_ATTACHMENTS: usize = 5;
 const DEFAULT_ACCENT: &str = "#3b82f6";
+
+/// Threads one user may start in any [`THREAD_WINDOW_SECS`]...
+const THREAD_LIMIT: i64 = 3;
+const THREAD_WINDOW_SECS: f64 = 10.0 * 60.0;
+/// ...and posts (threads' first posts and replies) they may write in any
+/// [`POST_WINDOW_SECS`]. Moderators aren't limited.
+const POST_LIMIT: i64 = 6;
+const POST_WINDOW_SECS: f64 = 60.0;
 
 #[derive(Serialize)]
 struct Home {
@@ -216,7 +224,8 @@ struct ThreadBody {
 }
 
 /// Starts a thread with its first post. Requires Site Access and User Posts; starting it
-/// locked also needs Thread Management. 423 if the category is locked.
+/// locked also needs Thread Management. 423 if the category is locked; 429 past the rate
+/// limit (see [`check_rate`]).
 #[post("/forum/categories/{id}/threads")]
 async fn create_thread(
     state: web::Data<AppState>,
@@ -235,6 +244,9 @@ async fn create_thread(
         .ok_or(ApiError::NotFound("category"))?;
     if category.locked {
         return Err(ApiError::Locked("category"));
+    }
+    if !permissions.contains(MODERATE) {
+        check_rate(&state, user.0.id, true).await?;
     }
     let attachments = files::attachable(&state, user.0.id, &body.attachments, MAX_ATTACHMENTS).await?;
     let thread = ForumThread::create(
@@ -290,7 +302,7 @@ struct PostEditBody {
 }
 
 /// Replies to a thread. Requires Site Access and User Posts; 423 if the thread or its
-/// category is locked.
+/// category is locked; 429 past the rate limit (see [`check_rate`]).
 #[post("/forum/threads/{id}/posts")]
 async fn create_post(
     state: web::Data<AppState>,
@@ -298,7 +310,7 @@ async fn create_post(
     id: web::Path<i64>,
     body: web::Json<PostBody>,
 ) -> Result<HttpResponse, ApiError> {
-    user.require(&state.db, POST).await?;
+    let permissions = user.require(&state.db, POST).await?;
     let content = markdown("content", &body.content, MAX_CONTENT)?;
     let thread = ForumThread::find_by_id(&state.db, id.into_inner())
         .await?
@@ -311,6 +323,9 @@ async fn create_post(
         .ok_or(ApiError::NotFound("category"))?;
     if category.locked {
         return Err(ApiError::Locked("category"));
+    }
+    if !permissions.contains(MODERATE) {
+        check_rate(&state, user.0.id, false).await?;
     }
     let attachments = files::attachable(&state, user.0.id, &body.attachments, MAX_ATTACHMENTS).await?;
     let post = thread.reply(&state.db, user.0.id, &content, &attachments).await?;
@@ -510,6 +525,18 @@ async fn manager(
         return Err(ApiError::Locked("category"));
     }
     Ok(Manager::Author)
+}
+
+/// 429 if the user has written [`POST_LIMIT`] posts in the past [`POST_WINDOW_SECS`], or,
+/// when `starting_thread`, started [`THREAD_LIMIT`] threads in the past
+/// [`THREAD_WINDOW_SECS`]. Callers skip it for moderators.
+async fn check_rate(state: &AppState, user_id: i64, starting_thread: bool) -> Result<(), ApiError> {
+    if starting_thread {
+        let (count, oldest) = ForumThread::recent_by(&state.db, user_id, THREAD_WINDOW_SECS).await?;
+        rate_limit(count, oldest, THREAD_LIMIT, THREAD_WINDOW_SECS)?;
+    }
+    let (count, oldest) = ForumPost::recent_by(&state.db, user_id, POST_WINDOW_SECS).await?;
+    rate_limit(count, oldest, POST_LIMIT, POST_WINDOW_SECS)
 }
 
 async fn find_thread(state: &AppState, id: i64) -> Result<ForumThread, ApiError> {

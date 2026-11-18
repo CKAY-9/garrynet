@@ -162,10 +162,10 @@ Login is required for tickets but not Site Access: banned users can still use su
 
 Tickets:
 - GET `/support/tickets`: my tickets. Query: `status`, `category`, `state` (`active` | `done`), `activity` (`day` | `week` | `month`, updated within), `sort` (`latest` default | `oldest` | `created`). Each ticket includes its `author` and visible `message_count`.
-- POST `/support/tickets`: open a ticket with its initial message. Takes `title`, `subject`, `category`, `associated_user_ids` (max 10, must exist), `content` (Markdown) and optional `attachments` (up to 10 file IDs). 400 once the user has 5 active tickets.
+- POST `/support/tickets`: open a ticket with its initial message. Takes `title`, `subject`, `category`, `associated_user_ids` (max 10, must exist), `content` (Markdown) and optional `attachments` (up to 10 file IDs). 400 once the user has 5 active tickets. 429 (with `Retry-After`) past the message limit below.
 - GET `/support/admin/tickets`: every ticket, same query as above. Requires Support Team.
 - GET `/support/tickets/{id}`: the ticket, its `author`, `associated_users`, `responders`, `closed_by_user` and `messages` (internal ones only for Support Team). Owner or Support Team; 404 otherwise.
-- POST `/support/tickets/{id}/messages`: add a message (`content`, `is_internal`, optional `attachments`, up to 10 file IDs). Owners move the ticket to `AWAITING_ADMIN` (423 once resolved/closed); Support Team replies move it to `AWAITING_USER` and re-open it, internal notes change nothing else. Responders update automatically.
+- POST `/support/tickets/{id}/messages`: add a message (`content`, `is_internal`, optional `attachments`, up to 10 file IDs). Owners move the ticket to `AWAITING_ADMIN` (423 once resolved/closed; 429, with `Retry-After`, past 6 messages per minute, counting new tickets' first messages; the Support Team isn't limited); Support Team replies move it to `AWAITING_USER` and re-open it, internal notes change nothing else. Responders update automatically.
 - PATCH `/support/tickets/{id}/status`: set `status`. `RESOLVED`/`CLOSED` stamp `resolved_at`/`closed_at` and `closed_by`; any other status re-opens the ticket. Requires Support Team.
 - PATCH `/support/messages/{id}`: edit a message's `content`, once (author only; owners not once the ticket is resolved/closed).
 
