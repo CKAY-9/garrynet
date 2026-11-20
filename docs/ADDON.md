@@ -14,7 +14,7 @@ Copy or symlink `addon/` to `garrysmod/addons/gravnet`. In `server.cfg`, set the
 gravnet_api_url "https://api.example.com"
 ```
 
-Use `https://`. The access key and the server's JWT travel in the `Authorization` header, so over plain HTTP anyone on the path can steal them and act as the server (report players, fetch and acknowledge store deliveries). The addon still works with `http://`, but warns about it in the server console (on startup, when the URL changes and when linking), in `gravnet_status` and in the `!gnet` menu. Loopback URLs (`localhost`, `127.x.x.x`, `[::1]`) don't trigger the warning.
+Use `https://`. The access key and the server's JWT travel in the `Authorization` header, so over plain HTTP anyone on the path can steal them and act as the server (report players, fetch and acknowledge store deliveries). With an `http://` URL to another machine the addon sends nothing (linking and every sync fail with the reason), and says so in the server console (on startup and when the URL changes), in `gravnet_status` and in the `!gnet` menu. Loopback URLs (`localhost`, `*.localhost`, `127.x.x.x`, `[::1]`) are allowed. For development against a backend elsewhere on your network, `gravnet_allow_http 1` (in server.cfg) allows plain HTTP, with the same places warning about it.
 
 Garry's Mod refuses HTTP requests to local and private addresses. When the backend runs on the same machine or network (e.g. in development), start the server with `-allowlocalhttp`.
 
@@ -26,7 +26,7 @@ Files live in `addon/lua/gravnet/`, and are loaded in order by `addon/lua/autoru
 
 | File | Purpose |
 | --- | --- |
-| `sh_config.lua` | Constants, the `gravnet_api_url` convar, net message names |
+| `sh_config.lua` | Constants, the `gravnet_api_url` and `gravnet_allow_http` convars, net message names |
 | `sh_util.lua` | Logging, access key format check |
 | `sh_status.lua` | Link status sent to the menu (read/write over net) |
 | `sh_store_menu.lua` | Store menu contents sent to a player (read/write over net) |
@@ -231,8 +231,9 @@ See [STORE.md](STORE.md) for the model. The addon should fetch work when a playe
 
 **GET `/gnet/server/{SERVER_ID}/fulfillments?steam_id=`**: `Authorization: Bearer <JWT>`. Fulfillments the
 server has to act on, oldest first: `PENDING` and retryable `FAILED` ones to deliver, and `REVOKED` ones
-whose revocation hasn't been acknowledged (`revocation_applied_at` null) to take back (usergroups and
-weapons; not money). A revoked one is offered even without `fulfilled_at`, in case the addon delivered it
+whose revocation hasn't been acknowledged (`revocation_applied_at` null) to take back: usergroups and
+weapons, and DarkRP money if `deduct_money` is true (the store's `money_on_revoke` is `DEDUCT`; see
+[STORE.md](STORE.md#refunds-and-disputes)). A revoked one is offered even without `fulfilled_at`, in case the addon delivered it
 but its `fulfilled` report was lost; the addon then takes back what it has recorded and reports both
 `fulfilled` and `revoked`, or, if it delivered nothing, just reports `revoked`. `steam_id` narrows it to
 one player.
@@ -247,19 +248,22 @@ one player.
       { "type": "weapon", "class": "weapon_crowbar" }
     ],
     "status": "PENDING", "attempts": 0, "last_error": null,
-    "created_at": "...", "fulfilled_at": null, "revoked_at": null, "revocation_applied_at": null
+    "created_at": "...", "fulfilled_at": null, "revoked_at": null, "revocation_applied_at": null,
+    "money_reclaimed": null, "deduct_money": false
   }
 ]
 ```
 
 **POST `/gnet/server/{SERVER_ID}/fulfillments/{FULFILLMENT_ID}/ack`**: `Authorization: Bearer <JWT>`. Body
 `{ "result": "fulfilled" }`, `{ "result": "failed", "error": "player not in game" }` or `{ "result": "revoked" }`.
-Idempotent: repeating a report changes nothing. Returns the fulfillment as it stands; 404 if it isn't this server's.
+A `revoked` report can carry `"money_reclaimed": 300`, the DarkRP money taken back (recorded as at most what the
+rewards delivered). Idempotent: repeating a report changes nothing. Returns the fulfillment as it stands; 404 if it isn't this server's.
 
 ### Delivery in the addon
 
 - **When:** every minute (`Store.PollSeconds`), and `Store.JoinDelay` (10) seconds after a player joins, filtered to them.
-  Only players who are online get their purchase; revocations are applied whether or not the player is online.
+  Only players who are online get their purchase; revocations are applied whether or not the player is online, except
+  taking back money (see below).
 - **All or nothing:** every reward is validated before any is applied (the usergroup exists in the admin mod and isn't
   protected, the server runs DarkRP for money, the weapon class is known). A failure is acknowledged as `failed` with the
   reason, superadmins and the buyer get a chat notice, and it's retried with backoff (1, 2, 4... minutes, at most 60), so
@@ -278,5 +282,11 @@ Idempotent: repeating a report changes nothing. Returns the fulfillment as it st
 - **Weapons** are recorded and given back on every spawn (1 second after, skipped while DarkRP-arrested).
 - Grants are kept in `data/gravnet/store_grants.json`, per player and per fulfillment, so a revocation removes exactly that
   purchase's usergroups and weapons.
+- **Money on revocation:** left alone unless the fulfillment comes with `deduct_money`. Then, for a purchase that was
+  delivered (not one whose delivery errored part-way), the addon takes back its `darkrp_money` total, or the player's
+  whole balance if that's less, and reports it with the `revoked` acknowledgement. An offline player (or one whose money
+  DarkRP hasn't loaded) loses the usergroups and weapons at once; the money, and the acknowledgement, wait until they
+  join. Each deduction is written to `data/gravnet/store_reclaimed.json` (by fulfillment and `revoked_at`, kept 30 days)
+  before it's made, so a lost acknowledgement or a restart never takes it twice. The player is told what was taken back.
 
 Config changes are still to be defined.

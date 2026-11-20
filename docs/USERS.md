@@ -110,7 +110,7 @@ The user gets an ACCOUNT notification when banned or suspended (with the reason 
 
 Rules:
 - Nobody can ban, suspend, unban or unsuspend themselves (400).
-- The target's usergroups must not grant any permission the staff member lacks (403 otherwise), the same rule as removing someone from a usergroup. Punishments are ignored here, so a banned admin still outranks a moderator, who can't unban them.
+- The staff member must outrank the target (403 otherwise): hold every permission the target's usergroups grant, and at least one the target doesn't. Peers can't ban each other, since a ban takes away the permissions needed to lift it: otherwise two admins would each be one click from locking the other out. Punishments are ignored here, so a banned admin still outranks a moderator, who can't unban them. Nobody outranks holders of every permission (the `admin` group), so they can only be punished once removed from the groups that grant it.
 - One of each kind at a time: banning someone already banned is 409. To change a ban (e.g. its length), lift it and issue a new one.
 - The end must be in the future.
 

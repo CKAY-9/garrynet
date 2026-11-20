@@ -100,7 +100,7 @@ Reading is public. Writing needs a login; sections and categories also need Admi
 
 The four routes above follow the same rules:
 
-- Users with Site Access and Thread Management (moderators) can manage any thread or post, even in a locked thread or category.
+- Users with Site Access and Thread Management (moderators) can manage any thread or post, even in a locked thread or category, except those written by a user holding permissions they don't (403), so a moderator can't edit or delete an admin's posts. The author's usergroups count, punishments aside, as for bans.
 - Otherwise users can only manage their own threads and posts, and only while they can still post (Site Access and User Posts, so not banned). 403 for someone else's.
 - Authors can't change anything in a locked thread or category (423).
 

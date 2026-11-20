@@ -18,6 +18,10 @@
 
 (security_headers) {
 	header {
+		# HTTPS only, for a year, once a browser has seen either domain; plain-HTTP requests are
+		# already redirected. Not includeSubDomains: other services may share the parent
+		# domain over plain HTTP.
+		?Strict-Transport-Security "max-age=31536000"
 		?Content-Security-Policy "frame-ancestors 'self'"
 		?X-Frame-Options SAMEORIGIN
 		?X-Content-Type-Options nosniff

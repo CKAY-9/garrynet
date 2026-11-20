@@ -33,6 +33,9 @@ async function UsergroupSettings({ id }: { id: string }) {
   const group = await getAdminUsergroup(id);
   if (!group) notFound();
   const members = await getUsergroupMembers(group.id);
+  // Editing, deleting and changing members all need every permission the group grants,
+  // like the backend.
+  const canEdit = hasPermission(user.permissions, group.permissions);
 
   return (
     <>
@@ -73,7 +76,13 @@ async function UsergroupSettings({ id }: { id: string }) {
             </dd>
           </div>
         </dl>
-        <UsergroupEditor group={group} held={user.permissions} />
+        {canEdit ? (
+          <UsergroupEditor group={group} held={user.permissions} />
+        ) : (
+          <p className={servers.muted}>
+            This group grants permissions you don&apos;t hold, so you can&apos;t edit it.
+          </p>
+        )}
       </section>
 
       <section className={styles.section} aria-labelledby="members-heading">
@@ -85,12 +94,11 @@ async function UsergroupSettings({ id }: { id: string }) {
           groupName={group.name}
           members={members}
           viewerId={user.id}
-          canEdit={hasPermission(user.permissions, group.permissions)}
+          canEdit={canEdit}
         />
       </section>
 
-      {/* Deleting revokes the group's permissions, so it needs all of them, like the backend. */}
-      {!isDefaultGroup(group.name) && hasPermission(user.permissions, group.permissions) && (
+      {!isDefaultGroup(group.name) && canEdit && (
         <section className={styles.section} aria-labelledby="danger-heading">
           <h2 id="danger-heading" className={styles.sectionTitle}>
             Danger zone

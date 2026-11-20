@@ -280,13 +280,19 @@ struct AckBody {
     /// What went wrong, for `failed`.
     #[serde(default)]
     error: String,
+    /// For `revoked`: the DarkRP money taken back, if the fulfillment was offered with
+    /// `deduct_money`; recorded as at most what its rewards delivered. A JSON number, since
+    /// Garry's Mod may write large whole numbers in exponent form.
+    #[serde(default)]
+    money_reclaimed: Option<f64>,
 }
 
 const MAX_ERROR: usize = 1000;
 
 /// The addon reports what it did with a fulfillment: `fulfilled`, `failed` (with `error`;
-/// retried later) or `revoked` (the rewards of a revoked fulfillment were taken back).
-/// Idempotent: repeating a report changes nothing. Returns the fulfillment as it stands.
+/// retried later) or `revoked` (the rewards of a revoked fulfillment were taken back, with
+/// `money_reclaimed`, the DarkRP money taken back, if any). Idempotent: repeating a report
+/// changes nothing. Returns the fulfillment as it stands.
 #[post("/{id}/fulfillments/{fulfillment_id}/ack")]
 async fn acknowledge_fulfillment(
     state: web::Data<AppState>,
@@ -299,16 +305,43 @@ async fn acknowledge_fulfillment(
     let body = body.into_inner();
     let error = truncate(&body.error, MAX_ERROR);
     let error = (body.result == AckResult::Failed).then_some(if error.is_empty() { "unknown error" } else { error.as_str() });
-    let (fulfillment, changed) = Fulfillment::acknowledge(&state.db, auth.id, fulfillment_id, body.result, error)
+    let money = match (body.result, body.money_reclaimed) {
+        (AckResult::Revoked, Some(m)) if !m.is_finite() || m < 0.0 => {
+            return Err(bad("money_reclaimed must be a number of at least 0".to_owned()));
+        }
+        // Saturates past i64; the amount is clamped to what was delivered anyway.
+        (AckResult::Revoked, Some(m)) if m >= 1.0 => Some(m.round() as i64),
+        _ => None,
+    };
+    let (fulfillment, changed) = Fulfillment::acknowledge(&state.db, auth.id, fulfillment_id, body.result, error, money)
         .await?
         .ok_or(ApiError::NotFound("fulfillment"))?;
+    // Reinstated by staff while the addon was revoking it: the revocation report changed
+    // nothing, but the money it took has to be delivered again.
+    if let Some(money) = money
+        && !changed
+        && fulfillment.status != FulfillmentStatus::Revoked
+    {
+        let money = money.min(fulfillment.money());
+        if money > 0 && !Fulfillment::restore_money(&state.db, auth.id, fulfillment_id, money).await? {
+            log::error!(
+                "server {} took back {money} money for store purchase {fulfillment_id} after it was reinstated and delivered again; give it back to {} by hand",
+                auth.id,
+                fulfillment.steam_id
+            );
+        }
+    }
     match body.result {
         AckResult::Fulfilled => log::info!("server {} fulfilled store purchase {fulfillment_id} for {}", auth.id, fulfillment.steam_id),
         AckResult::Failed => log::warn!(
             "server {} failed to fulfill store purchase {fulfillment_id} (attempt {}): {}",
             auth.id, fulfillment.attempts, fulfillment.last_error.as_deref().unwrap_or("")
         ),
-        AckResult::Revoked => log::info!("server {} revoked the rewards of store purchase {fulfillment_id}", auth.id),
+        AckResult::Revoked => log::info!(
+            "server {} revoked the rewards of store purchase {fulfillment_id}{}",
+            auth.id,
+            money.map(|m| format!(", taking back {m} money")).unwrap_or_default()
+        ),
     }
     // A repeated report changes nothing, so it doesn't notify again.
     if changed {

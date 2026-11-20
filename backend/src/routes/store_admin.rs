@@ -15,15 +15,15 @@ use crate::{
         Permissions, Server,
         cursor::{Cursor, Page},
         store::{
-            CURRENCIES, DISPUTE_WON, DiscountDetails, Fulfillment, FulfillmentStatus, ItemDetails, ItemStore, PricedItem,
-            Receipt, ReceiptFilter, ReceiptStatus, ReceiptView, Reward, StoreDetails, StoreDiscount, StoreItem,
-            StoreSummary,
+            CURRENCIES, DISPUTE_WON, DiscountDetails, Fulfillment, FulfillmentStatus, ItemDetails, ItemStore,
+            MoneyOnRevoke, PaymentRefunds, PricedItem, Receipt, ReceiptFilter, ReceiptStatus, ReceiptView, Reward, StoreDetails,
+            StoreDiscount, StoreItem, StoreSummary,
         },
     },
     notify,
     routes::{
         markdown::markdown,
-        store::with_servers,
+        store::{sync_refunds, with_servers},
         validate::{bad, optional_url, required_text, text},
     },
     state::AppState,
@@ -96,6 +96,8 @@ struct StoreBody {
     currency: Option<String>,
     override_name: Option<String>,
     store_message: Option<String>,
+    /// Omitted keeps the current setting (`KEEP` for a new store).
+    money_on_revoke: Option<MoneyOnRevoke>,
 }
 
 #[derive(Deserialize)]
@@ -369,9 +371,10 @@ async fn list_receipts(
     Ok(HttpResponse::Ok().json(page))
 }
 
-/// Moves a disputed receipt whose dispute was won back to paid and has the server's addon
-/// deliver its rewards again (see `Receipt::reinstate`). Requires Admin Access and Store
-/// Finance. 400 unless the receipt is disputed and its dispute won.
+/// Moves a receipt back to paid and has the server's addon deliver its rewards again (see
+/// `Receipt::reinstate`): a disputed one whose dispute was won, or a refunded one whose refund
+/// failed, when staff would rather the buyer kept the purchase than try refunding again.
+/// Requires Admin Access and Store Finance. 400 for any other receipt.
 #[post("/admin/store/receipts/{receipt_id}/reinstate")]
 async fn reinstate(
     state: web::Data<AppState>,
@@ -380,25 +383,33 @@ async fn reinstate(
 ) -> Result<HttpResponse, ApiError> {
     user.require(&state.db, FINANCE).await?;
     let id = receipt_id.into_inner();
-    let receipt = Receipt::find_by_id(&state.db, id)
+    let view = Receipt::find_by_id(&state.db, id)
         .await?
-        .ok_or(ApiError::NotFound("receipt"))?
-        .receipt;
-    if receipt.status != ReceiptStatus::Disputed {
-        return Err(bad("only a disputed receipt can be reinstated".to_owned()));
-    }
-    if !receipt.dispute_outcome.as_deref().is_some_and(|o| DISPUTE_WON.contains(&o)) {
-        return Err(bad(match receipt.dispute_outcome.as_deref() {
-            None => "its dispute hasn't closed yet; it can be reinstated once the dispute is won".to_owned(),
-            Some(outcome) => format!("its dispute wasn't won ({outcome}), so the payment wasn't kept"),
-        }));
-    }
+        .ok_or(ApiError::NotFound("receipt"))?;
+    let receipt = view.receipt;
+    let after_dispute = match receipt.status {
+        ReceiptStatus::Disputed => {
+            if !receipt.dispute_outcome.as_deref().is_some_and(|o| DISPUTE_WON.contains(&o)) {
+                return Err(bad(match receipt.dispute_outcome.as_deref() {
+                    None => "its dispute hasn't closed yet; it can be reinstated once the dispute is won".to_owned(),
+                    Some(outcome) => format!("its dispute wasn't won ({outcome}), so the payment wasn't kept"),
+                }));
+            }
+            true
+        }
+        ReceiptStatus::Refunded if view.refunds.as_ref().is_some_and(|r| r.falls_short()) => false,
+        ReceiptStatus::Refunded => {
+            return Err(bad("it was refunded; only a refund that failed leaves a purchase to reinstate".to_owned()));
+        }
+        ReceiptStatus::Paid => return Err(bad("it's paid already".to_owned())),
+    };
     let (reinstated, fulfillment) = Receipt::reinstate(&state.db, id)
         .await?
         .ok_or_else(|| bad("this receipt has changed meanwhile; reload and try again".to_owned()))?;
     log::info!(
-        "user {} reinstated disputed receipt {} for user {}; fulfillment {} is {}",
+        "user {} reinstated {} receipt {} for user {}; fulfillment {} is {}",
         user.0.id,
+        if after_dispute { "disputed" } else { "refunded (refund failed)" },
         reinstated.id,
         reinstated.buyer_id,
         fulfillment.as_ref().map_or("none".to_owned(), |f| f.id.to_string()),
@@ -407,7 +418,7 @@ async fn reinstate(
             _ => "to be delivered again",
         }),
     );
-    notify::purchase_reinstated(&state.db, &reinstated, user.0.id).await;
+    notify::purchase_reinstated(&state.db, &reinstated, user.0.id, after_dispute).await;
     let updated = Receipt::find_by_id(&state.db, id)
         .await?
         .ok_or(ApiError::NotFound("receipt"))?;
@@ -415,7 +426,8 @@ async fn reinstate(
 }
 
 /// Refunds a receipt in full through Stripe and revokes its fulfillment. Requires Admin
-/// Access and Store Finance. 400 unless the receipt is still paid.
+/// Access and Store Finance. 400 unless the receipt is paid, or refunded with a refund that
+/// failed (refunding it again refunds whatever Stripe hasn't).
 #[post("/admin/store/receipts/{receipt_id}/refund")]
 async fn refund(
     state: web::Data<AppState>,
@@ -427,32 +439,59 @@ async fn refund(
     let view = Receipt::find_by_id(&state.db, receipt_id.into_inner())
         .await?
         .ok_or(ApiError::NotFound("receipt"))?;
-    let receipt = view.receipt;
-    if receipt.status != ReceiptStatus::Paid {
+    let receipt = &view.receipt;
+    let failed_refund = receipt.status == ReceiptStatus::Refunded && view.refunds.as_ref().is_some_and(|r| r.falls_short());
+    if receipt.status != ReceiptStatus::Paid && !failed_refund {
         return Err(bad(format!("receipt is already {}", format!("{:?}", receipt.status).to_lowercase())));
     }
-    refund_receipt(&state, stripe, &receipt, user.0.id).await?;
+    refund_receipt(&state, stripe, &view, user.0.id).await?;
     let updated = Receipt::find_by_id(&state.db, receipt.id)
         .await?
         .ok_or(ApiError::NotFound("receipt"))?;
     Ok(HttpResponse::Ok().json(updated))
 }
 
-/// Refunds a paid receipt in full through Stripe, marks it refunded (revoking its
-/// fulfillment) and tells the buyer; `by` is the staff member. 400 for a receipt recorded
-/// without a payment. Stripe refunds are idempotent per receipt, so refunding one twice, even
-/// at the same moment, refunds it once.
-async fn refund_receipt(state: &AppState, stripe: &Stripe, receipt: &Receipt, by: i64) -> Result<(), ApiError> {
+/// Refunds a receipt in full (whatever Stripe hasn't refunded yet) through Stripe, marks it
+/// refunded (revoking its fulfillment) and tells the buyer; `by` is the staff member. 400
+/// for a receipt recorded without a payment, 422 if Stripe refuses or fails the refund at
+/// once, leaving the receipt as it was. Stripe refunds are idempotent per receipt until one
+/// fails (see `PaymentRefunds::refund_key`), so refunding one twice, even at the same moment,
+/// refunds it once.
+///
+/// Most refunds succeed at once, but some stay pending and a few fail later (a closed card,
+/// say). The receipt is marked refunded as soon as Stripe accepts the refund, then what
+/// Stripe has refunded is recorded, now and on each of its refund events: a refund that
+/// fails later flags the receipt for staff to refund again or reinstate (see
+/// `routes::store::sync_refunds`).
+async fn refund_receipt(state: &AppState, stripe: &Stripe, view: &ReceiptView, by: i64) -> Result<(), ApiError> {
+    let receipt = &view.receipt;
     // Sessions that needed no payment are recorded with a placeholder instead of a
     // PaymentIntent; there's nothing to refund through Stripe.
     if receipt.stripe_payment_intent_id.starts_with("session:") {
         return Err(bad("this receipt has no payment to refund".to_owned()));
     }
+    let payment_intent = receipt.stripe_payment_intent_id.as_str();
+    let key = PaymentRefunds::refund_key(view.refunds.as_deref(), receipt.id);
     // `None` if it was already refunded in full (e.g. from the Stripe dashboard, with the
     // webhook not yet arrived); the receipt is still marked refunded below.
-    let stripe_refund = stripe
-        .refund(&receipt.stripe_payment_intent_id, &format!("refund-receipt-{}", receipt.id))
-        .await?;
+    let stripe_refund = stripe.refund(payment_intent, &key).await?;
+    if let Some(failed) = stripe_refund.as_ref().filter(|r| r.failed()) {
+        // Recorded so that trying again uses a new idempotency key.
+        if let Err(e) = sync_refunds(state, Some(payment_intent), "failed refund").await {
+            log::warn!("couldn't record the refunds of receipt {}: {e}", receipt.id);
+        }
+        log::warn!(
+            "user {by} tried to refund receipt {}, but Stripe's refund {} {}: {}",
+            receipt.id,
+            failed.id,
+            failed.status.as_deref().unwrap_or("failed"),
+            failed.failure_reason.as_deref().unwrap_or("no reason given")
+        );
+        return Err(ApiError::StripeRejected(format!(
+            "Stripe couldn't refund this payment ({})",
+            failed.failure_reason.as_deref().unwrap_or("the refund failed")
+        )));
+    }
     // The `charge.refunded` webhook does the same later; it finds nothing left to change
     // (or, if it got here first, we don't), so the buyer is notified once.
     if let Some((refunded, _)) = Receipt::set_status(&state.db, receipt.id, ReceiptStatus::Refunded).await? {
@@ -464,6 +503,11 @@ async fn refund_receipt(state: &AppState, stripe: &Stripe, receipt: &Receipt, by
         stripe_refund.as_ref().map_or("none", |r| r.id.as_str()),
         stripe_refund.as_ref().and_then(|r| r.status.as_deref()).unwrap_or("already refunded")
     );
+    // Shows the refund as pending (or done) on the receipt right away; Stripe's webhook would
+    // record it shortly anyway.
+    if let Err(e) = sync_refunds(state, Some(payment_intent), "refund by staff").await {
+        log::warn!("couldn't record the refunds of receipt {} yet: {e}", receipt.id);
+    }
     Ok(())
 }
 
@@ -551,7 +595,10 @@ async fn refund_undelivered(
         if !Receipt::is_undelivered(&state.db, server_id, receipt.id).await? {
             continue;
         }
-        let error = match refund_receipt(&state, stripe, &receipt, user.0.id).await {
+        let Some(view) = Receipt::find_by_id(&state.db, receipt.id).await? else {
+            continue;
+        };
+        let error = match refund_receipt(&state, stripe, &view, user.0.id).await {
             Ok(()) => {
                 refunded += 1;
                 continue;
@@ -625,6 +672,7 @@ fn normalize_store(body: StoreBody) -> Result<StoreDetails, ApiError> {
         currency: currency.to_ascii_lowercase(),
         override_name: Some(override_name).filter(|n| !n.is_empty()),
         store_message: Some(store_message).filter(|m| !m.is_empty()),
+        money_on_revoke: body.money_on_revoke,
     })
 }
 
@@ -802,6 +850,7 @@ mod tests {
             override_name: None,
             store_message: None,
             grantable_usergroups: vec!["vip".into()],
+            money_on_revoke: MoneyOnRevoke::Keep,
             created_at: Utc::now(),
             last_updated: None,
         }
@@ -847,13 +896,15 @@ mod tests {
             currency: Some(" EUR ".into()),
             override_name: Some("  ".into()),
             store_message: Some("Hi".into()),
+            money_on_revoke: Some(MoneyOnRevoke::Deduct),
         })
         .unwrap_or_else(|_| panic!("valid store rejected"));
         assert_eq!(d.currency, "eur");
+        assert_eq!(d.money_on_revoke, Some(MoneyOnRevoke::Deduct));
         assert_eq!(d.override_name, None);
         assert_eq!(d.store_message.as_deref(), Some("Hi"));
-        assert!(normalize_store(StoreBody { enabled: true, currency: Some("dollars".into()), override_name: None, store_message: None }).is_err());
-        assert_eq!(normalize_store(StoreBody { enabled: false, currency: None, override_name: None, store_message: None }).unwrap().currency, "usd");
+        assert!(normalize_store(StoreBody { enabled: true, currency: Some("dollars".into()), override_name: None, store_message: None, money_on_revoke: None }).is_err());
+        assert_eq!(normalize_store(StoreBody { enabled: false, currency: None, override_name: None, store_message: None, money_on_revoke: None }).unwrap().currency, "usd");
 
         assert!(allowed_currency("usd").is_ok());
         assert!(allowed_currency("jpy").is_ok());

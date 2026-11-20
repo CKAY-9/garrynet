@@ -5,8 +5,11 @@ import form from "../../community/editor.module.scss";
 import { refundReceipt } from "../actions";
 import styles from "../store.module.scss";
 
-/** Refunds a receipt in full after a second click. Store Finance only (the backend checks too). */
-export function RefundButton({ receiptId, amount }: { receiptId: number; amount: string }) {
+/**
+ * Refunds a receipt in full after a second click. `again` is for a refund that failed: it
+ * refunds whatever Stripe hasn't. Store Finance only (the backend checks too).
+ */
+export function RefundButton({ receiptId, amount, again = false }: { receiptId: number; amount: string; again?: boolean }) {
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -35,7 +38,7 @@ export function RefundButton({ receiptId, amount }: { receiptId: number; amount:
         disabled={pending}
         aria-label={confirming ? `Confirm refunding ${amount}` : `Refund ${amount}`}
       >
-        {pending ? "Refunding..." : confirming ? `Refund ${amount}?` : "Refund"}
+        {pending ? "Refunding..." : confirming ? `Refund ${amount}?` : again ? "Refund again" : "Refund"}
       </button>
       {error && <span className={form.error}>{error}</span>}
     </span>

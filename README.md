@@ -86,6 +86,8 @@ Users with the `User Messages` permission can message each other with Markdown a
 
 Both the browser and your Garry's Mod servers must be able to reach the backend, so it needs a public URL (e.g. `https://api.example.com`).
 
+Everything outside localhost runs on HTTPS: the backend (in release builds), the frontend (in production builds) and the addon refuse plain-HTTP URLs to other machines, since login cookies, tokens and server keys travel over them. See [HTTPS](#https).
+
 ## Requirements
 
 - A [Steam Web API key](https://steamcommunity.com/dev/apikey)
@@ -110,15 +112,14 @@ Both the browser and your Garry's Mod servers must be able to reach the backend,
     - `STEAM_API_KEY`: your Steam Web API key.
     - `COOKIE_DOMAIN`: needed when the site and backend are on different subdomains. For `example.com` and `api.example.com`, set it to `example.com`.
 
-    `DATABASE_URL` and `BIND_ADDR` are set by Compose, so you can leave them alone.
+    `DATABASE_URL`, `DATABASE_PASSWORD_FILE` and `BIND_ADDR` are set by Compose, so you can leave them alone.
 3. **Configure the frontend.** Copy `frontend/.env.example` to `frontend/.env` and set `NEXT_PUBLIC_API_URL` to the backend's public URL (the same as `BACKEND_URL`). `API_URL` is set by Compose.
-4. **Set the domains and a database password.** Copy `.env.example` to `.env` in the repository root and set:
+4. **Set the domains.** Copy `.env.example` to `.env` in the repository root and set:
     ```sh
     SITE_DOMAIN=example.com
     API_DOMAIN=api.example.com
-    POSTGRES_PASSWORD=<a strong password>
     ```
-    Without a password it defaults to `gravnet`. You can also set `POSTGRES_USER`, `POSTGRES_DB` and the rate limit (see [Reverse proxy](#reverse-proxy)) here.
+    The database password is generated on first start: a random 256-bit one, kept in the `db-secrets` volume, which only the database and backend mount. To choose your own, set `POSTGRES_PASSWORD` here before the first start. You can also set `POSTGRES_USER`, `POSTGRES_DB` and the rate limit (see [Reverse proxy](#reverse-proxy)) here.
 5. **Start it:**
     ```sh
     docker compose up -d --build
@@ -130,13 +131,13 @@ Both the browser and your Garry's Mod servers must be able to reach the backend,
     ```
     Reload the page and the Admin section appears in the navigation.
 
-`NEXT_PUBLIC_API_URL` is baked into the frontend at build time, so re-run with `--build` after changing it. Uploaded files are kept in the `uploads` volume, the database in `db-data`, and Caddy's certificates in `caddy-data`.
+`NEXT_PUBLIC_API_URL` is baked into the frontend at build time, so re-run with `--build` after changing it. Uploaded files are kept in the `uploads` volume, the database in `db-data` (and its password in `db-secrets`), and Caddy's certificates in `caddy-data`. To see the password, e.g. to connect with `psql`: `docker compose exec db cat /run/secrets/gravnet/postgres_password`.
 
 #### Reverse proxy
 
 Caddy ([Caddyfile](./Caddyfile)) is built with the [rate limit plugin](https://github.com/mholt/caddy-ratelimit) (`caddy/Dockerfile`). On both domains it:
 
-- **Sets security headers:** `Content-Security-Policy: frame-ancestors 'self'`, `X-Frame-Options: SAMEORIGIN`, `X-Content-Type-Options: nosniff` and `Referrer-Policy: strict-origin-when-cross-origin`, unless the frontend or backend already set them, and removes the `Server` header.
+- **Sets security headers:** `Strict-Transport-Security: max-age=31536000` (HSTS: browsers that have visited use HTTPS only, for a year; not `includeSubDomains`, since other services may share the parent domain over HTTP), `Content-Security-Policy: frame-ancestors 'self'`, `X-Frame-Options: SAMEORIGIN`, `X-Content-Type-Options: nosniff` and `Referrer-Policy: strict-origin-when-cross-origin`, unless the frontend or backend already set them, and removes the `Server` header.
 - **Rate limits each client IP:** at most `RATE_LIMIT_EVENTS` (default 600) requests per `RATE_LIMIT_WINDOW` (default `1m`), counted separately for the site and the API. Next.js build assets (`/_next/static/`) aren't counted. Game servers' `/gnet/` requests have their own limit, `RATE_LIMIT_GNET_EVENTS` (default 1200), since servers on one host share an IP. Requests over the limit get `429 Too Many Requests` with `Retry-After`. Set these in the root `.env` and run `docker compose up -d` to apply them.
 
 If another proxy or CDN (e.g. Cloudflare) sits in front of Caddy, add its IP ranges as [`trusted_proxies`](https://caddyserver.com/docs/caddyfile/options#trusted-proxies) in the Caddyfile's global options. Otherwise every visitor counts against the proxy's IP.
@@ -161,10 +162,21 @@ The backend and frontend are separate processes; start the backend first.
 
 **Frontend**
 
-1. Copy `frontend/.env.example` to `frontend/.env`. Set `NEXT_PUBLIC_API_URL` to the backend's public URL and `API_URL` to an address the frontend server can reach it on (e.g. `http://localhost:8080`).
+1. Copy `frontend/.env.example` to `frontend/.env`. Set `NEXT_PUBLIC_API_URL` to the backend's public URL (`https://`) and `API_URL` to an address the frontend server can reach it on (e.g. `http://localhost:8080`).
 2. In `frontend/`, run `npm ci && npm run build && npm start`.
 
 Then make yourself an admin. Log in once, and in `backend/` run `cargo run --release -- usergroup add <your SteamID64> admin`.
+
+A manual setup needs its own reverse proxy terminating HTTPS in front of both (see [HTTPS](#https)).
+
+### HTTPS
+
+Outside localhost, every URL GravNet is configured with must be `https://`. Plain HTTP is allowed only for `localhost`, `*.localhost` and loopback addresses (`127.x.x.x`, `[::1]`), and, for URLs only the server itself uses, single-label names on a private network such as Compose's `http://backend:8080`. Otherwise:
+
+- **Backend** (release builds, i.e. `cargo run --release` and the Docker image): refuses to start if `BACKEND_URL`, `FRONTEND_URL` or `S3_PUBLIC_URL` is plain HTTP, if `S3_ENDPOINT` is plain HTTP to a host that isn't local or single-label, or if `COOKIE_SECURE=false`. Development builds (`cargo run`) only warn. When `BACKEND_URL` is HTTPS it sends `Strict-Transport-Security: max-age=31536000` itself, for setups without Caddy.
+- **Frontend** (production builds): `next build` fails if `NEXT_PUBLIC_API_URL` is plain HTTP, and the server refuses requests (500, with the reason in its log) if `API_URL` or `NEXT_PUBLIC_API_URL` is. It sends `Strict-Transport-Security` in production; browsers ignore it over plain HTTP, so `npm start` on localhost still works. `npm run dev` allows plain HTTP.
+- **Addon:** sends nothing to a plain-HTTP `gravnet_api_url` on another machine, and says why in the console, `gravnet_status` and the `!gnet` menu. For development against a backend elsewhere on your network, `gravnet_allow_http 1` allows it, with a warning.
+- **Caddy** (Docker) serves both domains over HTTPS, redirects plain HTTP and sends HSTS (see [Reverse proxy](#reverse-proxy)).
 
 ### Updating
 
@@ -172,6 +184,16 @@ Then make yourself an admin. Log in once, and in `backend/` run `cargo run --rel
 git pull
 docker compose up -d --build
 ```
+
+Postgres only reads its password when the database is first created. A database created before passwords were generated, without `POSTGRES_PASSWORD` set, still has the old default password, `gravnet`, and the backend can't connect after updating. Switch it to the generated password once:
+
+```sh
+docker compose up -d db
+docker compose exec db sh -c 'echo "ALTER ROLE CURRENT_USER PASSWORD :'"'"'pw'"'"';" | psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v pw="$(cat /run/secrets/gravnet/postgres_password)"'
+docker compose up -d
+```
+
+(Inside the container, `psql` connects over the local socket, which needs no password.) If you had set `POSTGRES_PASSWORD`, nothing changes: it's still used.
 
 Database migrations run automatically when the backend starts. Back up the `db-data` volume before updating.
 
@@ -203,6 +225,7 @@ The store can be browsed and managed without Stripe, but nothing can be bought u
     - `checkout.session.async_payment_failed`
     - `checkout.session.expired`
     - `charge.refunded`
+    - `charge.refund.updated`
     - `charge.dispute.created`
     - `charge.dispute.closed`
 

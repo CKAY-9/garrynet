@@ -6,8 +6,9 @@ import { reinstateReceipt } from "../actions";
 import styles from "../store.module.scss";
 
 /**
- * Reinstates a disputed receipt whose dispute was won after a second click: it's paid
- * again and its rewards are delivered again. Store Finance only (the backend checks too).
+ * Reinstates a disputed receipt whose dispute was won, or a refunded one whose refund failed,
+ * after a second click: it's paid again and its rewards are delivered again. Store Finance
+ * only (the backend checks too).
  */
 export function ReinstateButton({ receiptId }: { receiptId: number }) {
   const [confirming, setConfirming] = useState(false);

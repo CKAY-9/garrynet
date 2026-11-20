@@ -28,7 +28,7 @@ To remove: `usergroup remove [USER_ID] [GROUP_NAME/ID]`
 
 `USER_ID` also accepts a SteamID64. Other shell commands: `usergroup list`, `usergroup show [GROUP_NAME/ID]`, `user show [USER_ID]`, `user logout [USER_ID]` (signs them out everywhere; see [AUTH.md](AUTH.md)), `user unban [USER_ID]` and `user unsuspend [USER_ID]` (see [User Punishment](USERS.md#user-punishment)), and `help`. Membership changes are logged.
 
-The same commands can be run one-shot without attaching to the running server's terminal, e.g. `backend usergroup add 1 admin` (needs only `DATABASE_URL`).
+The same commands can be run one-shot without attaching to the running server's terminal, e.g. `backend usergroup add 1 admin` (needs only `DATABASE_URL`, and `DATABASE_PASSWORD_FILE` if it's used).
 
 The default usergroups are created on startup if no group with that name exists; existing groups are never overwritten. New users join `user` on their first login. Because they're matched by name, the default groups can't be renamed (only their case can change) or deleted.
 
@@ -39,7 +39,7 @@ Usergroups are created, edited and deleted from `/admin/usergroups` (see [ADMIN.
 - GET `/admin/usergroups`: every usergroup in full.
 - GET `/admin/usergroups/{id}`: one usergroup in full.
 - POST `/admin/usergroups`: `{ name, effect, color, permissions, icon_url? }`; returns the new group (201). 409 if the name is taken.
-- PUT `/admin/usergroups/{id}`: same body; replaces the group's details and bumps `last_updated`.
+- PUT `/admin/usergroups/{id}`: same body; replaces the group's details and bumps `last_updated`. Requires holding every permission the group grants (403 otherwise), as deleting it does, so nobody can rename or restyle a group above them.
 - DELETE `/admin/usergroups/{id}`: deletes the group; its members leave it (204). Requires holding every permission the group grants (403 otherwise), since deleting it revokes them, and every permission its other members hold (see Rules).
 - GET `/admin/usergroups/{id}/members`: the group's members, `{ id, username, avatar_url, added_at }[]`, by name.
 - POST `/admin/usergroups/{id}/members`: `{ user_id }`; adds the user and returns the member (201). 404 if the user doesn't exist, 409 if they're already a member.
@@ -48,7 +48,7 @@ Usergroups are created, edited and deleted from `/admin/usergroups` (see [ADMIN.
 Rules:
 - `name`: 1-32 characters, unique regardless of case, not only digits (the shell takes a group id or name).
 - `color`: hex (`#rgb`, `#rrggbb` or `#rrggbbaa`). `icon_url`: an http(s) URL or blank.
-- `permissions`: only documented bits. Editors can only grant or revoke permissions they hold themselves (403 otherwise), so Usergroup Management can't be used to escalate.
+- `permissions`: only documented bits. Editors can only grant or revoke permissions they hold themselves (403 otherwise), so Usergroup Management can't be used to escalate. Editing a group at all requires holding every permission it grants.
 - Adding or removing members requires holding every permission the group grants (403 otherwise), so a moderator can't put anyone, themselves included, into `admin`.
 - Removing someone else also requires holding every permission they hold (403 otherwise), so nobody can demote a user above them.
 - For the same reason, taking permissions away from a group, or deleting a group that grants any, requires holding every permission its other members hold (403 otherwise). Otherwise a moderator with Usergroup Management could strip Admin Access from the `admin` group itself.

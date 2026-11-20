@@ -70,11 +70,6 @@ impl Permissions {
         Self(bits)
     }
 
-    /// Bits set in exactly one of `self` and `other`.
-    pub const fn symmetric_difference(self, other: Self) -> Self {
-        Self(self.0 ^ other.0)
-    }
-
     /// Bits set in `self` but not in `other`.
     pub const fn difference(self, other: Self) -> Self {
         Self(self.0 & !other.0)
@@ -90,6 +85,12 @@ impl Permissions {
 
     pub const fn contains(self, other: Self) -> bool {
         self.0 & other.0 == other.0
+    }
+
+    /// Whether `self` holds every permission `other` does, and more: strictly outranks it.
+    /// Two holders of the same permissions don't outrank each other.
+    pub const fn outranks(self, other: Self) -> bool {
+        self.contains(other) && self.0 != other.0
     }
 
     /// Display name of a single flag, e.g. `"Admin Access"`.
@@ -143,6 +144,17 @@ mod tests {
         assert_eq!(Permissions::BASIC.0, 0x203);
         assert!(Permissions::BASIC.contains(Permissions::SITE_ACCESS));
         assert!(!Permissions::BASIC.contains(Permissions::ADMIN_ACCESS));
+    }
+
+    #[test]
+    fn outranks() {
+        let moderator = Permissions::BASIC | Permissions::ADMIN_ACCESS | Permissions::USER_MANAGEMENT;
+        assert!(Permissions::ALL.outranks(moderator));
+        assert!(moderator.outranks(Permissions::BASIC));
+        assert!(!moderator.outranks(moderator));
+        assert!(!Permissions::ALL.outranks(Permissions::ALL));
+        assert!(!moderator.outranks(Permissions::ALL));
+        assert!(!moderator.outranks(Permissions::BASIC | Permissions::STORE_FINANCE));
     }
 
     #[test]

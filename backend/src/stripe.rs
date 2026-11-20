@@ -6,7 +6,7 @@ use hmac::{Hmac, Mac};
 use serde::{Deserialize, de::DeserializeOwned};
 use sha2::Sha256;
 
-use crate::{config::StripeConfig, error::ApiError};
+use crate::{config::StripeConfig, error::ApiError, models::store::PaymentRefunds};
 
 const API: &str = "https://api.stripe.com/v1";
 
@@ -54,7 +54,85 @@ pub struct CheckoutSession {
 #[derive(Debug, Deserialize)]
 pub struct Refund {
     pub id: String,
+    /// `pending`, `requires_action`, `succeeded`, `failed` or `canceled`.
     pub status: Option<String>,
+    /// Why it failed, if it did (e.g. `expired_or_canceled_card`).
+    #[serde(default)]
+    pub failure_reason: Option<String>,
+}
+
+impl Refund {
+    /// Whether it failed or was cancelled, so no money goes back.
+    pub fn failed(&self) -> bool {
+        refund_failed(self.status.as_deref())
+    }
+}
+
+fn refund_failed(status: Option<&str>) -> bool {
+    matches!(status, Some("failed" | "canceled"))
+}
+
+/// A page of a Stripe list.
+#[derive(Debug, Deserialize)]
+struct List<T> {
+    data: Vec<T>,
+    #[serde(default)]
+    has_more: bool,
+}
+
+/// A Charge, as far as its refunds go.
+#[derive(Debug, Deserialize)]
+struct Charge {
+    #[serde(default)]
+    amount_captured: i64,
+    /// Stripe's total, pending refunds included.
+    #[serde(default)]
+    amount_refunded: i64,
+    /// Present when expanded (older API versions include it anyway).
+    #[serde(default)]
+    refunds: Option<List<ChargeRefund>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ChargeRefund {
+    amount: i64,
+    #[serde(default)]
+    status: Option<String>,
+    #[serde(default)]
+    failure_reason: Option<String>,
+    /// Unix seconds.
+    #[serde(default)]
+    created: i64,
+}
+
+/// Adds up a payment's charges and their refunds. Refunds count unless they failed or were
+/// cancelled; when a charge's refunds aren't all listed, Stripe's own total for it is used.
+fn summarize(charges: &[Charge]) -> PaymentRefunds {
+    let mut summary = PaymentRefunds::default();
+    let mut latest: Option<&ChargeRefund> = None;
+    for charge in charges {
+        summary.amount_charged += charge.amount_captured;
+        summary.amount_refunded += match &charge.refunds {
+            Some(list) if !list.has_more => list
+                .data
+                .iter()
+                .filter(|r| !refund_failed(r.status.as_deref()))
+                .map(|r| r.amount)
+                .sum(),
+            _ => charge.amount_refunded,
+        };
+        for refund in charge.refunds.iter().flat_map(|list| &list.data) {
+            if refund_failed(refund.status.as_deref()) {
+                summary.failed_refunds += 1;
+            }
+            if latest.is_none_or(|l| refund.created >= l.created) {
+                latest = Some(refund);
+            }
+        }
+    }
+    summary.latest_status = latest.and_then(|r| r.status.clone());
+    summary.latest_failure_reason = latest.and_then(|r| r.failure_reason.clone());
+    summary
 }
 
 /// What a Checkout Session is for. Prices are owned by GravNet and passed inline, so no
@@ -200,6 +278,18 @@ impl Stripe {
         }
     }
 
+    /// What has been charged and refunded of a payment, as Stripe stands now: its charges
+    /// with their refunds.
+    pub async fn payment_refunds(&self, payment_intent: &str) -> Result<PaymentRefunds, ApiError> {
+        let url = url::Url::parse_with_params(
+            &format!("{API}/charges"),
+            [("payment_intent", payment_intent), ("limit", "100"), ("expand[]", "data.refunds")],
+        )
+        .map_err(|e| ApiError::Internal(format!("stripe url: {e}")))?;
+        let charges: List<Charge> = self.send(self.http.get(url.as_str())).await?;
+        Ok(summarize(&charges.data))
+    }
+
     async fn post<T: DeserializeOwned>(
         &self,
         path: &str,
@@ -316,6 +406,49 @@ mod tests {
         assert!(verify_signature(SECRET, PAYLOAD, "", 1000).is_err());
         // Too old.
         assert!(verify_signature(SECRET, PAYLOAD, &format!("t=1000,v1={good}"), 1000 + 301).is_err());
+    }
+
+    #[test]
+    fn summarizes_refunds() {
+        let charges: List<Charge> = serde_json::from_value(serde_json::json!({
+            "data": [
+                { "amount_captured": 0, "amount_refunded": 0, "refunds": { "data": [], "has_more": false } },
+                {
+                    "amount_captured": 1100,
+                    "amount_refunded": 600,
+                    "refunds": { "has_more": false, "data": [
+                        { "amount": 100, "status": "succeeded", "created": 1 },
+                        { "amount": 1000, "status": "failed", "failure_reason": "expired_or_canceled_card", "created": 3 },
+                        { "amount": 500, "status": "pending", "created": 2 }
+                    ] }
+                }
+            ],
+            "has_more": false
+        }))
+        .unwrap();
+        let summary = summarize(&charges.data);
+        assert_eq!(
+            summary,
+            PaymentRefunds {
+                amount_charged: 1100,
+                amount_refunded: 600,
+                latest_status: Some("failed".into()),
+                latest_failure_reason: Some("expired_or_canceled_card".into()),
+                failed_refunds: 1,
+            }
+        );
+        assert!(!summary.full());
+        assert!(summary.falls_short());
+
+        // Refunds not expanded: Stripe's total.
+        let charges: List<Charge> = serde_json::from_value(serde_json::json!({
+            "data": [{ "amount_captured": 1100, "amount_refunded": 1100 }]
+        }))
+        .unwrap();
+        let summary = summarize(&charges.data);
+        assert!(summary.full());
+        assert_eq!(summary.latest_status, None);
+        assert!(summarize(&[]).amount_charged == 0 && !summarize(&[]).full() && !summarize(&[]).falls_short());
     }
 
     #[test]

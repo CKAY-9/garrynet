@@ -49,8 +49,8 @@ Run the demo from its own clone of the repository: its `.env` files and ports 80
     ```sh
     SITE_DOMAIN=gnet.example.com
     API_DOMAIN=api.gnet.example.com
-    POSTGRES_PASSWORD=<a strong password>
     ```
+    The database password is generated on first start (see the README's Docker setup).
 3. Copy `backend/.env.example` to `backend/.env`:
     ```sh
     BACKEND_URL=https://api.gnet.example.com

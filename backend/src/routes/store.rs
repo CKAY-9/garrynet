@@ -16,8 +16,8 @@ use crate::{
         Permissions, Server, Usergroup,
         store::{
             Begin, CHECKOUT_TTL_MINUTES, DISPUTE_WON, ItemStore, MAX_PENDING_PER_BUYER, MarkPaid, PricedItem, Purchase,
-            PurchaseStatus, Receipt, ReceiptStatus, ReceiptView, Settle, StoreDiscount, StoreItem, StoreSummary,
-            ungrantable_usergroup,
+            PurchaseStatus, Receipt, ReceiptStatus, ReceiptView, RefundSync, Settle, StoreDiscount, StoreItem,
+            StoreSummary, ungrantable_usergroup,
         },
     },
     notify,
@@ -419,12 +419,14 @@ async fn cancel_purchase(
     Ok(HttpResponse::Ok().json(purchase))
 }
 
-/// Receipt fields only staff see: Stripe's identifiers of the payment. They're useless to a
-/// buyer and only widen what a leaked response gives away.
-const STAFF_ONLY_RECEIPT_FIELDS: [&str; 2] = ["stripe_checkout_session_id", "stripe_payment_intent_id"];
+/// Receipt fields only staff see: Stripe's identifiers of the payment, and its refunds as
+/// Stripe reports them. They're useless to a buyer and only widen what a leaked response
+/// gives away.
+const STAFF_ONLY_RECEIPT_FIELDS: [&str; 3] = ["stripe_checkout_session_id", "stripe_payment_intent_id", "refunds"];
 
 /// The buyer's receipts with their delivery status, newest first, without staff-only details
-/// (Stripe's identifiers and the addon's error text; buyers see the delivery status).
+/// (Stripe's identifiers and refund details, and the addon's error text; buyers see the
+/// receipt and delivery status).
 #[get("/store/purchases")]
 async fn my_purchases(state: web::Data<AppState>, user: AuthUser) -> Result<HttpResponse, ApiError> {
     let receipts: Vec<ReceiptView> = Receipt::list_for_buyer(&state.db, user.0.id).await?;
@@ -540,11 +542,11 @@ async fn handle_event(state: &AppState, event: &Event) -> Result<(), ApiError> {
                 log::info!("purchase {} cancelled: checkout session {session} {}", cancelled.id, event.kind);
             }
         }
-        "charge.refunded" => {
-            // Partial refunds leave the receipt paid; `refunded` is true once it's refunded in full.
-            if object.get("refunded").and_then(|v| v.as_bool()) == Some(true) {
-                settle(state, str_field("payment_intent"), ReceiptStatus::Refunded, &event.kind).await?;
-            }
+        // A refund was made (in full or in part, from GravNet or the Stripe dashboard), or one
+        // changed, e.g. failed after being accepted. The event carries a Charge or a Refund;
+        // either way, what Stripe has refunded of the payment is read afresh.
+        "charge.refunded" | "charge.refund.updated" | "refund.created" | "refund.updated" | "refund.failed" => {
+            sync_refunds(state, str_field("payment_intent").as_deref(), &event.kind).await?;
         }
         "charge.dispute.created" => {
             settle(state, str_field("payment_intent"), ReceiptStatus::Disputed, &event.kind).await?;
@@ -676,6 +678,52 @@ pub async fn sweep_stale_purchases(state: &AppState, minutes: i64) -> Result<(us
         }
     }
     Ok((cancelled, paid))
+}
+
+/// Reads what Stripe has charged and refunded of `payment_intent` and records it (see
+/// `Receipt::apply_refunds`): the receipt is refunded once the payment is refunded in full,
+/// partial refunds take their share off income, and a refund that failed after the receipt
+/// was marked refunded is flagged for staff. Stripe is asked while holding the payment's
+/// lock, so syncs of one payment are applied in the order Stripe answered them. `source` is
+/// for the logs.
+pub async fn sync_refunds(state: &AppState, payment_intent: Option<&str>, source: &str) -> Result<(), ApiError> {
+    let Some(payment_intent) = payment_intent else {
+        log::warn!("stripe {source} event without a payment intent");
+        return Ok(());
+    };
+    let stripe = state.stripe()?;
+    let mut tx = Receipt::begin_payment(&state.db, payment_intent).await?;
+    let refunds = stripe.payment_refunds(payment_intent).await?;
+    let outcome = Receipt::apply_refunds(&mut tx, payment_intent, &refunds).await?;
+    tx.commit().await?;
+    match outcome {
+        RefundSync::Refunded(receipt, fulfillment) => {
+            log::info!(
+                "receipt {} is now refunded ({source}); fulfillment {} revoked",
+                receipt.id,
+                fulfillment.map_or("none".to_owned(), |f| f.id.to_string())
+            );
+            notify::purchase_refunded(&state.db, &receipt, None).await;
+        }
+        RefundSync::FallsShort(receipt, refunds) => log::error!(
+            "receipt {} is marked refunded but Stripe has refunded {} of {} {} (latest refund {}{}); someone with Store Finance should refund it again or reinstate it ({source})",
+            receipt.id,
+            refunds.amount_refunded,
+            refunds.amount_charged,
+            receipt.currency,
+            refunds.latest_status.as_deref().unwrap_or("unknown"),
+            refunds.latest_failure_reason.as_deref().map(|r| format!(": {r}")).unwrap_or_default(),
+        ),
+        RefundSync::Recorded => log::debug!(
+            "stripe {source} for payment intent {payment_intent}: {} of {} refunded",
+            refunds.amount_refunded,
+            refunds.amount_charged
+        ),
+        RefundSync::Deferred => log::warn!(
+            "stripe {source} refunded payment intent {payment_intent}, which isn't recorded (yet); it's applied if it is"
+        ),
+    }
+    Ok(())
 }
 
 /// Moves the receipt of `payment_intent` to `status`, revoking its fulfillment, or, if the

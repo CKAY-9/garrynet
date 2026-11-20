@@ -1,6 +1,6 @@
 //! Banning and suspending users (docs/USERS.md "User Punishment"). Issuing and lifting need
-//! Admin Access and User Management, and can't target yourself or anyone holding
-//! permissions you don't.
+//! Admin Access and User Management, and can only target users you outrank: never yourself,
+//! nor anyone holding a permission you don't or exactly the permissions you do.
 
 use actix_web::{HttpResponse, get, post, web};
 use chrono::{DateTime, Utc};
@@ -218,8 +218,12 @@ async fn lift(
 }
 
 /// The user to punish or pardon, once `editor` is allowed to: they need Admin Access and
-/// User Management, can't target themselves, and must hold every permission the target's
-/// usergroups grant (punishments aside, so a banned admin still outranks a moderator).
+/// User Management, can't target themselves, and must outrank the target: hold every
+/// permission the target's usergroups grant (punishments aside, so a banned admin still
+/// outranks a moderator) and at least one more. Peers can't ban each other, since a ban
+/// takes away the permissions needed to lift it: two admins would otherwise each be one
+/// click from locking the other out. Users nobody outranks (holders of every permission) can
+/// only be punished once removed from the groups that grant it.
 async fn check_target(state: &AppState, editor: &AuthUser, id: i64) -> Result<User, ApiError> {
     let permissions = editor.require(&state.db, MANAGE).await?;
     if editor.0.id == id {
@@ -228,14 +232,17 @@ async fn check_target(state: &AppState, editor: &AuthUser, id: i64) -> Result<Us
     let target = User::find_by_id(&state.db, id)
         .await?
         .ok_or(ApiError::NotFound("user"))?;
-    let outranking = Usergroup::group_permissions_for_user(&state.db, target.id)
-        .await?
-        .difference(permissions);
-    if !outranking.is_empty() {
-        return Err(ApiError::Forbidden(format!(
-            "{} (this user holds permissions you don't)",
-            outranking.names().collect::<Vec<_>>().join(", ")
-        )));
+    let held = Usergroup::group_permissions_for_user(&state.db, target.id).await?;
+    if !permissions.outranks(held) {
+        let outranking = held.difference(permissions);
+        return Err(ApiError::Forbidden(if outranking.is_empty() {
+            "a rank above this user's (you hold the same permissions they do)".to_owned()
+        } else {
+            format!(
+                "{} (this user holds permissions you don't)",
+                outranking.names().collect::<Vec<_>>().join(", ")
+            )
+        }));
     }
     Ok(target)
 }

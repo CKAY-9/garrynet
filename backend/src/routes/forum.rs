@@ -1,6 +1,7 @@
 //! The forum; see docs/FORUM.md. Reading is public. Sections and categories are managed
 //! by admins; threads and replies need User Posts. Authors manage their own threads and
-//! posts; Thread Management manages anyone's.
+//! posts; Thread Management manages anyone's, except those of users holding permissions the
+//! moderator doesn't.
 
 use actix_web::{HttpResponse, delete, get, patch, post, put, web};
 use serde::{Deserialize, Serialize};
@@ -494,9 +495,11 @@ enum Manager {
 }
 
 /// Whether `user` may manage a thread or post written by `author_id` in `thread`.
-/// Moderators (Site Access + Thread Management) can manage anything. Authors can manage
-/// their own as long as they can still post (Site Access + User Posts, so not banned)
-/// and neither the thread nor its category is locked.
+/// Moderators (Site Access + Thread Management) can manage anything, locked or not, but not
+/// what's written by a user holding permissions they don't (counting the author's groups,
+/// punishments aside, as bans do), so a moderator can't edit or delete an admin's posts.
+/// Authors can manage their own as long as they can still post (Site Access + User Posts, so
+/// not banned) and neither the thread nor its category is locked.
 async fn manager(
     state: &AppState,
     user: &AuthUser,
@@ -505,6 +508,17 @@ async fn manager(
 ) -> Result<Manager, ApiError> {
     let permissions = Usergroup::permissions_for_user(&state.db, user.0.id).await?;
     if permissions.contains(MODERATE) {
+        if author_id != user.0.id {
+            let outranking = Usergroup::group_permissions_for_user(&state.db, author_id)
+                .await?
+                .difference(permissions);
+            if !outranking.is_empty() {
+                return Err(ApiError::Forbidden(format!(
+                    "{} (the author holds permissions you don't)",
+                    outranking.names().collect::<Vec<_>>().join(", ")
+                )));
+            }
+        }
         return Ok(Manager::Moderator);
     }
     if author_id != user.0.id {

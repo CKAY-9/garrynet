@@ -535,9 +535,16 @@ export type ItemStore = {
   store_message: string | null;
   /** Garry's Mod usergroups items may grant. Only Elevated Control changes it. */
   grantable_usergroups: string[];
+  /**
+   * What happens to delivered DarkRP money when a purchase is refunded or disputed: left with
+   * the player (`KEEP`, the default), or taken back as far as their balance allows (`DEDUCT`).
+   */
+  money_on_revoke: MoneyOnRevoke;
   created_at: string;
   last_updated: string | null;
 };
+
+export type MoneyOnRevoke = "KEEP" | "DEDUCT";
 
 /** A store as listed, with what's in it and the store-wide discount in force. */
 export type StoreSummary = ItemStore & {
@@ -705,12 +712,29 @@ export type Fulfillment = {
   fulfilled_at: string | null;
   revoked_at: string | null;
   revocation_applied_at: string | null;
+  /** DarkRP money the addon took back when revoking it (its store takes money back), if any. */
+  money_reclaimed: number | null;
 };
 
 /** A receipt with its buyer and delivery, from `GET /store/purchases` and `GET /admin/store/receipts`. */
 export type ReceiptView = Receipt & {
   buyer: UserRef;
   fulfillment: Fulfillment | null;
+  /** Staff only: absent from `GET /store/purchases`. `null` until Stripe reports a refund of the payment. */
+  refunds?: PaymentRefunds | null;
+};
+
+/** What Stripe has refunded of a receipt's payment, as it last reported. */
+export type PaymentRefunds = {
+  /** Minor units: what Stripe captured, tax included. */
+  amount_charged: number;
+  /** Minor units: refunds that succeeded or are under way. Failed and cancelled ones don't count. */
+  amount_refunded: number;
+  /** Stripe's status of the latest refund: `pending`, `requires_action`, `succeeded`, `failed` or `canceled`. */
+  latest_status: string | null;
+  /** Why the latest refund failed, if it did (e.g. `expired_or_canceled_card`). */
+  latest_failure_reason: string | null;
+  failed_refunds: number;
 };
 
 /** A page of `GET /admin/store/receipts`, newest first. `next_cursor` is `null` on the last page. */
@@ -755,7 +779,9 @@ export type AdminStorePage = StoreWithServer & {
 };
 
 /** Sent to `POST /admin/store` (with `server_id`) and `PUT /admin/store/{id}`. */
-export type StoreDetails = Pick<ItemStore, "enabled" | "currency" | "override_name" | "store_message">;
+export type StoreDetails = Pick<ItemStore, "enabled" | "currency" | "override_name" | "store_message"> &
+  /** Omitted keeps the current setting (`KEEP` for a new store). */
+  Partial<Pick<ItemStore, "money_on_revoke">>;
 
 /** Sent to `POST /admin/store/{id}/items` and `PUT /admin/store/{id}/items/{id}`. */
 export type ItemDetails = Pick<

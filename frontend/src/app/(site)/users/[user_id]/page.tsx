@@ -52,7 +52,7 @@ async function UserProfile({ id, searchParams }: { id: string; searchParams: Sea
   return (
     <Profile
       user={user}
-      // The backend refuses punishing yourself, and anyone holding permissions the viewer doesn't.
+      // The backend refuses punishing yourself, and anyone the viewer doesn't outrank.
       actions={
         self ? (
           <Link className={profileStyles.edit} href="/settings">

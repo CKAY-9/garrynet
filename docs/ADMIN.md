@@ -50,7 +50,7 @@ Requires: Admin Access and Usergroup Management
 
 - Lists every usergroup with its members count and permissions; creating one takes a name, color, effect, icon and permissions, then opens its page.
 - `/admin/usergroups/{id}` edits the group (with a live chip preview) and deletes it (after typing its name).
-- Only permissions the editor holds can be toggled. The default `user` and `admin` groups can't be renamed or deleted.
+- Only permissions the editor holds can be toggled, and only a group whose permissions the editor all holds can be edited at all; others are shown read-only. The default `user` and `admin` groups can't be renamed or deleted.
 - The Members section lists the group's members (avatar, name, date added) with a filter by name or id. "Add user" searches users by name or id (10 results) and adds the one clicked; the "×" beside a member removes them.
 - Members can only be changed by an editor holding every permission the group grants; others see the list read-only.
 

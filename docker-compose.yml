@@ -7,20 +7,51 @@
 # STEAM_API_KEY, ...) comes from the .env files.
 #
 # The root `.env` must set SITE_DOMAIN and API_DOMAIN, and can set POSTGRES_USER /
-# POSTGRES_PASSWORD / POSTGRES_DB and the RATE_LIMIT_* settings (see .env.example).
+# POSTGRES_DB and the RATE_LIMIT_* settings (see .env.example). The database password is
+# generated on first start (see `db-password`) unless POSTGRES_PASSWORD sets one.
 # Only Caddy publishes ports (80 and 443): the frontend and backend are reached through it,
 # so the rate limit can't be bypassed.
 
 services:
+  # Writes the database password to the `db-secrets` volume, which only `db` and `backend`
+  # mount: POSTGRES_PASSWORD from `.env` if it's set, otherwise a random one generated the
+  # first time and kept from then on. Runs to completion before either starts.
+  db-password:
+    image: postgres:17-alpine
+    restart: "no"
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
+    command:
+      - sh
+      - -euc
+      - |
+        f=/run/secrets/gravnet/postgres_password
+        umask 077
+        if [ -n "$$POSTGRES_PASSWORD" ]; then
+          printf '%s' "$$POSTGRES_PASSWORD" > "$$f.tmp" && mv "$$f.tmp" "$$f"
+        elif [ ! -s "$$f" ]; then
+          head -c 32 /dev/urandom | od -An -vtx1 | tr -d ' \n' > "$$f.tmp" && mv "$$f.tmp" "$$f"
+          echo "generated a database password in the db-secrets volume"
+        fi
+        # Postgres reads it as root, but the backend runs as an unprivileged user.
+        chmod 0444 "$$f"
+    volumes:
+      - db-secrets:/run/secrets/gravnet
+
   db:
     image: postgres:17-alpine
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-gravnet}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-gravnet}
+      # Only used when the database is first created; changing it later changes nothing.
+      POSTGRES_PASSWORD_FILE: /run/secrets/gravnet/postgres_password
       POSTGRES_DB: ${POSTGRES_DB:-gravnet}
     volumes:
       - db-data:/var/lib/postgresql/data
+      - db-secrets:/run/secrets/gravnet:ro
+    depends_on:
+      db-password:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
@@ -39,10 +70,13 @@ services:
         required: false
     environment:
       BIND_ADDR: 0.0.0.0:8080
-      DATABASE_URL: postgres://${POSTGRES_USER:-gravnet}:${POSTGRES_PASSWORD:-gravnet}@db:5432/${POSTGRES_DB:-gravnet}
+      # The password is read from DATABASE_PASSWORD_FILE.
+      DATABASE_URL: postgres://${POSTGRES_USER:-gravnet}@db:5432/${POSTGRES_DB:-gravnet}
+      DATABASE_PASSWORD_FILE: /run/secrets/gravnet/postgres_password
     volumes:
       # Uploaded files (local storage provider). Unused with STORAGE_PROVIDER=s3.
       - uploads:/app/storage
+      - db-secrets:/run/secrets/gravnet:ro
     depends_on:
       db:
         condition: service_healthy
@@ -84,6 +118,8 @@ services:
 
 volumes:
   db-data:
+  # The generated database password (see `db-password`).
+  db-secrets:
   uploads:
   caddy-data:
   caddy-config:

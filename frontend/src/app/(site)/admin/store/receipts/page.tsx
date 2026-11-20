@@ -15,7 +15,7 @@ import {
   type SearchParams,
 } from "@/lib/store";
 import { formatMoney, receiptStatuses, receiptStatusLabels, storeName } from "@/lib/storeEnums";
-import type { ReceiptFilters, StoreWithServer } from "@/lib/types";
+import type { ReceiptFilters, ReceiptView, StoreWithServer } from "@/lib/types";
 import styles from "../../admin.module.scss";
 import form from "../../community/editor.module.scss";
 import list from "../store.module.scss";
@@ -46,6 +46,34 @@ const disputeOutcomes: Record<string, string> = {
 /** Dispute outcomes that let a disputed receipt be reinstated. Must match `DISPUTE_WON` in the backend. */
 const disputeWon = ["won", "warning_closed"];
 
+/** Stripe's refund statuses that aren't final, as shown on a receipt. */
+const refundUnderWay: Record<string, string> = {
+  pending: "refund pending",
+  requires_action: "refund awaiting action",
+};
+
+/**
+ * A refunded receipt whose refund failed or was cancelled after Stripe accepted it: the buyer
+ * has neither the money nor the rewards. Like `PaymentRefunds::falls_short` in the backend.
+ */
+function refundFailed(r: ReceiptView): boolean {
+  const refunds = r.refunds;
+  return r.status === "REFUNDED" && !!refunds && refunds.amount_charged > 0 && refunds.amount_refunded < refunds.amount_charged;
+}
+
+/**
+ * What was kept of a receipt's price, as the backend counts income: in proportion to what
+ * Stripe didn't refund once it has reported refunds, otherwise all of a paid receipt.
+ */
+function keptAmount(r: ReceiptView): number {
+  if (r.status === "DISPUTED") return 0;
+  if (r.refunds && r.refunds.amount_charged > 0) {
+    const kept = Math.max(r.refunds.amount_charged - r.refunds.amount_refunded, 0);
+    return Math.floor((r.price * kept) / r.refunds.amount_charged);
+  }
+  return r.status === "PAID" ? r.price : 0;
+}
+
 /** /admin/store/receipts: every receipt, a page at a time, with refunds. Requires Store Finance. */
 async function Receipts({ searchParams }: { searchParams: SearchParams }) {
   await requirePermission(Permission.AdminAccess | Permission.StoreFinance);
@@ -56,7 +84,8 @@ async function Receipts({ searchParams }: { searchParams: SearchParams }) {
   const filtered = Object.values(filters).some((v) => v?.trim());
   const totals = new Map<string, number>();
   for (const r of receipts) {
-    if (r.status === "PAID") totals.set(r.currency, (totals.get(r.currency) ?? 0) + r.price);
+    const kept = keptAmount(r);
+    if (kept > 0) totals.set(r.currency, (totals.get(r.currency) ?? 0) + kept);
   }
 
   return (
@@ -74,7 +103,7 @@ async function Receipts({ searchParams }: { searchParams: SearchParams }) {
             {filtered && " match"}
             {(cursor || page.next_cursor) && " on this page"}
             {totals.size > 0 &&
-              ` · paid: ${[...totals].map(([currency, amount]) => formatMoney(amount, currency)).join(", ")}`}
+              ` · net: ${[...totals].map(([currency, amount]) => formatMoney(amount, currency)).join(", ")}`}
           </span>
         </div>
         <ReceiptFilterForm filters={filters} stores={stores} />
@@ -133,6 +162,13 @@ async function Receipts({ searchParams }: { searchParams: SearchParams }) {
                             <s>{formatMoney(r.list_price, r.currency)}</s> · {r.discount_percentage}% off
                           </span>
                         )}
+                        {/* Refunds are in what Stripe charged, which includes any tax. */}
+                        {r.status === "PAID" && r.refunds && r.refunds.amount_refunded > 0 && (
+                          <span className={list.cellMeta}>
+                            {formatMoney(r.refunds.amount_refunded, r.currency)} of{" "}
+                            {formatMoney(r.refunds.amount_charged, r.currency)} refunded
+                          </span>
+                        )}
                       </span>
                     </td>
                     <td>
@@ -147,6 +183,22 @@ async function Receipts({ searchParams }: { searchParams: SearchParams }) {
                           <span className={list.cellMeta}>
                             {r.dispute_outcome ? (disputeOutcomes[r.dispute_outcome] ?? r.dispute_outcome) : "dispute open"}
                           </span>
+                        )}
+                        {refundFailed(r) ? (
+                          <>
+                            <span className={`${list.badge} ${list.warn}`}>Refund failed</span>
+                            <span className={list.cellMeta}>
+                              {r.refunds?.latest_failure_reason?.replaceAll("_", " ") ?? r.refunds?.latest_status ?? "not refunded"}
+                              {r.refunds && r.refunds.amount_refunded > 0 &&
+                                ` · ${formatMoney(r.refunds.amount_refunded, r.currency)} refunded`}
+                            </span>
+                          </>
+                        ) : (
+                          r.status === "REFUNDED" &&
+                          r.refunds?.latest_status &&
+                          refundUnderWay[r.refunds.latest_status] && (
+                            <span className={list.cellMeta}>{refundUnderWay[r.refunds.latest_status]}</span>
+                          )
                         )}
                       </span>
                     </td>
@@ -168,6 +220,8 @@ async function Receipts({ searchParams }: { searchParams: SearchParams }) {
                                 ? "rewards removed"
                                 : "removal pending"
                               : "never delivered"}
+                            {r.fulfillment.money_reclaimed !== null &&
+                              ` · ${r.fulfillment.money_reclaimed.toLocaleString()} money taken back`}
                           </span>
                         )}
                       </span>
@@ -176,6 +230,16 @@ async function Receipts({ searchParams }: { searchParams: SearchParams }) {
                       {r.status === "PAID" && <RefundButton receiptId={r.id} amount={formatMoney(r.price, r.currency)} />}
                       {r.status === "DISPUTED" && r.dispute_outcome && disputeWon.includes(r.dispute_outcome) && (
                         <ReinstateButton receiptId={r.id} />
+                      )}
+                      {refundFailed(r) && r.refunds && (
+                        <>
+                          <RefundButton
+                            receiptId={r.id}
+                            amount={formatMoney(r.refunds.amount_charged - r.refunds.amount_refunded, r.currency)}
+                            again
+                          />
+                          <ReinstateButton receiptId={r.id} />
+                        </>
                       )}
                     </td>
                   </tr>

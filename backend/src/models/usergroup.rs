@@ -109,7 +109,8 @@ pub enum EditError {
     NotMember,
     /// The default groups can't be deleted or renamed.
     DefaultGroup,
-    /// The change grants or revokes permissions the editor doesn't hold.
+    /// The group grants (or the change would grant or revoke) permissions the editor
+    /// doesn't hold.
     NotHeld(Permissions),
     /// The change would take [`Editor::must_keep`] permissions away from the editor.
     LocksOut,
@@ -453,7 +454,9 @@ impl Usergroup {
     }
 
     /// Replaces a group's details. Default groups keep their name (case may change).
-    /// Permissions added or removed must be ones the editor holds, and the editor must keep
+    /// The editor must hold every permission the group grants, before and after the change,
+    /// as deleting it requires: nobody can rename or restyle a group above them, nor grant or
+    /// revoke permissions they don't hold. The editor must keep
     /// [`Editor::must_keep`] afterwards. Removing permissions also requires holding every
     /// permission the group's other members hold, as removing a member does, so nobody can
     /// demote users above them by editing their group.
@@ -468,7 +471,7 @@ impl Usergroup {
         if is_default_group(&name) && !name.eq_ignore_ascii_case(&details.name) {
             return Err(EditError::DefaultGroup);
         }
-        check_held(editor, permissions.symmetric_difference(details.permissions))?;
+        check_held(editor, permissions.union(details.permissions))?;
         if !permissions.difference(details.permissions).is_empty() {
             check_members_outranked(&mut tx, id, editor).await?;
         }

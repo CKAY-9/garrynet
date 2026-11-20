@@ -17,10 +17,14 @@ use std::{sync::Arc, time::Duration};
 use actix_web::{
     App, HttpServer,
     dev::{Service, ServiceResponse},
-    middleware::Logger,
+    http::header,
+    middleware::{Condition, DefaultHeaders, Logger},
     web,
 };
-use sqlx::{PgPool, postgres::PgPoolOptions};
+use sqlx::{
+    PgPool,
+    postgres::{PgConnectOptions, PgPoolOptions},
+};
 
 use crate::{
     auth::jwt::JwtKeys,
@@ -77,6 +81,7 @@ async fn main() -> std::io::Result<()> {
     spawn_notification_sweeper(state.db.clone());
 
     let trusted_origins = Arc::new(auth::trusted_origins(&config));
+    let https = config.https();
     HttpServer::new(move || {
         let trusted_origins = trusted_origins.clone();
         App::new()
@@ -96,12 +101,21 @@ async fn main() -> std::io::Result<()> {
                 }
             })
             .wrap(Logger::new("%r %s %Dms"))
+            // Served over HTTPS: browsers that have seen it never use plain HTTP for it again,
+            // for a year (HSTS). Not for subdomains, which may be other people's services.
+            .wrap(Condition::new(
+                https,
+                DefaultHeaders::new().add((header::STRICT_TRANSPORT_SECURITY, HSTS)),
+            ))
             .configure(routes::configure)
     })
     .bind(&config.bind_addr)?
     .run()
     .await
 }
+
+/// `Strict-Transport-Security` when the backend is served over HTTPS: a year, this host only.
+const HSTS: &str = "max-age=31536000";
 
 /// The configuration from the environment; exits on a configuration error.
 fn load_config() -> Config {
@@ -113,7 +127,7 @@ fn load_config() -> Config {
 
 /// Connects to the database and sets up the clients the server (or a command) needs.
 async fn build_state(config: Config) -> std::io::Result<AppState> {
-    let db = connect_db(&config.database_url).await?;
+    let db = connect_db(config.database.clone()).await?;
 
     let http = reqwest::Client::builder()
         .timeout(Duration::from_secs(10))
@@ -148,11 +162,11 @@ async fn build_state(config: Config) -> std::io::Result<AppState> {
 
 /// Connects to Postgres, applies migrations and creates the default usergroups, the
 /// skeleton community and the default legal documents.
-async fn connect_db(database_url: &str) -> std::io::Result<PgPool> {
+async fn connect_db(options: PgConnectOptions) -> std::io::Result<PgPool> {
     let db = PgPoolOptions::new()
         .max_connections(10)
         .acquire_timeout(Duration::from_secs(5))
-        .connect(database_url)
+        .connect_with(options)
         .await
         .map_err(std::io::Error::other)?;
     sqlx::migrate!("./migrations")
@@ -340,19 +354,19 @@ async fn sweep_files(db: &PgPool, storage: &Storage, sweep: Sweep) {
     }
 }
 
-/// One-shot command mode. Only needs `DATABASE_URL`, except `demo` commands, which delete
+/// One-shot command mode. Only needs `DATABASE_URL` (and `DATABASE_PASSWORD_FILE`, if
+/// used), except `demo` commands, which delete
 /// files and close checkouts and so need the full configuration.
 async fn run_command(args: &[String]) -> std::io::Result<()> {
     let (db, state) = if args.first().is_some_and(|a| a == "demo") {
         let state = build_state(load_config()).await?;
         (state.db.clone(), Some(state))
     } else {
-        let Some(database_url) = std::env::var("DATABASE_URL").ok().filter(|v| !v.is_empty())
-        else {
-            eprintln!("configuration error: missing required environment variable DATABASE_URL");
+        let options = config::database_from_env().unwrap_or_else(|e| {
+            eprintln!("configuration error: {e}");
             std::process::exit(1);
-        };
-        (connect_db(&database_url).await?, None)
+        });
+        (connect_db(options).await?, None)
     };
     match shell::execute(&db, state.as_ref(), args).await {
         Ok(out) => {

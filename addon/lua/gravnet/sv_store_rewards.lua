@@ -9,6 +9,11 @@
 --
 -- Staff are never demoted: a store usergroup only replaces a group listed in
 -- GravNet.Config.Store.OverridableGroups, or one the store set itself.
+--
+-- DarkRP money is spent, not kept, so revoking a purchase leaves it unless the store is set to
+-- take it back (`deduct_money` on the revoked fulfillment). Each revocation's deduction is
+-- recorded in garrysmod/data/gravnet/store_reclaimed.json before it's made, so it's never
+-- made twice.
 
 GravNet.Rewards = GravNet.Rewards or {}
 local R = GravNet.Rewards
@@ -65,6 +70,80 @@ end
 local function Online(steam_id)
 	local ply = player.GetBySteamID64(steam_id)
 	if IsValid(ply) then return ply end
+end
+
+-- Money taken back ------------------------------------------------------------------------------
+
+local RECLAIMED_FILE = GravNet.Config.DataDir .. "/store_reclaimed.json"
+
+-- Forget deductions this old: GravNet stops offering a revocation once it's acknowledged.
+local RECLAIMED_MAX_AGE = 30 * 24 * 60 * 60
+
+-- Deductions made, by revocation ("<fulfillment id>:<revoked_at>", so a purchase reinstated
+-- and revoked again is a new one): { amount, at }.
+local Reclaimed = {}
+
+local function SaveReclaimed()
+	local list = {}
+	for key, r in pairs(Reclaimed) do
+		list[#list + 1] = { key = key, amount = r.amount, at = r.at }
+	end
+	if not file.IsDir(GravNet.Config.DataDir, "DATA") then file.CreateDir(GravNet.Config.DataDir) end
+	file.Write(RECLAIMED_FILE, util.TableToJSON(list))
+end
+
+local function LoadReclaimed()
+	local raw = file.Read(RECLAIMED_FILE, "DATA")
+	if not raw or raw == "" then return end
+	local list = util.JSONToTable(raw)
+	if not istable(list) then
+		GravNet.Util.Warn("Ignoring unreadable " .. RECLAIMED_FILE)
+		return
+	end
+	local now = os.time()
+	for _, r in ipairs(list) do
+		if istable(r) and isstring(r.key) and isnumber(r.amount) and now - (tonumber(r.at) or 0) < RECLAIMED_MAX_AGE then
+			Reclaimed[r.key] = { amount = r.amount, at = r.at }
+		end
+	end
+end
+
+-- The DarkRP money a fulfillment's rewards deliver.
+function R.MoneyIn(rewards)
+	local total = 0
+	for _, r in ipairs(rewards or {}) do
+		if istable(r) and r.type == "darkrp_money" and isnumber(r.amount) and r.amount > 0 then
+			total = total + r.amount
+		end
+	end
+	return total
+end
+
+-- Take back the DarkRP money a revoked fulfillment delivered: `amount`, or all the player
+-- has if that's less, so their balance never goes below zero. Only for online players whose
+-- money DarkRP has loaded.
+--   returns "ok", amount taken (also when it was taken before), or "wait" (offline, or
+--   DarkRP hasn't loaded their money yet)
+function R.ReclaimMoney(fulfillment, amount)
+	local key = fulfillment.id .. ":" .. tostring(fulfillment.revoked_at)
+	local done = Reclaimed[key]
+	if done then return "ok", done.amount end
+
+	-- The gamemode isn't DarkRP (any more): there's no money to take.
+	if not istable(DarkRP) then return "ok", 0 end
+	local ply = Online(fulfillment.steam_id)
+	if not ply or not isfunction(ply.addMoney) then return "wait" end
+	local balance = tonumber(ply:getDarkRPVar("money"))
+	if balance == nil then return "wait" end
+
+	local taken = math.max(0, math.min(amount, math.floor(balance)))
+	-- Recorded first: a crash in between loses a deduction rather than making it twice.
+	Reclaimed[key] = { amount = taken, at = os.time() }
+	SaveReclaimed()
+	if taken > 0 then ply:addMoney(-taken) end
+	GravNet.Util.Log(string.format("Store: took back %d of %d money from %s for refunded purchase #%d",
+		taken, amount, fulfillment.steam_id, fulfillment.id))
+	return "ok", taken
 end
 
 -- Usergroup adapters ---------------------------------------------------------------------------
@@ -385,9 +464,10 @@ function R.Apply(fulfillment, ply)
 	R.Reconcile(steam_id, true)
 end
 
--- Take back a refunded or disputed purchase: its usergroups and weapons (money isn't clawed
--- back). Works for offline players too; their usergroup is corrected when they next join if
--- the admin mod can't change it while they're away. Safe to call more than once.
+-- Take back a refunded or disputed purchase's usergroups and weapons (money is taken back
+-- separately, if at all; see R.ReclaimMoney). Works for offline players too; their usergroup
+-- is corrected when they next join if the admin mod can't change it while they're away. Safe
+-- to call more than once.
 function R.Revoke(fulfillment)
 	local steam_id = fulfillment.steam_id
 	local entry = Players[steam_id]
@@ -441,3 +521,4 @@ hook.Add("PlayerInitialSpawn", "GravNet.Rewards.Join", function(ply)
 end)
 
 Load()
+LoadReclaimed()
