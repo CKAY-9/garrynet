@@ -2,7 +2,7 @@
 
 A read-only review of the backend, done on 2026-11-18 at commit `00942b6`. Line references in the findings point at that commit. Unlike the other documents here, the findings are a snapshot; only the **Status** of each is updated as they're dealt with.
 
-**Status:** 14 fixed (#1, #2, #3, #4, #5, #6, #7, #9, #10, #13, #14, #16, #17, #19), 1 accepted as not an issue (#8), 4 open.
+**Status as of commit `4d597c0`:** 14 fixed (#1, #2, #3, #4, #5, #6, #7, #9, #10, #13, #14, #16, #17, #19), 1 accepted as not an issue (#8), 4 open.
 
 **Scope:** the backend (`backend/`): auth, permissions, the Stripe store flow, uploads and storage, Markdown handling, the addon API (`/gnet/server/*`) and the deployment config (Caddy, Compose). The addon's reward delivery was checked as part of the store flow. The frontend was out of scope.
 
@@ -13,24 +13,24 @@ A read-only review of the backend, done on 2026-11-18 at commit `00942b6`. Line 
 | # | Area | Finding | Severity | Status |
 |---|------|---------|----------|--------|
 | 1 | Store | Refund/dispute events arriving before their receipt are dropped | High | Fixed (`e00cb4e`) |
-| 2 | Store | DarkRP money isn't taken back on refund or chargeback | Medium | Fixed (opt-in) |
+| 2 | Store | DarkRP money isn't taken back on refund or chargeback | Medium | Fixed, opt-in (`4d597c0`) |
 | 3 | Store | No way to redeliver after a dispute is won | Medium | Fixed (`e00cb4e`) |
 | 4 | Store | Deleting a server drops paid, undelivered fulfillments | Medium | Fixed (`39d69b8`) |
-| 5 | Store | Refunds are recorded before Stripe confirms them | Low–Medium | Fixed |
-| 6 | Store | Partial refunds from the Stripe dashboard are invisible | Low | Fixed |
+| 5 | Store | Refunds are recorded before Stripe confirms them | Low–Medium | Fixed (`4d597c0`) |
+| 6 | Store | Partial refunds from the Stripe dashboard are invisible | Low | Fixed (`4d597c0`) |
 | 7 | Store | Receipt list capped at 500, no pagination | Low | Fixed (`e00cb4e`) |
 | 8 | Store | Reinstated purchases skip stock and per-user limits | Low | Accepted |
 | 9 | Store | Stripe IDs aren't namespaced per deployment | Low | Fixed (`e00cb4e`) |
-| 10 | Security | No upload quota; S3 staging uploads are unbounded | Medium | Fixed |
+| 10 | Security | No upload quota; S3 staging uploads are unbounded | Medium | Fixed (`4d597c0`) |
 | 11 | Security | `COOKIE_DOMAIN` advice sends the login token to every subdomain | Medium | Open |
 | 12 | Privacy | Loading screen exposes private users' player records | Medium | Open |
-| 13 | Security | No HSTS header | Low–Medium | Fixed |
+| 13 | Security | No HSTS header | Low–Medium | Fixed (`4d597c0`) |
 | 14 | Abuse | No app-level rate limit on forum and support posting | Low–Medium | Fixed (`e00cb4e`) |
 | 15 | Abuse | Unbounded or expensive public reads | Low | Open |
-| 16 | Permissions | Users of equal rank can ban each other | Low | Fixed |
-| 17 | Permissions | Usergroup editors can restyle groups that outrank them | Low | Fixed |
+| 16 | Permissions | Users of equal rank can ban each other | Low | Fixed (`4d597c0`) |
+| 17 | Permissions | Usergroup editors can restyle groups that outrank them | Low | Fixed (`4d597c0`) |
 | 18 | Privacy | S3 private attachments readable at the public URL | Low | Open |
-| 19 | Deployment | Postgres password defaults to `gravnet` | Low | Fixed |
+| 19 | Deployment | Postgres password defaults to `gravnet` | Low | Fixed (`4d597c0`) |
 
 ## Store Flow
 
@@ -46,7 +46,7 @@ When `charge.refunded` or `charge.dispute.created` names a payment intent with n
 
 ### 2. DarkRP money isn't taken back on refund or chargeback (Medium)
 
-**Status:** Fixed, as an option. Each store has `money_on_revoke`: `KEEP` (the default, as before) leaves the money with the player; `DEDUCT` has the addon take back what was delivered, or the player's whole balance if that's less (never below 0), once they're online. The addon records each deduction before making it, so it's never made twice, and reports the amount, which reinstating a purchase (#3) delivers again. See STORE.md, "Refunds and Disputes".
+**Status:** Fixed in `4d597c0`, as an option. Each store has `money_on_revoke`: `KEEP` (the default, as before) leaves the money with the player; `DEDUCT` has the addon take back what was delivered, or the player's whole balance if that's less (never below 0), once they're online. The addon records each deduction before making it, so it's never made twice, and reports the amount, which reinstating a purchase (#3) delivers again. See STORE.md, "Refunds and Disputes".
 
 **Where:** [sv_store_rewards.lua:22](../addon/lua/gravnet/sv_store_rewards.lua#L22), [:379-380](../addon/lua/gravnet/sv_store_rewards.lua#L379-L380).
 
@@ -76,7 +76,7 @@ A won dispute leaves the receipt DISPUTED and its fulfillment REVOKED, "until st
 
 ### 5. Refunds are recorded before Stripe confirms them (Low–Medium)
 
-**Status:** Fixed. Every refund event (`charge.refunded`, and the newly handled `charge.refund.updated`) has the backend read the payment's charges and refunds from Stripe, under the payment's lock, into `store_payment_refunds`. A refund that fails or is cancelled after the receipt was marked refunded flags it "Refund failed" on `/admin/store/receipts` (and logs an error); Store Finance can refund it again (with a new idempotency key) or reinstate it, which delivers the rewards again. A refund Stripe fails at once isn't recorded as a refund, and pending refunds are shown as such. The receipt is still marked refunded as soon as Stripe accepts the refund, without a pending-refund state. See STORE.md, "Refunds and Disputes".
+**Status:** Fixed in `4d597c0`. Every refund event (`charge.refunded`, and the newly handled `charge.refund.updated`) has the backend read the payment's charges and refunds from Stripe, under the payment's lock, into `store_payment_refunds`. A refund that fails or is cancelled after the receipt was marked refunded flags it "Refund failed" on `/admin/store/receipts` (and logs an error); Store Finance can refund it again (with a new idempotency key) or reinstate it, which delivers the rewards again. A refund Stripe fails at once isn't recorded as a refund, and pending refunds are shown as such. The receipt is still marked refunded as soon as Stripe accepts the refund, without a pending-refund state. See STORE.md, "Refunds and Disputes".
 
 **Where:** `refund` in [routes/store_admin.rs:380-387](../backend/src/routes/store_admin.rs#L380-L387).
 
@@ -86,7 +86,7 @@ The receipt is set to REFUNDED and its rewards revoked as soon as Stripe accepts
 
 ### 6. Partial refunds from the Stripe dashboard are invisible (Low)
 
-**Status:** Fixed, with #5: partial refunds are recorded per payment (`refunds` on staff receipt views, shown on `/admin/store/receipts`). Income (`store.income_week` and the receipts page total) counts each receipt's price in proportion to what wasn't refunded. Partially refunded receipts stay paid and keep their rewards.
+**Status:** Fixed in `4d597c0`, with #5: partial refunds are recorded per payment (`refunds` on staff receipt views, shown on `/admin/store/receipts`). Income (`store.income_week` and the receipts page total) counts each receipt's price in proportion to what wasn't refunded. Partially refunded receipts stay paid and keep their rewards.
 
 **Where:** `charge.refunded` in [routes/store.rs:507-511](../backend/src/routes/store.rs#L507-L511).
 
@@ -126,7 +126,7 @@ The idempotency key is `purchase-{id}`, and the webhook can find a purchase by `
 
 ### 10. No upload quota; S3 staging uploads are unbounded (Medium)
 
-**Status:** Fixed. Each user may hold at most `STORAGE_USER_QUOTA` bytes (default 20 times `STORAGE_MAX_FILE_SIZE`) in files that aren't attached to anything, pending uploads included, checked under a lock per user. Users without Site Access get a burst of 3 uploads instead of 10. Presigned S3 upload URLs are signed with `Content-Length`, so the provider refuses any other size: `object_store` won't sign it, so the URL is signed again (checked against AWS's published example, `object_store`'s own signatures, and a local Garage, which refused bodies of the wrong size). Completion still checks the size, for providers that don't enforce signed headers. There's still no global quota across accounts; the `staging/` lifecycle rule remains a recommended backstop.
+**Status:** Fixed in `4d597c0`. Each user may hold at most `STORAGE_USER_QUOTA` bytes (default 20 times `STORAGE_MAX_FILE_SIZE`) in files that aren't attached to anything, pending uploads included, checked under a lock per user. Users without Site Access get a burst of 3 uploads instead of 10. Presigned S3 upload URLs are signed with `Content-Length`, so the provider refuses any other size: `object_store` won't sign it, so the URL is signed again (checked against AWS's published example, `object_store`'s own signatures, and a local Garage, which refused bodies of the wrong size). Completion still checks the size, for providers that don't enforce signed headers. There's still no global quota across accounts; the `staging/` lifecycle rule remains a recommended backstop.
 
 **Where:** `UPLOAD` in [routes/files.rs:42](../backend/src/routes/files.rs#L42), the rate limit at [:152-160](../backend/src/routes/files.rs#L152-L160); S3 presigning in [storage.rs:232-244](../backend/src/storage.rs#L232-L244); `UNATTACHED_FILE_HOURS` in [main.rs:234](../backend/src/main.rs#L234).
 
@@ -152,7 +152,7 @@ The README suggests `COOKIE_DOMAIN=example.com` for `example.com` + `api.example
 
 ### 13. No HSTS header (Low–Medium)
 
-**Status:** Fixed. Caddy sends `Strict-Transport-Security: max-age=31536000` on both domains (without `includeSubDomains`, since other services may share the parent domain over HTTP), as do the backend when `BACKEND_URL` is HTTPS and the frontend in production, for setups without Caddy. Beyond the header, plain HTTP is now refused outside localhost: release builds of the backend won't start with plain-HTTP public URLs (or `COOKIE_SECURE=false`), production builds of the frontend won't build or serve with plain-HTTP backend URLs, and the addon sends nothing to a plain-HTTP `gravnet_api_url` on another machine unless `gravnet_allow_http` is set for development. See the README's "HTTPS" section.
+**Status:** Fixed in `4d597c0`. Caddy sends `Strict-Transport-Security: max-age=31536000` on both domains (without `includeSubDomains`, since other services may share the parent domain over HTTP), as do the backend when `BACKEND_URL` is HTTPS and the frontend in production, for setups without Caddy. Beyond the header, plain HTTP is now refused outside localhost: release builds of the backend won't start with plain-HTTP public URLs (or `COOKIE_SECURE=false`), production builds of the frontend won't build or serve with plain-HTTP backend URLs, and the addon sends nothing to a plain-HTTP `gravnet_api_url` on another machine unless `gravnet_allow_http` is set for development. See the README's "HTTPS" section.
 
 **Where:** `security_headers` in [Caddyfile:19-27](../Caddyfile#L19-L27).
 
@@ -186,7 +186,7 @@ Cheap now, but at scale these are easy ways to load the database within the per-
 
 ### 16. Users of equal rank can ban each other (Low)
 
-**Status:** Fixed. Banning, suspending and lifting need the issuer to strictly outrank the target: hold every permission the target's groups grant, and at least one more. Nobody outranks holders of every permission, so they can only be punished once removed from their groups. Moderators can no longer edit or delete posts by users holding permissions they don't. Peers can still remove each other from usergroups (that rule isn't strict), so a rogue admin can still demote other admins; recovering from that still needs the shell.
+**Status:** Fixed in `4d597c0`. Banning, suspending and lifting need the issuer to strictly outrank the target: hold every permission the target's groups grant, and at least one more. Nobody outranks holders of every permission, so they can only be punished once removed from their groups. Moderators can no longer edit or delete posts by users holding permissions they don't. Peers can still remove each other from usergroups (that rule isn't strict), so a rogue admin can still demote other admins; recovering from that still needs the shell.
 
 **Where:** `check_target` in [routes/punishments.rs:223-241](../backend/src/routes/punishments.rs#L223-L241); `manager` in [routes/forum.rs:485-494](../backend/src/routes/forum.rs#L485-L494).
 
@@ -196,7 +196,7 @@ A ban is refused only if the target holds a permission the issuer lacks, so two 
 
 ### 17. Usergroup editors can restyle groups that outrank them (Low)
 
-**Status:** Fixed. Editing a group needs every permission it grants, before and after the change, as deleting it does. The admin page shows such groups read-only.
+**Status:** Fixed in `4d597c0`. Editing a group needs every permission it grants, before and after the change, as deleting it does. The admin page shows such groups read-only.
 
 **Where:** `Usergroup::update` in [models/usergroup.rs:471](../backend/src/models/usergroup.rs#L471).
 
@@ -216,7 +216,7 @@ With `S3_PUBLIC_URL` set the bucket is public, so a support or private-message a
 
 ### 19. Postgres password defaults to `gravnet` (Low)
 
-**Status:** Fixed. A one-shot `db-password` Compose service generates a random 256-bit password into the `db-secrets` volume on first start (or writes `POSTGRES_PASSWORD`, if set). Postgres reads it through `POSTGRES_PASSWORD_FILE` and the backend through the new `DATABASE_PASSWORD_FILE`. Databases created with the old default need their password changed once; the README's "Updating" section has the command.
+**Status:** Fixed in `4d597c0`. A one-shot `db-password` Compose service generates a random 256-bit password into the `db-secrets` volume on first start (or writes `POSTGRES_PASSWORD`, if set). Postgres reads it through `POSTGRES_PASSWORD_FILE` and the backend through the new `DATABASE_PASSWORD_FILE`. Databases created with the old default need their password changed once; the README's "Updating" section has the command.
 
 **Where:** [docker-compose.yml:20](../docker-compose.yml#L20), [:42](../docker-compose.yml#L42).
 
