@@ -1,10 +1,13 @@
 use std::env;
 
+use sqlx::postgres::PgConnectOptions;
+
 /// Runtime configuration, loaded from environment variables (and `.env` in development).
 #[derive(Clone, Debug)]
 pub struct Config {
     pub bind_addr: String,
-    pub database_url: String,
+    /// `DATABASE_URL`, with the password from `DATABASE_PASSWORD_FILE` if that's set.
+    pub database: PgConnectOptions,
     /// Public URL of the backend as seen by the browser, without a trailing slash.
     pub backend_url: String,
     /// Public URL of the frontend, without a trailing slash.
@@ -52,16 +55,22 @@ impl Config {
             None => false,
         };
 
+        require_https("BACKEND_URL", &backend_url, Reach::Public)?;
+        require_https("FRONTEND_URL", &frontend_url, Reach::Public)?;
+
         let cookie_secure = match optional("COOKIE_SECURE") {
             Some(v) => v
                 .parse()
                 .map_err(|_| "COOKIE_SECURE must be `true` or `false`".to_owned())?,
             None => backend_url.starts_with("https://"),
         };
+        if !cookie_secure && !is_local(&backend_url, Reach::Public) {
+            insecure("COOKIE_SECURE=false sends the login cookie over plain HTTP")?;
+        }
 
         Ok(Self {
             bind_addr: optional("BIND_ADDR").unwrap_or_else(|| "127.0.0.1:8080".into()),
-            database_url: required("DATABASE_URL")?,
+            database: database_from_env()?,
             backend_url,
             frontend_url,
             jwt_secret,
@@ -76,8 +85,32 @@ impl Config {
 
     /// URL Steam redirects back to after the user signs in, carrying the login's `state`
     /// nonce (hex, so it needs no encoding). See `routes::auth`.
+    /// Whether the backend is served over HTTPS (its public URL is `https://`), so browsers
+    /// can be told to always use it (HSTS).
+    pub fn https(&self) -> bool {
+        self.backend_url.starts_with("https://")
+    }
+
     pub fn steam_return_to(&self, state: &str) -> String {
         format!("{}/auth/steam/callback?state={state}", self.backend_url)
+    }
+
+    /// Names this deployment to Stripe (docs/STORE.md): the backend's host, and port if it
+    /// has one. Deployments sharing a Stripe account (staging and production, say) get each
+    /// other's webhooks, and their purchase ids overlap.
+    pub fn deployment(&self) -> String {
+        deployment(&self.backend_url)
+    }
+}
+
+fn deployment(backend_url: &str) -> String {
+    match url::Url::parse(backend_url) {
+        Ok(url) => match (url.host_str(), url.port()) {
+            (Some(host), Some(port)) => format!("{host}:{port}"),
+            (Some(host), None) => host.to_owned(),
+            (None, _) => backend_url.to_owned(),
+        },
+        Err(_) => backend_url.to_owned(),
     }
 }
 
@@ -152,6 +185,9 @@ pub struct StorageConfig {
     pub max_file_size: u64,
     /// Minimum time between two uploads by the same user.
     pub rate_limit_secs: u64,
+    /// Most bytes a user may hold in files not attached to anything yet (pending uploads
+    /// included), so uploads can't be used as free storage until the sweeper clears them.
+    pub user_quota: u64,
 }
 
 /// An S3-compatible bucket: AWS S3, Cloudflare R2, MinIO, ...
@@ -180,10 +216,16 @@ fn storage_from_env() -> Result<StorageConfig, String> {
             bucket,
             // R2 ignores the region but the signature needs one; it accepts `auto`.
             region: optional("S3_REGION").unwrap_or_else(|| "us-east-1".into()),
-            endpoint: optional("S3_ENDPOINT").map(|v| v.trim_end_matches('/').to_owned()),
+            endpoint: optional("S3_ENDPOINT")
+                .map(|v| v.trim_end_matches('/').to_owned())
+                .map(|v| require_https("S3_ENDPOINT", &v, Reach::Internal).map(|()| v))
+                .transpose()?,
             access_key_id: required("S3_ACCESS_KEY_ID")?,
             secret_access_key: required("S3_SECRET_ACCESS_KEY")?,
-            public_url: optional("S3_PUBLIC_URL").map(|v| v.trim_end_matches('/').to_owned()),
+            public_url: optional("S3_PUBLIC_URL")
+                .map(|v| v.trim_end_matches('/').to_owned())
+                .map(|v| require_https("S3_PUBLIC_URL", &v, Reach::Public).map(|()| v))
+                .transpose()?,
         }),
     };
     if provider == StorageProvider::S3 && s3.is_none() {
@@ -198,13 +240,88 @@ fn storage_from_env() -> Result<StorageConfig, String> {
     if max_file_size == 0 {
         return Err("STORAGE_MAX_FILE_SIZE must be greater than 0".into());
     }
+    // Enough for twice the attachments one message can have (10) at the largest size.
+    let user_quota = number("STORAGE_USER_QUOTA", max_file_size.saturating_mul(20))?;
+    if user_quota < max_file_size {
+        return Err("STORAGE_USER_QUOTA must be at least STORAGE_MAX_FILE_SIZE".into());
+    }
     Ok(StorageConfig {
         provider,
         local_path: optional("STORAGE_LOCAL_PATH").unwrap_or_else(|| "./storage".into()),
         s3,
         max_file_size,
         rate_limit_secs: number("STORAGE_RATE_LIMIT", 3)?,
+        user_quota,
     })
+}
+
+/// How to reach Postgres: `DATABASE_URL`, with its password replaced by the contents of
+/// `DATABASE_PASSWORD_FILE` when that's set (Docker Compose generates the password into a file
+/// shared with the database; see docker-compose.yml). Trailing newlines in the file are ignored.
+pub fn database_from_env() -> Result<PgConnectOptions, String> {
+    let url = required("DATABASE_URL")?;
+    let options: PgConnectOptions = url.parse().map_err(|e| format!("invalid DATABASE_URL: {e}"))?;
+    let Some(path) = optional("DATABASE_PASSWORD_FILE") else {
+        return Ok(options);
+    };
+    let password = std::fs::read_to_string(&path)
+        .map_err(|e| format!("can't read DATABASE_PASSWORD_FILE {path:?}: {e}"))?;
+    let password = password.trim_end_matches(['\r', '\n']);
+    if password.is_empty() {
+        return Err(format!("DATABASE_PASSWORD_FILE {path:?} is empty"));
+    }
+    Ok(options.password(password))
+}
+
+/// Development builds (`cargo run`, without `--release`) accept plain HTTP anywhere, with a
+/// warning; release builds refuse it outside this machine.
+const DEVELOPMENT: bool = cfg!(debug_assertions);
+
+/// Who has to reach a URL, which decides where plain HTTP is acceptable.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Reach {
+    /// Browsers or game servers: HTTP only on this machine (`localhost`, `*.localhost` or a
+    /// loopback address).
+    Public,
+    /// Only this backend: also a single-label name (`minio`, `garage`), as services on a
+    /// private network such as Docker Compose's are named.
+    Internal,
+}
+
+/// Whether `url`'s host never leaves this machine (or, for [`Reach::Internal`], the private
+/// network it's named on). Unparsable URLs aren't local.
+fn is_local(url: &str, reach: Reach) -> bool {
+    let Ok(url) = url::Url::parse(url) else { return false };
+    match url.host() {
+        Some(url::Host::Domain(name)) => {
+            let name = name.trim_end_matches('.').to_ascii_lowercase();
+            name == "localhost"
+                || name.ends_with(".localhost")
+                || (reach == Reach::Internal && !name.is_empty() && !name.contains('.'))
+        }
+        Some(url::Host::Ipv4(ip)) => ip.is_loopback(),
+        Some(url::Host::Ipv6(ip)) => ip.is_loopback(),
+        None => false,
+    }
+}
+
+/// HTTPS is required outside this machine (see [`Reach`]): login cookies, tokens, server
+/// keys and uploads would otherwise cross the network in the clear.
+fn require_https(key: &str, url: &str, reach: Reach) -> Result<(), String> {
+    if url.to_ascii_lowercase().starts_with("https://") || is_local(url, reach) {
+        return Ok(());
+    }
+    insecure(&format!("{key} must be an https:// URL outside localhost, got {url:?}"))
+}
+
+/// A configuration error, except in development builds, where it's only a warning.
+fn insecure(problem: &str) -> Result<(), String> {
+    if DEVELOPMENT {
+        log::warn!("{problem}; allowed only because this is a development build");
+        Ok(())
+    } else {
+        Err(problem.to_owned())
+    }
 }
 
 fn required(key: &str) -> Result<String, String> {
@@ -226,5 +343,37 @@ mod tests {
         assert!(!is_test_key("sk_live_abc"));
         assert!(!is_test_key("rk_live_abc"));
         assert!(!is_test_key("sk_abc"));
+    }
+
+    #[test]
+    fn local_hosts() {
+        for url in ["http://localhost:8080", "http://LOCALHOST", "http://api.localhost", "http://127.0.0.1:3000", "http://127.8.0.1", "http://[::1]:8080"] {
+            assert!(is_local(url, Reach::Public), "{url}");
+        }
+        for url in ["http://example.com", "http://192.168.1.10:8080", "http://10.0.0.1", "http://localhost.example.com", "http://minio:9000", "not a url"] {
+            assert!(!is_local(url, Reach::Public), "{url}");
+        }
+        assert!(is_local("http://minio:9000", Reach::Internal));
+        assert!(is_local("http://garage:3900", Reach::Internal));
+        assert!(!is_local("http://s3.example.com", Reach::Internal));
+        assert!(!is_local("http://192.168.1.10:9000", Reach::Internal));
+    }
+
+    #[test]
+    fn https_required() {
+        assert!(require_https("X", "https://api.example.com", Reach::Public).is_ok());
+        assert!(require_https("X", "HTTPS://api.example.com", Reach::Public).is_ok());
+        assert!(require_https("X", "http://localhost:8080", Reach::Public).is_ok());
+        assert!(require_https("X", "http://minio:9000", Reach::Internal).is_ok());
+        // Development (test) builds only warn.
+        assert_eq!(require_https("X", "http://api.example.com", Reach::Public).is_ok(), DEVELOPMENT);
+    }
+
+    #[test]
+    fn deployments() {
+        assert_eq!(deployment("https://api.example.com"), "api.example.com");
+        assert_eq!(deployment("https://API.example.com/"), "api.example.com");
+        assert_eq!(deployment("http://localhost:8080"), "localhost:8080");
+        assert_eq!(deployment("not a url"), "not a url");
     }
 }

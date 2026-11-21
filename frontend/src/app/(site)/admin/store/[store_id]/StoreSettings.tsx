@@ -2,13 +2,19 @@
 
 import { useState, useTransition, type FormEvent } from "react";
 import { CURRENCIES, MAX_MESSAGE, MAX_NAME, currencyLabel, isCurrency } from "@/lib/storeEnums";
-import type { ItemStore, StoreDetails } from "@/lib/types";
+import type { ItemStore, MoneyOnRevoke, StoreDetails } from "@/lib/types";
 import form from "../../community/editor.module.scss";
 import { Field } from "../CreateStoreForm";
 import { updateStore } from "../actions";
 import styles from "../store.module.scss";
 
-type Draft = { enabled: boolean; currency: string; override_name: string; store_message: string };
+type Draft = {
+  enabled: boolean;
+  currency: string;
+  override_name: string;
+  store_message: string;
+  money_on_revoke: MoneyOnRevoke;
+};
 
 function toDraft(s: StoreDetails): Draft {
   return {
@@ -16,6 +22,7 @@ function toDraft(s: StoreDetails): Draft {
     currency: s.currency,
     override_name: s.override_name ?? "",
     store_message: s.store_message ?? "",
+    money_on_revoke: s.money_on_revoke ?? "KEEP",
   };
 }
 
@@ -25,6 +32,7 @@ function toDetails(d: Draft): StoreDetails {
     currency: d.currency.trim().toLowerCase(),
     override_name: d.override_name.trim() || null,
     store_message: d.store_message.trim() || null,
+    money_on_revoke: d.money_on_revoke,
   };
 }
 
@@ -75,6 +83,19 @@ export function StoreSettings({ store, hasItems }: { store: ItemStore; hasItems:
           </select>
         </Field>
       </div>
+      <Field
+        label="DarkRP money on refunds"
+        hint="What happens to money an item gave when its purchase is refunded or charged back. Usergroups and weapons are always taken back. Money is taken from players when they're next online."
+      >
+        <select
+          className={form.input}
+          value={draft.money_on_revoke}
+          onChange={(e) => patch({ money_on_revoke: e.target.value as MoneyOnRevoke })}
+        >
+          <option value="KEEP">Leave it with the player</option>
+          <option value="DEDUCT">Take it back (down to a balance of 0)</option>
+        </select>
+      </Field>
       <Field label="Message" hint="Optional. Shown at the top of the store page.">
         <textarea className={`${form.input} ${form.textarea}`} value={draft.store_message} onChange={(e) => patch({ store_message: e.target.value })} maxLength={MAX_MESSAGE} rows={3} />
       </Field>

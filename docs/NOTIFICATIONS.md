@@ -51,7 +51,8 @@ The backend creates notifications from the following events. The person who caus
 | Fulfillment delivered in-game | buyer | STORE | `/store/purchases` |
 | Fulfillment failed after 20 attempts | buyer | STORE | `/support/new` |
 | Purchase refunded or fulfillment revoked | buyer | STORE | `/store/purchases` |
-| Reply to a thread | thread author | FORUM | `/forum/threads/{id}` |
+| Disputed purchase reinstated (its rewards are delivered again) | buyer | STORE | `/store/purchases` |
+| Reply to a thread | thread author | FORUM | `/forum/threads/{id}?post={reply_id}` |
 | Thread locked, or a post or thread deleted, by a moderator | post/thread author | FORUM | `/forum/threads/{id}` (none if deleted) |
 | Private message received | recipient | MESSAGE | `/messages/{author_id}` |
 | Banned | the user | ACCOUNT | `/support` |
@@ -88,7 +89,7 @@ Creating notifications is internal; there is no public route. Admin announcement
 - **Dropdown.** Clicking the bell opens the 5 most recent notifications, each with its type icon, title and relative time, unread ones in bold, and a "View all" link. Clicking one marks it read and goes to its `url`.
 - `/notifications`: the full list with an All / Unread toggle, a type filter, "Mark all as read" and "Delete read", and "Load more". Each row has mark read and delete buttons. Logged-out users are sent to log in.
 
-- `/forum/threads/{id}`: forum notifications link here because they only know the thread. The page redirects to `/forum/{category_id}/{thread_id}` (404 if the thread is gone).
+- `/forum/threads/{id}`: forum notifications link here because they only know the thread. The page redirects to `/forum/{category_id}/{thread_id}` (404 if the thread is gone), keeping `?post={id}` and scrolling to that post.
 
 ## Not included
 

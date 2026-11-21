@@ -9,6 +9,7 @@ import type {
   DiscountDetails,
   ItemDetails,
   ItemStore,
+  MassRefundResult,
   PricedItem,
   ReceiptView,
   StoreDetails,
@@ -134,6 +135,20 @@ export async function retryFulfillment(id: number): Promise<ActionResult<Receipt
   });
 }
 
+/**
+ * Moves a disputed receipt whose dispute was won back to paid, so the server's addon
+ * delivers its rewards again. Needs Store Finance.
+ */
+export async function reinstateReceipt(id: number): Promise<ActionResult<ReceiptView>> {
+  return runAction("reinstate the purchase", async () => {
+    const { data } = await backend.post<ReceiptView>(`/admin/store/receipts/${id}/reinstate`, null, {
+      headers: await authHeaders(),
+    });
+    refresh();
+    return data;
+  });
+}
+
 /** Refunds a receipt in full through Stripe and revokes its fulfillment. Needs Store Finance. */
 export async function refundReceipt(id: number): Promise<ActionResult<ReceiptView>> {
   return runAction(
@@ -146,5 +161,26 @@ export async function refundReceipt(id: number): Promise<ActionResult<ReceiptVie
       return data;
     },
     { 502: "The payment provider couldn't be reached. Try again in a moment." },
+  );
+}
+
+/**
+ * Refunds every paid purchase from a server's store that hasn't been delivered, so the
+ * server can be deleted. The backend stops after about 20 seconds of Stripe requests and
+ * reports how many are left, so a large store can take more than one run.
+ */
+export async function refundUndelivered(serverId: number): Promise<ActionResult<MassRefundResult>> {
+  return runAction(
+    "refund the purchases",
+    async () => {
+      const { data } = await backend.post<MassRefundResult>(`/admin/store/servers/${serverId}/undelivered/refund`, null, {
+        headers: await authHeaders(),
+        // Longer than the client's default: each refund is a request to Stripe.
+        timeout: 60_000,
+      });
+      refresh();
+      return data;
+    },
+    { 403: "Only users with Store Finance can refund purchases." },
   );
 }

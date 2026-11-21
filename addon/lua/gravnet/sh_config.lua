@@ -67,6 +67,10 @@ GravNet.Config = {
 -- Set in server.cfg: gravnet_api_url "https://..."
 if SERVER then
 	CreateConVar("gravnet_api_url", "", FCVAR_PROTECTED + FCVAR_ARCHIVE, "Base URL of the GravNet backend.")
+	-- gravnet_api_url must be https:// unless GravNet runs on this machine. Development only:
+	-- 1 allows plain HTTP to another machine (e.g. a backend on the LAN), with a warning.
+	CreateConVar("gravnet_allow_http", "0", FCVAR_PROTECTED + FCVAR_ARCHIVE,
+		"Development only: allow a plain-HTTP gravnet_api_url on another machine.", 0, 1)
 end
 
 -- Net message names, shared so both realms agree on them.

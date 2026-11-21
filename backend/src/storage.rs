@@ -21,7 +21,7 @@ use object_store::{
     signer::{HeaderName, HeaderValue, Method, SignedUrlOptions, Signer},
 };
 use serde::Serialize;
-use sha2::Sha256;
+use sha2::{Digest, Sha256};
 
 use crate::{
     config::{StorageConfig, StorageProvider},
@@ -68,6 +68,8 @@ enum Provider {
     S3 {
         store: Arc<AmazonS3>,
         public_url: Option<String>,
+        /// For re-signing upload URLs with their size (see [`sign_content_length`]).
+        secret_access_key: String,
     },
 }
 
@@ -101,7 +103,7 @@ pub enum Finish {
 }
 
 /// Where the bytes of an S3 upload are sent before they're checked. A presigned PUT URL
-/// can't limit the size or be revoked, and stays valid for [`UPLOAD_TTL`], so it never points
+/// can't be revoked, and stays valid for [`UPLOAD_TTL`], so it never points
 /// at the key a file is served from: completing the upload copies the checked object to that
 /// key, and anything written to the staging key afterwards is never served (and is deleted;
 /// see [`Storage::delete_staging`]).
@@ -130,6 +132,7 @@ struct Inner {
     upload_secret: Vec<u8>,
     max_file_size: u64,
     rate_limit: Duration,
+    user_quota: u64,
 }
 
 impl Storage {
@@ -162,9 +165,23 @@ impl Storage {
                     .with_allow_http(endpoint.starts_with("http://"));
             }
             let store = builder.build().map_err(|e| format!("invalid S3 configuration: {e}"))?;
+            if let Some(public_url) = &s3.public_url {
+                log::warn!(
+                    "S3_PUBLIC_URL is set, so bucket {} is public: support and private message \
+                     attachments are served through presigned URLs, but anyone who has seen one \
+                     can read the file at {public_url}/<key> for as long as it exists. Unset \
+                     S3_PUBLIC_URL (and make the bucket private) if those must stay private; see \
+                     docs/STORAGE.md",
+                    s3.bucket
+                );
+            }
             providers.insert(
                 Backend::S3,
-                Provider::S3 { store: Arc::new(store), public_url: s3.public_url.clone() },
+                Provider::S3 {
+                    store: Arc::new(store),
+                    public_url: s3.public_url.clone(),
+                    secret_access_key: s3.secret_access_key.clone(),
+                },
             );
         }
 
@@ -186,6 +203,7 @@ impl Storage {
             upload_secret,
             max_file_size: config.max_file_size,
             rate_limit: Duration::from_secs(config.rate_limit_secs),
+            user_quota: config.user_quota,
         })))
     }
 
@@ -202,6 +220,11 @@ impl Storage {
         self.0.rate_limit
     }
 
+    /// Most bytes a user may hold in unattached files (`STORAGE_USER_QUOTA`).
+    pub fn user_quota(&self) -> u64 {
+        self.0.user_quota
+    }
+
     fn provider(&self, backend: Backend) -> Result<&Provider, ApiError> {
         self.0
             .providers
@@ -209,7 +232,9 @@ impl Storage {
             .ok_or_else(|| ApiError::Internal(format!("storage provider {backend} is not configured")))
     }
 
-    /// Where the client should send the bytes of file `owner_id/file_id`, stored at `key`.
+    /// Where the client should send the `size` bytes of file `owner_id/file_id`, stored at
+    /// `key`. The request must be exactly `size` bytes: the local route stops reading past it,
+    /// and an S3 URL is signed with its `Content-Length`, which browsers set from the body.
     pub async fn create_upload(
         &self,
         backend: Backend,
@@ -217,6 +242,7 @@ impl Storage {
         file_id: &str,
         key: &str,
         content_type: &str,
+        size: u64,
     ) -> Result<UploadTarget, ApiError> {
         let expires_at = Utc::now() + UPLOAD_TTL;
         let headers = HashMap::from([("Content-Type", content_type.to_owned())]);
@@ -229,17 +255,21 @@ impl Storage {
                     self.0.backend_url
                 )
             }
-            Provider::S3 { store, .. } => {
-                // Content-Length can't be signed into a presigned URL, so the size is checked
-                // when the upload is completed instead, on a staging copy (see `staging_key`).
+            Provider::S3 { store, secret_access_key, .. } => {
                 let value = HeaderValue::from_str(content_type)
                     .map_err(|_| ApiError::BadRequest("invalid content type".into()))?;
                 let options = SignedUrlOptions::default()
                     .with_signed_header(HeaderName::from_static("content-type"), value);
-                store
+                let url = store
                     .signed_url_opts(Method::PUT, &Path::from(staging_key(key)), UPLOAD_TTL, &options)
                     .await
-                    .map_err(storage_error)?
+                    .map_err(storage_error)?;
+                // `object_store` won't sign Content-Length, which is what bounds the size of a
+                // presigned PUT, so the URL is signed again with it. The size is still checked
+                // when the upload completes, on a staging copy (see `staging_key`), for
+                // providers that don't enforce signed headers.
+                sign_content_length(&url, secret_access_key, content_type, size)
+                    .ok_or_else(|| ApiError::Internal(format!("can't re-sign the presigned URL for {key}")))?
                     .to_string()
             }
         };
@@ -372,8 +402,12 @@ impl Storage {
         self.delete_staging(backend, key).await
     }
 
-    /// How to serve `key` to a client. A `private` file is never sent to the bucket's public
-    /// URL, which anyone could reuse, but to a short-lived presigned one.
+    /// How to serve `key` to a client. A `private` file is sent to a short-lived presigned URL
+    /// rather than the bucket's public URL, so a link handed out by this route stops working.
+    /// That doesn't make it private with `S3_PUBLIC_URL` set: the presigned URL contains the
+    /// key, and the object stays readable at `{S3_PUBLIC_URL}/{key}` to anyone who has seen
+    /// it, even after they lose access. Only a bucket that isn't public keeps private files
+    /// private (see docs/STORAGE.md and the warning in [`Storage::new`]).
     pub async fn read_target(&self, backend: Backend, key: &str, private: bool) -> Result<ReadTarget, ApiError> {
         match self.provider(backend)? {
             Provider::Local(_) => Ok(ReadTarget::Stream),
@@ -412,6 +446,93 @@ impl Storage {
     }
 }
 
+/// Signs a presigned S3 PUT URL made by `object_store` (which signs `host` and
+/// `content-type`) again, with `content-length: {size}` among its signed headers, so S3
+/// refuses a body of any other size. Everything else about the URL (host, path, credential,
+/// date and expiry) is kept, and the signature is computed as AWS SigV4 query signing
+/// specifies. `None` if the URL isn't a SigV4 presigned URL.
+///
+/// <https://docs.aws.amazon.com/AmazonS3/latest/API/sigv4-query-string-auth.html>
+fn sign_content_length(url: &url::Url, secret_access_key: &str, content_type: &str, size: u64) -> Option<url::Url> {
+    let size = size.to_string();
+    let host = &url[url::Position::BeforeHost..url::Position::AfterPort];
+    // Sorted by name, as SigV4 requires.
+    let headers = [("content-length", size.as_str()), ("content-type", content_type), ("host", host)];
+    resign(url, secret_access_key, "PUT", &headers)
+}
+
+/// Replaces the signature of SigV4 presigned `url` with one over `method` and `headers`
+/// (lowercase names, sorted), signed with the secret key that made it.
+fn resign(url: &url::Url, secret_access_key: &str, method: &str, headers: &[(&str, &str)]) -> Option<url::Url> {
+    let signed_headers = headers.iter().map(|(name, _)| *name).collect::<Vec<_>>().join(";");
+    let mut params: Vec<(String, String)> = url
+        .query_pairs()
+        .filter(|(k, _)| k != "X-Amz-Signature")
+        .map(|(k, v)| {
+            let v = if k == "X-Amz-SignedHeaders" { signed_headers.clone() } else { v.into_owned() };
+            (k.into_owned(), v)
+        })
+        .collect();
+    let param = |name: &str| params.iter().find(|(k, _)| k == name).map(|(_, v)| v.clone());
+    let date = param("X-Amz-Date")?;
+    // `<access key id>/<yyyymmdd>/<region>/<service>/aws4_request`
+    let credential = param("X-Amz-Credential")?;
+    let scope = credential.split_once('/')?.1.to_owned();
+    let mut parts = scope.split('/');
+    let (day, region, service) = (parts.next()?, parts.next()?, parts.next()?);
+    if param("X-Amz-Algorithm")? != "AWS4-HMAC-SHA256" || param("X-Amz-SignedHeaders").is_none() {
+        return None;
+    }
+
+    let mut canonical_query: Vec<(String, String)> =
+        params.iter().map(|(k, v)| (aws_encode(k), aws_encode(v))).collect();
+    canonical_query.sort_unstable();
+    let canonical_query = canonical_query
+        .iter()
+        .map(|(k, v)| format!("{k}={v}"))
+        .collect::<Vec<_>>()
+        .join("&");
+    let canonical_headers: String = headers.iter().map(|(name, value)| format!("{name}:{}\n", value.trim())).collect();
+    // S3 takes the path encoded once, as it appears in the URL.
+    let canonical_request = format!(
+        "{method}\n{}\n{canonical_query}\n{canonical_headers}\n{signed_headers}\nUNSIGNED-PAYLOAD",
+        url.path()
+    );
+    let string_to_sign = format!(
+        "AWS4-HMAC-SHA256\n{date}\n{scope}\n{}",
+        hex(&Sha256::digest(canonical_request.as_bytes()))
+    );
+
+    let hmac = |key: &[u8], data: &str| {
+        let mut mac = Hmac::<Sha256>::new_from_slice(key).expect("any key length");
+        mac.update(data.as_bytes());
+        mac.finalize().into_bytes().to_vec()
+    };
+    let key = hmac(format!("AWS4{secret_access_key}").as_bytes(), day);
+    let key = hmac(&key, region);
+    let key = hmac(&key, service);
+    let key = hmac(&key, "aws4_request");
+    let signature = hex(&hmac(&key, &string_to_sign));
+
+    params.push(("X-Amz-Signature".to_owned(), signature));
+    let mut signed = url.clone();
+    signed.query_pairs_mut().clear().extend_pairs(&params);
+    Some(signed)
+}
+
+/// Percent-encodes everything but `A-Z a-z 0-9 - _ . ~`, as SigV4's canonical query wants.
+fn aws_encode(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b'~') {
+            out.push(b as char);
+        } else {
+            out.push_str(&format!("%{b:02X}"));
+        }
+    }
+    out
+}
+
 fn storage_error(e: object_store::Error) -> ApiError {
     ApiError::Internal(format!("storage: {e}"))
 }
@@ -431,6 +552,7 @@ mod tests {
             s3: None,
             max_file_size: 16,
             rate_limit_secs: 3,
+            user_quota: 64,
         };
         Storage::new(&config, "http://localhost:8080", "0123456789abcdef0123456789abcdef").unwrap()
     }
@@ -443,6 +565,66 @@ mod tests {
 
     fn body(chunks: &[&'static [u8]]) -> impl Stream<Item = Result<Bytes, std::convert::Infallible>> + Unpin {
         futures_util::stream::iter(chunks.iter().map(|c| Ok(Bytes::from_static(c))).collect::<Vec<_>>())
+    }
+
+    /// The example in AWS's documentation of presigned URLs (sigv4-query-string-auth).
+    #[test]
+    fn resigns_like_aws() {
+        let url = url::Url::parse(
+            "https://examplebucket.s3.amazonaws.com/test.txt?X-Amz-Algorithm=AWS4-HMAC-SHA256\
+             &X-Amz-Credential=AKIAIOSFODNN7EXAMPLE%2F20130524%2Fus-east-1%2Fs3%2Faws4_request\
+             &X-Amz-Date=20130524T000000Z&X-Amz-Expires=86400&X-Amz-SignedHeaders=host\
+             &X-Amz-Signature=0000",
+        )
+        .unwrap();
+        let signed = resign(
+            &url,
+            "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+            "GET",
+            &[("host", "examplebucket.s3.amazonaws.com")],
+        )
+        .unwrap();
+        let signature = signed.query_pairs().find(|(k, _)| k == "X-Amz-Signature").unwrap().1;
+        assert_eq!(signature, "aeeed9bbccd4d02ee5c0109b86d86835f995330da4c265957d157751f604d404");
+    }
+
+    /// Signing `object_store`'s URL again over the same headers gives its own signature, so
+    /// adding `content-length` changes nothing else.
+    #[actix_web::test]
+    async fn resigns_like_object_store() {
+        // Building the store builds an HTTP client, which needs a TLS provider.
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let secret = "s3cr3t/with+special=chars";
+        for endpoint in [None, Some("http://localhost:3900")] {
+            let mut builder = AmazonS3Builder::new()
+                .with_bucket_name("gravnet")
+                .with_region("eu-west-1")
+                .with_access_key_id("GK0123456789abcdef")
+                .with_secret_access_key(secret);
+            if let Some(endpoint) = endpoint {
+                builder = builder.with_endpoint(endpoint).with_allow_http(true);
+            }
+            let store = builder.build().unwrap();
+            let options = SignedUrlOptions::default()
+                .with_signed_header(HeaderName::from_static("content-type"), HeaderValue::from_static("image/png"));
+            let path = Path::from(staging_key("files/42/a b+c~d"));
+            let url = store.signed_url_opts(Method::PUT, &path, UPLOAD_TTL, &options).await.unwrap();
+            let host = &url[url::Position::BeforeHost..url::Position::AfterPort];
+
+            let same = resign(&url, secret, "PUT", &[("content-type", "image/png"), ("host", host)]).unwrap();
+            assert_eq!(same, url, "endpoint {endpoint:?}");
+
+            let sized = sign_content_length(&url, secret, "image/png", 1234).unwrap();
+            let param = |u: &url::Url, name: &str| u.query_pairs().find(|(k, _)| k == name).map(|(_, v)| v.into_owned());
+            assert_eq!(param(&sized, "X-Amz-SignedHeaders").unwrap(), "content-length;content-type;host");
+            assert_ne!(param(&sized, "X-Amz-Signature"), param(&url, "X-Amz-Signature"));
+            for name in ["X-Amz-Algorithm", "X-Amz-Credential", "X-Amz-Date", "X-Amz-Expires"] {
+                assert_eq!(param(&sized, name), param(&url, name));
+            }
+            assert_eq!(sized.path(), url.path());
+            assert_eq!(sized.host_str(), url.host_str());
+        }
+        assert!(sign_content_length(&url::Url::parse("https://example.com/x").unwrap(), secret, "image/png", 1).is_none());
     }
 
     #[test]
@@ -493,3 +675,4 @@ mod tests {
         std::fs::remove_dir_all(dir).ok();
     }
 }
+

@@ -2,6 +2,8 @@
 //! Store Management; a store's grantable usergroups need Elevated Control on top; receipts
 //! and refunds need Admin Access and Store Finance.
 
+use std::time::{Duration, Instant};
+
 use actix_web::{HttpResponse, delete, get, post, put, web};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -11,18 +13,21 @@ use crate::{
     error::ApiError,
     models::{
         Permissions, Server,
+        cursor::{Cursor, Page},
         store::{
-            DiscountDetails, Fulfillment, ItemDetails, ItemStore, PricedItem, Receipt, ReceiptFilter, ReceiptStatus,
-            CURRENCIES, ReceiptView, Reward, StoreDetails, StoreDiscount, StoreItem, StoreSummary,
+            CURRENCIES, DISPUTE_WON, DiscountDetails, Fulfillment, FulfillmentStatus, ItemDetails, ItemStore,
+            MoneyOnRevoke, PaymentRefunds, PricedItem, Receipt, ReceiptFilter, ReceiptStatus, ReceiptView, Reward, StoreDetails,
+            StoreDiscount, StoreItem, StoreSummary,
         },
     },
     notify,
     routes::{
         markdown::markdown,
-        store::with_servers,
+        store::{sync_refunds, with_servers},
         validate::{bad, optional_url, required_text, text},
     },
     state::AppState,
+    stripe::Stripe,
 };
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
@@ -31,7 +36,10 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .service(create_store)
         .service(list_receipts)
         .service(refund)
+        .service(reinstate)
         .service(retry_fulfillment)
+        .service(undelivered)
+        .service(refund_undelivered)
         .service(get_store)
         .service(update_store)
         .service(set_grantable_usergroups)
@@ -65,6 +73,8 @@ const MAX_WEAPON_CLASS: usize = 128;
 const MAX_MONEY: i64 = 1_000_000_000_000;
 /// A granted usergroup may last at most ten years.
 const MAX_DURATION_SECONDS: i64 = 10 * 365 * 24 * 60 * 60;
+/// Receipts per page of the finance list.
+const DEFAULT_RECEIPTS: i64 = 100;
 const MAX_RECEIPTS: i64 = 500;
 
 /// Every store, enabled or not, with its server. Requires Admin Access and Store Management
@@ -86,6 +96,8 @@ struct StoreBody {
     currency: Option<String>,
     override_name: Option<String>,
     store_message: Option<String>,
+    /// Omitted keeps the current setting (`KEEP` for a new store).
+    money_on_revoke: Option<MoneyOnRevoke>,
 }
 
 #[derive(Deserialize)]
@@ -338,9 +350,14 @@ struct ReceiptQuery {
     status: Option<String>,
     store: Option<String>,
     buyer: Option<String>,
+    /// 1 to [`MAX_RECEIPTS`]; [`DEFAULT_RECEIPTS`] by default.
+    limit: Option<String>,
+    /// The previous page's `next_cursor`.
+    cursor: Option<String>,
 }
 
-/// Receipts, newest first (at most 500). Requires Admin Access and Store Finance.
+/// Receipts matching the filters, newest first, a page at a time: `{ items, next_cursor }`.
+/// Requires Admin Access and Store Finance.
 #[get("/admin/store/receipts")]
 async fn list_receipts(
     state: web::Data<AppState>,
@@ -350,11 +367,67 @@ async fn list_receipts(
     user.require(&state.db, FINANCE).await?;
     let filter = parse_receipt_filter(query.into_inner())?;
     let receipts: Vec<ReceiptView> = Receipt::list(&state.db, &filter).await?;
-    Ok(HttpResponse::Ok().json(receipts))
+    let page = Page::new(receipts, filter.limit, |r| Cursor { created_at: r.receipt.purchased_at, id: r.receipt.id });
+    Ok(HttpResponse::Ok().json(page))
+}
+
+/// Moves a receipt back to paid and has the server's addon deliver its rewards again (see
+/// `Receipt::reinstate`): a disputed one whose dispute was won, or a refunded one whose refund
+/// failed, when staff would rather the buyer kept the purchase than try refunding again.
+/// Requires Admin Access and Store Finance. 400 for any other receipt.
+#[post("/admin/store/receipts/{receipt_id}/reinstate")]
+async fn reinstate(
+    state: web::Data<AppState>,
+    user: AuthUser,
+    receipt_id: web::Path<i64>,
+) -> Result<HttpResponse, ApiError> {
+    user.require(&state.db, FINANCE).await?;
+    let id = receipt_id.into_inner();
+    let view = Receipt::find_by_id(&state.db, id)
+        .await?
+        .ok_or(ApiError::NotFound("receipt"))?;
+    let receipt = view.receipt;
+    let after_dispute = match receipt.status {
+        ReceiptStatus::Disputed => {
+            if !receipt.dispute_outcome.as_deref().is_some_and(|o| DISPUTE_WON.contains(&o)) {
+                return Err(bad(match receipt.dispute_outcome.as_deref() {
+                    None => "its dispute hasn't closed yet; it can be reinstated once the dispute is won".to_owned(),
+                    Some(outcome) => format!("its dispute wasn't won ({outcome}), so the payment wasn't kept"),
+                }));
+            }
+            true
+        }
+        ReceiptStatus::Refunded if view.refunds.as_ref().is_some_and(|r| r.falls_short()) => false,
+        ReceiptStatus::Refunded => {
+            return Err(bad("it was refunded; only a refund that failed leaves a purchase to reinstate".to_owned()));
+        }
+        ReceiptStatus::Paid => return Err(bad("it's paid already".to_owned())),
+    };
+    let (reinstated, fulfillment) = Receipt::reinstate(&state.db, id)
+        .await?
+        .ok_or_else(|| bad("this receipt has changed meanwhile; reload and try again".to_owned()))?;
+    log::info!(
+        "user {} reinstated {} receipt {} for user {}; fulfillment {} is {}",
+        user.0.id,
+        if after_dispute { "disputed" } else { "refunded (refund failed)" },
+        reinstated.id,
+        reinstated.buyer_id,
+        fulfillment.as_ref().map_or("none".to_owned(), |f| f.id.to_string()),
+        fulfillment.as_ref().map_or("missing", |f| match f.status {
+            FulfillmentStatus::Fulfilled => "delivered already",
+            _ => "to be delivered again",
+        }),
+    );
+    notify::purchase_reinstated(&state.db, &reinstated, user.0.id, after_dispute).await;
+    let updated = Receipt::find_by_id(&state.db, id)
+        .await?
+        .ok_or(ApiError::NotFound("receipt"))?;
+    Ok(HttpResponse::Ok().json(updated))
 }
 
 /// Refunds a receipt in full through Stripe and revokes its fulfillment. Requires Admin
-/// Access and Store Finance. 400 unless the receipt is still paid.
+/// Access and Store Finance. 400 unless the receipt is paid, or refunded with a refund that
+/// failed (refunding it again refunds whatever Stripe hasn't).
 #[post("/admin/store/receipts/{receipt_id}/refund")]
 async fn refund(
     state: web::Data<AppState>,
@@ -366,35 +439,193 @@ async fn refund(
     let view = Receipt::find_by_id(&state.db, receipt_id.into_inner())
         .await?
         .ok_or(ApiError::NotFound("receipt"))?;
-    let receipt = view.receipt;
-    if receipt.status != ReceiptStatus::Paid {
+    let receipt = &view.receipt;
+    let failed_refund = receipt.status == ReceiptStatus::Refunded && view.refunds.as_ref().is_some_and(|r| r.falls_short());
+    if receipt.status != ReceiptStatus::Paid && !failed_refund {
         return Err(bad(format!("receipt is already {}", format!("{:?}", receipt.status).to_lowercase())));
     }
+    refund_receipt(&state, stripe, &view, user.0.id).await?;
+    let updated = Receipt::find_by_id(&state.db, receipt.id)
+        .await?
+        .ok_or(ApiError::NotFound("receipt"))?;
+    Ok(HttpResponse::Ok().json(updated))
+}
+
+/// Refunds a receipt in full (whatever Stripe hasn't refunded yet) through Stripe, marks it
+/// refunded (revoking its fulfillment) and tells the buyer; `by` is the staff member. 400
+/// for a receipt recorded without a payment, 422 if Stripe refuses or fails the refund at
+/// once, leaving the receipt as it was. Stripe refunds are idempotent per receipt until one
+/// fails (see `PaymentRefunds::refund_key`), so refunding one twice, even at the same moment,
+/// refunds it once.
+///
+/// Most refunds succeed at once, but some stay pending and a few fail later (a closed card,
+/// say). The receipt is marked refunded as soon as Stripe accepts the refund, then what
+/// Stripe has refunded is recorded, now and on each of its refund events: a refund that
+/// fails later flags the receipt for staff to refund again or reinstate (see
+/// `routes::store::sync_refunds`).
+async fn refund_receipt(state: &AppState, stripe: &Stripe, view: &ReceiptView, by: i64) -> Result<(), ApiError> {
+    let receipt = &view.receipt;
     // Sessions that needed no payment are recorded with a placeholder instead of a
     // PaymentIntent; there's nothing to refund through Stripe.
     if receipt.stripe_payment_intent_id.starts_with("session:") {
         return Err(bad("this receipt has no payment to refund".to_owned()));
     }
+    let payment_intent = receipt.stripe_payment_intent_id.as_str();
+    let key = PaymentRefunds::refund_key(view.refunds.as_deref(), receipt.id);
     // `None` if it was already refunded in full (e.g. from the Stripe dashboard, with the
     // webhook not yet arrived); the receipt is still marked refunded below.
-    let refund = stripe
-        .refund(&receipt.stripe_payment_intent_id, &format!("refund-receipt-{}", receipt.id))
-        .await?;
+    let stripe_refund = stripe.refund(payment_intent, &key).await?;
+    if let Some(failed) = stripe_refund.as_ref().filter(|r| r.failed()) {
+        // Recorded so that trying again uses a new idempotency key.
+        if let Err(e) = sync_refunds(state, Some(payment_intent), "failed refund").await {
+            log::warn!("couldn't record the refunds of receipt {}: {e}", receipt.id);
+        }
+        log::warn!(
+            "user {by} tried to refund receipt {}, but Stripe's refund {} {}: {}",
+            receipt.id,
+            failed.id,
+            failed.status.as_deref().unwrap_or("failed"),
+            failed.failure_reason.as_deref().unwrap_or("no reason given")
+        );
+        return Err(ApiError::StripeRejected(format!(
+            "Stripe couldn't refund this payment ({})",
+            failed.failure_reason.as_deref().unwrap_or("the refund failed")
+        )));
+    }
     // The `charge.refunded` webhook does the same later; it finds nothing left to change
     // (or, if it got here first, we don't), so the buyer is notified once.
     if let Some((refunded, _)) = Receipt::set_status(&state.db, receipt.id, ReceiptStatus::Refunded).await? {
-        notify::purchase_refunded(&state.db, &refunded, Some(user.0.id)).await;
+        notify::purchase_refunded(&state.db, &refunded, Some(by)).await;
     }
     log::info!(
-        "user {} refunded receipt {} ({} {}) for user {}: stripe refund {} ({})",
-        user.0.id, receipt.id, receipt.price, receipt.currency, receipt.buyer_id,
-        refund.as_ref().map_or("none", |r| r.id.as_str()),
-        refund.as_ref().and_then(|r| r.status.as_deref()).unwrap_or("already refunded")
+        "user {by} refunded receipt {} ({} {}) for user {}: stripe refund {} ({})",
+        receipt.id, receipt.price, receipt.currency, receipt.buyer_id,
+        stripe_refund.as_ref().map_or("none", |r| r.id.as_str()),
+        stripe_refund.as_ref().and_then(|r| r.status.as_deref()).unwrap_or("already refunded")
     );
-    let updated = Receipt::find_by_id(&state.db, receipt.id)
+    // Shows the refund as pending (or done) on the receipt right away; Stripe's webhook would
+    // record it shortly anyway.
+    if let Err(e) = sync_refunds(state, Some(payment_intent), "refund by staff").await {
+        log::warn!("couldn't record the refunds of receipt {} yet: {e}", receipt.id);
+    }
+    Ok(())
+}
+
+/// Paid purchases from a server's store that haven't been delivered yet.
+#[derive(Serialize)]
+struct Undelivered {
+    count: i64,
+    /// The server's store, if it has one (for linking to its receipts).
+    store_id: Option<i64>,
+}
+
+/// How many paid purchases from a server's store haven't been delivered, which keeps the
+/// server from being deleted. Requires Admin Access and Server Management or Store Finance.
+#[get("/admin/store/servers/{server_id}/undelivered")]
+async fn undelivered(state: web::Data<AppState>, user: AuthUser, server_id: web::Path<i64>) -> Result<HttpResponse, ApiError> {
+    let permissions = user.require(&state.db, Permissions::ADMIN_ACCESS).await?;
+    if !permissions.contains(Permissions::SERVER_MANAGEMENT) && !permissions.contains(Permissions::STORE_FINANCE) {
+        return Err(ApiError::Forbidden(format!(
+            "{} or {}",
+            Permissions::SERVER_MANAGEMENT.name(),
+            Permissions::STORE_FINANCE.name()
+        )));
+    }
+    let server_id = server_id.into_inner();
+    Server::find_by_id(&state.db, server_id)
         .await?
-        .ok_or(ApiError::NotFound("receipt"))?;
-    Ok(HttpResponse::Ok().json(updated))
+        .ok_or(ApiError::NotFound("server"))?;
+    let count = Receipt::count_undelivered(&mut *state.db.acquire().await?, server_id).await?;
+    let store = ItemStore::find_by_server(&state.db, server_id).await?;
+    Ok(HttpResponse::Ok().json(Undelivered { count, store_id: store.map(|s| s.id) }))
+}
+
+/// What a mass refund did.
+#[derive(Serialize)]
+struct MassRefund {
+    /// Receipts refunded by this request.
+    refunded: usize,
+    /// Receipts that couldn't be refunded, and why.
+    failed: Vec<RefundFailure>,
+    /// Paid purchases still undelivered afterwards: ones that failed, and any left for
+    /// another request.
+    remaining: i64,
+}
+
+#[derive(Serialize)]
+struct RefundFailure {
+    receipt_id: i64,
+    error: String,
+}
+
+/// At most this many receipts are refunded per request...
+const MASS_REFUND_MAX: i64 = 100;
+/// ...and no refund is started after this long, so the request stays well within the
+/// frontend's timeout. Each refund is a request to Stripe; the rest wait for the next run.
+const MASS_REFUND_BUDGET: Duration = Duration::from_secs(20);
+
+/// Refunds every paid purchase from a server's store that hasn't been delivered, oldest
+/// first, as `POST /admin/store/receipts/{id}/refund` would one by one: in full through
+/// Stripe, revoking each fulfillment and telling each buyer. For settling a server's
+/// purchases before it's deleted. Requires Admin Access and Store Finance.
+///
+/// A receipt Stripe refuses is reported and skipped; a Stripe outage stops the run. Large
+/// stores take several runs (see [`MASS_REFUND_BUDGET`]); `remaining` says how many are left.
+#[post("/admin/store/servers/{server_id}/undelivered/refund")]
+async fn refund_undelivered(
+    state: web::Data<AppState>,
+    user: AuthUser,
+    server_id: web::Path<i64>,
+) -> Result<HttpResponse, ApiError> {
+    user.require(&state.db, FINANCE).await?;
+    let stripe = state.stripe()?;
+    let server_id = server_id.into_inner();
+    Server::find_by_id(&state.db, server_id)
+        .await?
+        .ok_or(ApiError::NotFound("server"))?;
+
+    let started = Instant::now();
+    let mut refunded = 0;
+    let mut failed = Vec::new();
+    for receipt in Receipt::undelivered(&state.db, server_id, MASS_REFUND_MAX).await? {
+        if started.elapsed() >= MASS_REFUND_BUDGET {
+            break;
+        }
+        // Delivered (or refunded) since the list was read: leave it be.
+        if !Receipt::is_undelivered(&state.db, server_id, receipt.id).await? {
+            continue;
+        }
+        let Some(view) = Receipt::find_by_id(&state.db, receipt.id).await? else {
+            continue;
+        };
+        let error = match refund_receipt(&state, stripe, &view, user.0.id).await {
+            Ok(()) => {
+                refunded += 1;
+                continue;
+            }
+            // Stripe's own message, or ours; both are safe to show.
+            Err(ApiError::StripeRejected(message) | ApiError::BadRequest(message)) => message,
+            Err(ApiError::StripeUnavailable(e)) => {
+                log::warn!("mass refund of server {server_id} stopped at receipt {}: {e}", receipt.id);
+                failed.push(RefundFailure {
+                    receipt_id: receipt.id,
+                    error: "the payment provider couldn't be reached; try again later".to_owned(),
+                });
+                break;
+            }
+            Err(e) => return Err(e),
+        };
+        log::warn!("mass refund of server {server_id}: receipt {} not refunded: {error}", receipt.id);
+        failed.push(RefundFailure { receipt_id: receipt.id, error });
+    }
+
+    let remaining = Receipt::count_undelivered(&mut *state.db.acquire().await?, server_id).await?;
+    log::info!(
+        "user {} refunded {refunded} undelivered purchase(s) of server {server_id}; {} failed, {remaining} still undelivered",
+        user.0.id,
+        failed.len()
+    );
+    Ok(HttpResponse::Ok().json(MassRefund { refunded, failed, remaining }))
 }
 
 /// Offers a failed fulfillment to the server's addon again with a fresh set of attempts,
@@ -441,6 +672,7 @@ fn normalize_store(body: StoreBody) -> Result<StoreDetails, ApiError> {
         currency: currency.to_ascii_lowercase(),
         override_name: Some(override_name).filter(|n| !n.is_empty()),
         store_message: Some(store_message).filter(|m| !m.is_empty()),
+        money_on_revoke: body.money_on_revoke,
     })
 }
 
@@ -589,11 +821,19 @@ fn parse_receipt_filter(query: ReceiptQuery) -> Result<ReceiptFilter, ApiError> 
                 .map_err(|_| bad(format!("status must be one of paid, refunded, disputed, got {v:?}")))
         })
         .transpose()?;
+    let limit = id("limit", query.limit)?.unwrap_or(DEFAULT_RECEIPTS);
+    if !(1..=MAX_RECEIPTS).contains(&limit) {
+        return Err(bad(format!("limit must be between 1 and {MAX_RECEIPTS}")));
+    }
+    let after = present(query.cursor)
+        .map(|v| Cursor::parse(&v).ok_or_else(|| bad("cursor is not a next_cursor value".to_owned())))
+        .transpose()?;
     Ok(ReceiptFilter {
         status,
         store_id: id("store", query.store)?,
         buyer_id: id("buyer", query.buyer)?,
-        limit: MAX_RECEIPTS,
+        after,
+        limit,
     })
 }
 
@@ -610,6 +850,7 @@ mod tests {
             override_name: None,
             store_message: None,
             grantable_usergroups: vec!["vip".into()],
+            money_on_revoke: MoneyOnRevoke::Keep,
             created_at: Utc::now(),
             last_updated: None,
         }
@@ -655,13 +896,15 @@ mod tests {
             currency: Some(" EUR ".into()),
             override_name: Some("  ".into()),
             store_message: Some("Hi".into()),
+            money_on_revoke: Some(MoneyOnRevoke::Deduct),
         })
         .unwrap_or_else(|_| panic!("valid store rejected"));
         assert_eq!(d.currency, "eur");
+        assert_eq!(d.money_on_revoke, Some(MoneyOnRevoke::Deduct));
         assert_eq!(d.override_name, None);
         assert_eq!(d.store_message.as_deref(), Some("Hi"));
-        assert!(normalize_store(StoreBody { enabled: true, currency: Some("dollars".into()), override_name: None, store_message: None }).is_err());
-        assert_eq!(normalize_store(StoreBody { enabled: false, currency: None, override_name: None, store_message: None }).unwrap().currency, "usd");
+        assert!(normalize_store(StoreBody { enabled: true, currency: Some("dollars".into()), override_name: None, store_message: None, money_on_revoke: None }).is_err());
+        assert_eq!(normalize_store(StoreBody { enabled: false, currency: None, override_name: None, store_message: None, money_on_revoke: None }).unwrap().currency, "usd");
 
         assert!(allowed_currency("usd").is_ok());
         assert!(allowed_currency("jpy").is_ok());
@@ -706,12 +949,28 @@ mod tests {
         assert!(normalize_discount(DiscountBody { discount: 25, message: String::new(), starts_at: None, ends_at: Some(now) }).is_ok());
         assert!(normalize_discount(DiscountBody { discount: 200, message: String::new(), starts_at: None, ends_at: None }).is_err());
 
-        let f = parse_receipt_filter(ReceiptQuery { status: Some("refunded".into()), store: Some("3".into()), buyer: Some("".into()) }).unwrap();
+        let f = parse_receipt_filter(ReceiptQuery { status: Some("refunded".into()), store: Some("3".into()), buyer: Some("".into()), limit: None, cursor: None }).unwrap();
         assert_eq!(f.status, Some(ReceiptStatus::Refunded));
         assert_eq!(f.store_id, Some(3));
         assert_eq!(f.buyer_id, None);
-        assert!(parse_receipt_filter(ReceiptQuery { status: Some("pending".into()), store: None, buyer: None }).is_err());
-        assert!(parse_receipt_filter(ReceiptQuery { status: None, store: Some("x".into()), buyer: None }).is_err());
+        assert!(parse_receipt_filter(ReceiptQuery { status: Some("pending".into()), store: None, buyer: None, limit: None, cursor: None }).is_err());
+        assert!(parse_receipt_filter(ReceiptQuery { status: None, store: Some("x".into()), buyer: None, limit: None, cursor: None }).is_err());
+        let page = |limit: &str, cursor: &str| {
+            parse_receipt_filter(ReceiptQuery {
+                status: None,
+                store: None,
+                buyer: None,
+                limit: Some(limit.into()),
+                cursor: Some(cursor.into()),
+            })
+        };
+        let f = page("", "").unwrap();
+        assert_eq!((f.limit, f.after), (DEFAULT_RECEIPTS, None));
+        let f = page("50", "1794000000123456-42").unwrap();
+        assert_eq!((f.limit, f.after), (50, Cursor::parse("1794000000123456-42")));
+        assert!(page("0", "").is_err());
+        assert!(page(&(MAX_RECEIPTS + 1).to_string(), "").is_err());
+        assert!(page("", "nope").is_err());
         assert!(normalize_usergroups(vec!["vip".into(), " vip".into(), "donor".into()]).unwrap().len() == 2);
         assert!(normalize_usergroups(vec!["super admin".into()]).is_err());
     }

@@ -40,7 +40,12 @@ function GravNet.Link.Link(access_key, callback)
 		return
 	end
 
-	if GravNet.HTTP.IsInsecure() then GravNet.Util.Warn(GravNet.HTTP.InsecureWarning) end
+	if GravNet.HTTP.IsBlocked() then
+		callback(false, GravNet.HTTP.InsecureMessage())
+		return
+	end
+	local insecure = GravNet.HTTP.InsecureMessage()
+	if insecure then GravNet.Util.Warn(insecure) end
 
 	Busy = true
 	GravNet.HTTP.Request("POST", "/gnet/server/link", {

@@ -71,10 +71,10 @@ function S.GetLastSync()
 end
 
 -- Tell GravNet what happened to fulfillment `id`. Clears the local record once an "applied"
--- delivery is confirmed.
-local function Ack(id, result, error_message)
+-- delivery is confirmed. `money_reclaimed` is the DarkRP money taken back, for "revoked".
+local function Ack(id, result, error_message, money_reclaimed)
 	Busy[id] = true
-	local body = { result = result, error = error_message }
+	local body = { result = result, error = error_message, money_reclaimed = money_reclaimed }
 	GravNet.HTTP.ServerRequest("POST", "/fulfillments/" .. id .. "/ack", body, function(ok, status, _, err, current)
 		Busy[id] = nil
 		if not current then return end
@@ -98,6 +98,19 @@ end
 local function DescribeAll(rewards)
 	local parts = {}
 	for _, r in ipairs(rewards) do parts[#parts + 1] = GravNet.Rewards.Describe(r) end
+	return table.concat(parts, ", ")
+end
+
+-- What revoking took back: the usergroups and weapons, and `money` (the DarkRP money taken).
+-- "" if nothing.
+local function DescribeTaken(rewards, money)
+	local parts = {}
+	for _, r in ipairs(rewards) do
+		if r.type ~= "darkrp_money" then parts[#parts + 1] = GravNet.Rewards.Describe(r) end
+	end
+	if money and money > 0 then
+		parts[#parts + 1] = GravNet.Rewards.Describe({ type = "darkrp_money", amount = money })
+	end
 	return table.concat(parts, ", ")
 end
 
@@ -139,21 +152,36 @@ local function Handle(f)
 		local pending = Pending[id]
 		local delivered = f.fulfilled_at ~= nil or pending ~= nil
 		GravNet.Rewards.Revoke(f)
+
+		-- The store takes delivered money back (`deduct_money`), which needs the player online
+		-- with their money loaded. Until then the usergroups and weapons are already gone, and
+		-- the revocation stays unacknowledged so it's offered again.
+		-- A delivery that errored part-way may not have paid the money, so it's left alone.
+		local paid = f.fulfilled_at ~= nil or (pending ~= nil and pending.state == "applied")
+		local money = (paid and f.deduct_money == true) and GravNet.Rewards.MoneyIn(f.rewards) or 0
+		local taken = nil
+		if money > 0 then
+			local verdict
+			verdict, taken = GravNet.Rewards.ReclaimMoney(f, money)
+			if verdict == "wait" then return "offline" end
+		end
+
 		if pending then
 			Pending[id] = nil
 			Save()
 		end
 		if delivered then
 			local ply = player.GetBySteamID64(f.steam_id)
-			if IsValid(ply) then
-				GravNet.NotifyPlayer(ply, "A refunded store purchase was taken back: " .. DescribeAll(f.rewards) .. ".", nil)
+			local described = DescribeTaken(f.rewards, taken)
+			if IsValid(ply) and described ~= "" then
+				GravNet.NotifyPlayer(ply, "A refunded store purchase was taken back: " .. described .. ".", nil)
 			end
 			GravNet.Util.Log(string.format("Store: revoked purchase #%d for %s", id, f.steam_id))
 		end
 		-- Report the lost delivery too, so the website shows the rewards as delivered and then
 		-- removed. The two reports can arrive in either order.
 		if pending and pending.state == "applied" and f.fulfilled_at == nil then Ack(id, "fulfilled") end
-		Ack(id, "revoked")
+		Ack(id, "revoked", nil, (taken and taken > 0) and taken or nil)
 		return delivered and "revoked" or "skipped"
 	end
 

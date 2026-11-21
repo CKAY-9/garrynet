@@ -21,15 +21,34 @@ export async function getForumHome(): Promise<ForumHome> {
   return data;
 }
 
-/** The category with id `id` and its threads, or `null` if there is no such category. */
-export const getForumCategory = cache(async (id: string): Promise<ForumCategoryPage | null> => {
-  return getOrNull<ForumCategoryPage>(id, (n) => `/forum/categories/${n}`);
+/**
+ * The category with id `id` and page `page` (from 1) of its threads, or `null` if there is no
+ * such category. Past the last page gives the last.
+ */
+export const getForumCategory = cache(async (id: string, page = 1): Promise<ForumCategoryPage | null> => {
+  return getOrNull<ForumCategoryPage>(id, (n) => `/forum/categories/${n}${pageQuery({ page })}`);
 });
 
-/** The thread with id `id` and its posts, or `null` if there is no such thread. */
-export const getForumThread = cache(async (id: string): Promise<ForumThreadPage | null> => {
-  return getOrNull<ForumThreadPage>(id, (n) => `/forum/threads/${n}`);
+/**
+ * The thread with id `id` and page `page` (from 1) of its posts, or `null` if there is no such
+ * thread. With `post`, the page holding that post instead (the first page if it's gone). Past
+ * the last page gives the last.
+ */
+export const getForumThread = cache(async (id: string, page = 1, post?: number): Promise<ForumThreadPage | null> => {
+  return getOrNull<ForumThreadPage>(id, (n) => `/forum/threads/${n}${pageQuery(post ? { post } : { page })}`);
 });
+
+/** `?page=` or `?post=` for the backend; empty for the first page. */
+function pageQuery({ page, post }: { page?: number; post?: number }): string {
+  if (post) return `?post=${post}`;
+  return page && page > 1 ? `?page=${page}` : "";
+}
+
+/** A positive whole number from a URL search param (`?page=`, `?post=`), else `undefined`. */
+export function positiveParam(value: string | string[] | undefined): number | undefined {
+  const n = Number(Array.isArray(value) ? value[0] : value);
+  return Number.isSafeInteger(n) && n >= 1 ? n : undefined;
+}
 
 /**
  * The title and first post of thread `id` to start a new thread from, or `null` if there is

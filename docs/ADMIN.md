@@ -41,6 +41,7 @@ Requires: Server Management
 - The list shows each server's icon, accent color, gamemode, map, address and status.
 - Registering takes a name and description, then shows the access key once, with a copy button.
 - `/admin/servers/{id}` edits the details (name, description, icon, accent color, connection address, splash image), regenerates the access key (after confirming), shows the server's `sv_loadingurl` line and deletes the server (after typing its name).
+- While paid purchases from the server's store haven't been delivered, its danger zone says how many and the delete button is disabled. Users who also have Store Finance get a button to refund them all (after confirming) and a link to the store's receipts; the result lists any that couldn't be refunded.
 
 ## /admin/usergroups
 
@@ -49,7 +50,7 @@ Requires: Admin Access and Usergroup Management
 
 - Lists every usergroup with its members count and permissions; creating one takes a name, color, effect, icon and permissions, then opens its page.
 - `/admin/usergroups/{id}` edits the group (with a live chip preview) and deletes it (after typing its name).
-- Only permissions the editor holds can be toggled. The default `user` and `admin` groups can't be renamed or deleted.
+- Only permissions the editor holds can be toggled, and only a group whose permissions the editor all holds can be edited at all; others are shown read-only. The default `user` and `admin` groups can't be renamed or deleted.
 - The Members section lists the group's members (avatar, name, date added) with a filter by name or id. "Add user" searches users by name or id (10 results) and adds the one clicked; the "×" beside a member removes them.
 - Members can only be changed by an editor holding every permission the group grants; others see the list read-only.
 
@@ -100,4 +101,4 @@ Requires: Store Management or Store Finance (and Admin Access, like every admin 
 - Lists every store (enabled or not) with its server, currency, grantable usergroups and item count; creating one picks a server without a store.
 - `/admin/store/{id}`: the store's settings (name, currency, message, enabled), its grantable usergroups (editable with Elevated Control), its items and its store-wide discounts.
 - `/admin/store/{id}/items/new` and `/admin/store/{id}/items/{id}`: the item editor (details, pricing, stock, limits, rewards) and archiving.
-- `/admin/store/receipts`: every receipt with buyer, item, price, status and delivery, filterable by status, store and buyer, with full refunds. Requires Store Finance.
+- `/admin/store/receipts`: every receipt with buyer, item, price, status and delivery, 100 per page (newest first, with links to older pages and back), filterable by status, store and buyer, with full refunds. Disputed receipts show how their dispute stands (open, won, lost, or inquiry closed), and ones whose dispute was won can be reinstated (after a second click), delivering their rewards again. Requires Store Finance.

@@ -136,8 +136,9 @@ local function NotConfiguredWarning(parent)
 	if not state.configured then
 		text = "gravnet_api_url is not set on this server. Add it to server.cfg before linking."
 	elseif state.insecure then
-		text = "gravnet_api_url doesn't use https://, so the access key and server token are sent unencrypted. "
-			.. "Use an https:// URL unless GravNet is on a private network you fully trust."
+		-- The server's explanation (sv_http.lua).
+		text = isstring(state.insecure) and state.insecure
+			or "gravnet_api_url doesn't use https://, so the access key and server token are sent unencrypted."
 	end
 	TextBlock(parent, "GravNet.Small", Colors.Warning, text)
 end

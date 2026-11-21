@@ -371,21 +371,33 @@ export type ForumHome = {
 /** A thread as listed in its category. */
 export type ForumThreadSummary = ForumThread & { author: ForumAuthor; replies: number };
 
-/** A category page, from `GET /forum/categories/{id}`. Stickies first, then most recently active. */
+/**
+ * A page of a category, from `GET /forum/categories/{id}?page=`: 25 threads, stickies first,
+ * then most recently active. `page` (from 1) is the page shown, the last if the one asked for
+ * is past the end; `pages` is how many there are (at least 1).
+ */
 export type ForumCategoryPage = {
   category: ForumCategory;
   section: ForumSection;
   threads: ForumThreadSummary[];
+  page: number;
+  pages: number;
 };
 
 export type ForumPostWithAuthor = ForumPost & { author: ForumAuthor };
 
-/** A thread page, from `GET /forum/threads/{id}`. The first post, then replies oldest first. */
+/**
+ * A page of a thread, from `GET /forum/threads/{id}?page=` (or `?post=`, for the page holding
+ * that post): 20 posts, the first post then replies oldest first, so only page 1 has the first
+ * post. `page` and `pages` as for `ForumCategoryPage`.
+ */
 export type ForumThreadPage = {
   category: ForumCategory;
   section: ForumSection;
   thread: ForumThread;
   posts: ForumPostWithAuthor[];
+  page: number;
+  pages: number;
 };
 
 /** Sent to `POST /forum/sections`. */
@@ -535,9 +547,16 @@ export type ItemStore = {
   store_message: string | null;
   /** Garry's Mod usergroups items may grant. Only Elevated Control changes it. */
   grantable_usergroups: string[];
+  /**
+   * What happens to delivered DarkRP money when a purchase is refunded or disputed: left with
+   * the player (`KEEP`, the default), or taken back as far as their balance allows (`DEDUCT`).
+   */
+  money_on_revoke: MoneyOnRevoke;
   created_at: string;
   last_updated: string | null;
 };
+
+export type MoneyOnRevoke = "KEEP" | "DEDUCT";
 
 /** A store as listed, with what's in it and the store-wide discount in force. */
 export type StoreSummary = ItemStore & {
@@ -682,6 +701,11 @@ export type Receipt = {
   price: number;
   currency: string;
   status_changed_at: string | null;
+  /**
+   * How its dispute ended, once it has: Stripe's dispute status (`won`, `lost`, or
+   * `warning_closed` for an inquiry closed without a chargeback).
+   */
+  dispute_outcome: string | null;
 };
 
 /** Delivery of a receipt's rewards in-game, done by the server's addon. */
@@ -700,12 +724,35 @@ export type Fulfillment = {
   fulfilled_at: string | null;
   revoked_at: string | null;
   revocation_applied_at: string | null;
+  /** DarkRP money the addon took back when revoking it (its store takes money back), if any. */
+  money_reclaimed: number | null;
 };
 
 /** A receipt with its buyer and delivery, from `GET /store/purchases` and `GET /admin/store/receipts`. */
 export type ReceiptView = Receipt & {
   buyer: UserRef;
   fulfillment: Fulfillment | null;
+  /** Staff only: absent from `GET /store/purchases`. `null` until Stripe reports a refund of the payment. */
+  refunds?: PaymentRefunds | null;
+};
+
+/** What Stripe has refunded of a receipt's payment, as it last reported. */
+export type PaymentRefunds = {
+  /** Minor units: what Stripe captured, tax included. */
+  amount_charged: number;
+  /** Minor units: refunds that succeeded or are under way. Failed and cancelled ones don't count. */
+  amount_refunded: number;
+  /** Stripe's status of the latest refund: `pending`, `requires_action`, `succeeded`, `failed` or `canceled`. */
+  latest_status: string | null;
+  /** Why the latest refund failed, if it did (e.g. `expired_or_canceled_card`). */
+  latest_failure_reason: string | null;
+  failed_refunds: number;
+};
+
+/** A page of `GET /admin/store/receipts`, newest first. `next_cursor` is `null` on the last page. */
+export type ReceiptPage = {
+  items: ReceiptView[];
+  next_cursor: string | null;
 };
 
 /** Filters for `GET /admin/store/receipts`. Blank values are ignored. */
@@ -717,6 +764,26 @@ export type ReceiptFilters = {
   buyer?: string;
 };
 
+/**
+ * Paid purchases from a server's store that haven't been delivered yet, from
+ * `GET /admin/store/servers/{id}/undelivered`. A server can't be deleted while it has any.
+ */
+export type UndeliveredPurchases = {
+  count: number;
+  /** The server's store, if it has one. */
+  store_id: number | null;
+};
+
+/** What `POST /admin/store/servers/{id}/undelivered/refund` did. */
+export type MassRefundResult = {
+  /** Receipts refunded by this run. */
+  refunded: number;
+  /** Receipts that couldn't be refunded, and why. */
+  failed: { receipt_id: number; error: string }[];
+  /** Paid purchases still undelivered: the failed ones, and any left for another run. */
+  remaining: number;
+};
+
 /** A store's management page, from `GET /admin/store/{id}`: every discount and unarchived item. */
 export type AdminStorePage = StoreWithServer & {
   discounts: StoreDiscount[];
@@ -724,7 +791,9 @@ export type AdminStorePage = StoreWithServer & {
 };
 
 /** Sent to `POST /admin/store` (with `server_id`) and `PUT /admin/store/{id}`. */
-export type StoreDetails = Pick<ItemStore, "enabled" | "currency" | "override_name" | "store_message">;
+export type StoreDetails = Pick<ItemStore, "enabled" | "currency" | "override_name" | "store_message"> &
+  /** Omitted keeps the current setting (`KEEP` for a new store). */
+  Partial<Pick<ItemStore, "money_on_revoke">>;
 
 /** Sent to `POST /admin/store/{id}/items` and `PUT /admin/store/{id}/items/{id}`. */
 export type ItemDetails = Pick<

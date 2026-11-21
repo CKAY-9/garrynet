@@ -11,11 +11,12 @@ Environment variables (see `backend/.env.example`):
 - `STORAGE_PROVIDER`: where new uploads go, `local` (default) or `s3`
 - `STORAGE_LOCAL_PATH`: root directory of the local provider (default = `./storage`)
 - `STORAGE_MAX_FILE_SIZE`: in bytes (default = 2097152, 2MB)
-- `STORAGE_RATE_LIMIT`: average seconds between uploads by the same user (default = 3). Up to 10 uploads can be made back to back (enough for one message's attachments), so the limit is 10 uploads per 10 × this many seconds
+- `STORAGE_RATE_LIMIT`: average seconds between uploads by the same user (default = 3). Up to 10 uploads can be made back to back (enough for one message's attachments), so the limit is 10 uploads per 10 × this many seconds. Users without Site Access (banned users attaching screenshots to an appeal) get 3 per 3 × this many seconds
+- `STORAGE_USER_QUOTA`: most bytes a user may hold in files that aren't attached to anything yet, pending uploads included (default = 20 × `STORAGE_MAX_FILE_SIZE`, 40MB; at least `STORAGE_MAX_FILE_SIZE`). Unattached files are deleted a day after upload, so without a quota uploads would be free storage. Community files don't count
 - `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`: enable the S3 provider
 - `S3_REGION`: default `us-east-1`; use `auto` for R2
 - `S3_ENDPOINT`: for non-AWS stores, e.g. `https://<account>.r2.cloudflarestorage.com`
-- `S3_PUBLIC_URL`: optional public base URL of the bucket (custom domain or CDN); reads redirect there instead of to presigned URLs (except for support and private message attachments, which are private; see [GET /file](#get-fileowner_idfile_id))
+- `S3_PUBLIC_URL`: optional public base URL of the bucket (custom domain or CDN); reads redirect there instead of to presigned URLs (except for support and private message attachments; see [GET /file](#get-fileowner_idfile_id)). **This makes the bucket public, so those attachments aren't fully private:** anyone who has opened one (or seen its link) can keep reading it at the public URL, even after losing access. The backend logs a warning at startup when it's set. Leave it unset if support and private message attachments must stay private
 
 Each file records the provider it was uploaded to, so switching `STORAGE_PROVIDER` only affects new uploads. Old files keep resolving as long as their provider stays configured. The local provider stays available while its directory exists.
 
@@ -111,7 +112,7 @@ Uploading takes three steps, the same for every provider:
 
 The frontend does steps 1 and 3 from server actions and step 2 from the browser (`frontend/src/components/Upload`).
 
-With the S3 provider, step 2 goes straight to the bucket through a presigned URL, so file bytes never pass through the backend. The bucket needs a CORS rule allowing `PUT` with a `Content-Type` header from `FRONTEND_URL`. The presigned URL points at a staging key, `staging/{key}`, not at the key the file is served from: a presigned URL can't limit the size and keeps working until it expires, so step 3 checks the staged object and copies it into place. Anything written to the staging key after that is never served, and the backend deletes it once the URL has expired (a bucket lifecycle rule expiring `staging/` after a day is a good backstop). With the local provider, step 2 goes to `PUT /file/{owner_id}/{id}/content`, which streams to disk and completes the file itself (step 3 is then a no-op).
+With the S3 provider, step 2 goes straight to the bucket through a presigned URL, so file bytes never pass through the backend. The bucket needs a CORS rule allowing `PUT` with a `Content-Type` header from `FRONTEND_URL`. The URL is signed with the file's `Content-Type` and `Content-Length`, so S3 refuses a body of any other size (browsers set `Content-Length` from the body; it isn't one of the returned `headers`). `object_store` doesn't sign `Content-Length`, so the backend signs its presigned URL again with it added (`sign_content_length` in `storage.rs`). The presigned URL points at a staging key, `staging/{key}`, not at the key the file is served from: it keeps working until it expires, and a provider that doesn't check signed headers could accept any size, so step 3 checks the staged object and copies it into place. Anything written to the staging key after that is never served, and the backend deletes it once the URL has expired (a bucket lifecycle rule expiring `staging/` after a day is a good backstop). With the local provider, step 2 goes to `PUT /file/{owner_id}/{id}/content`, which streams to disk and completes the file itself (step 3 is then a no-op).
 
 Pending uploads still pending after an hour are deleted, along with any bytes that arrived.
 
@@ -126,7 +127,7 @@ size: number // bytes, 1 to STORAGE_MAX_FILE_SIZE
 community?: boolean // store as a community file (/file/-1/{id}); requires Admin Access
 ```
 
-Returns 201 with `{ file, upload: { method: "PUT", url, headers, expires_at } }`. The upload URL is valid for 15 minutes. Returns 429 with `Retry-After` once the user is over the upload rate limit.
+Returns 201 with `{ file, upload: { method: "PUT", url, headers, expires_at } }`. The upload URL is valid for 15 minutes, and the request to it must be exactly `size` bytes. Returns 429 with `Retry-After` once the user is over the upload rate limit, and 400 if the file would take the user's unattached files over `STORAGE_USER_QUOTA` (attach or delete some first). Uploads to one folder are checked against the quota one at a time, so racing requests can't overshoot it together.
 
 ### PUT /file/{owner_id}/{id}/content
 
@@ -134,7 +135,7 @@ Local provider only. Authorized by the signature in the URL from `/file/upload` 
 
 ### POST /file/{owner_id}/{id}/complete
 
-Only the uploader can call this. Checks that the uploaded object exists and has the declared size, then marks the file ready and returns it. A presigned S3 URL can bind the content type but not the size, so an object of the wrong size is deleted here and the client must upload again. With S3 the object is checked at its staging key and copied to the file's key (and checked again there) before the file is ready. Completing a ready file just returns it.
+Only the uploader can call this. Checks that the uploaded object exists and has the declared size, then marks the file ready and returns it. Presigned S3 URLs bind the size, but not every S3-compatible provider enforces it, so an object of the wrong size is deleted here and the client must upload again. With S3 the object is checked at its staging key and copied to the file's key (and checked again there) before the file is ready. Completing a ready file just returns it.
 
 ## GET /file/{owner_id}/{id}
 
@@ -150,7 +151,7 @@ Fetch the requested file. Public, since file IDs are unguessable, except for sup
 Both kinds are served differently from public files, so access is checked on every view:
 
 - Local: `Cache-Control: private, no-cache`, so only the viewer's browser caches it and revalidates it (a 304) each time.
-- S3: always a presigned URL, even with `S3_PUBLIC_URL`, and the redirect is `Cache-Control: private, no-store`. With `S3_PUBLIC_URL` the bucket itself is public, though: anyone who learns an object's key (it's in the presigned URL) can read it there directly. If support or private message attachments must stay private, don't make the bucket public.
+- S3: always a presigned URL, even with `S3_PUBLIC_URL`, and the redirect is `Cache-Control: private, no-store`. With `S3_PUBLIC_URL` the bucket itself is public, though: anyone who learns an object's key (it's in the presigned URL) can read it there directly, for as long as the file exists. Someone who loses access later (staff removed from Support Team, say) keeps it. If support or private message attachments must stay private, don't make the bucket public.
 
 ## DELETE /file/{owner_id}/{id}
 

@@ -86,10 +86,10 @@ Reading is public. Writing needs a login; sections and categories also need Admi
 - DELETE `/forum/sections/{id}`: delete a section and everything in it. Requires Admin Access and Section Management
 - POST `/forum/categories`: create a category (`name`, `section_id`, `description`, `locked`, `position`). Requires Admin Access and Category Management
 - DELETE `/forum/categories/{id}`: delete a category and its threads. Requires Admin Access and Category Management
-- GET `/forum/categories/{id}`: `{ category, section, threads }`. Threads list stickies first, then most recently active; each includes `author` (`id`, `username`, `avatar_url`) and `replies`
-- POST `/forum/categories/{id}/threads`: start a thread (`title`, max 128 characters; `content`, the first post; optional `allow_template` and `locked`, both default `false`; optional `attachments`, up to 5 file IDs). Requires Site Access and User Posts; `locked: true` also needs Thread Management. 423 if the category is locked
-- GET `/forum/threads/{id}`: `{ category, section, thread, posts }`. The thread's first post comes first, then replies oldest first; each post includes `author`
-- POST `/forum/threads/{id}/posts`: reply (`content`, max 20,000 characters; optional `attachments`, up to 5 file IDs). Requires Site Access and User Posts; 423 if the thread or its category is locked. Bumps the thread's `last_activity`
+- GET `/forum/categories/{id}?page=`: `{ category, section, threads, page, pages }`, 25 threads a page. Threads list stickies first, then most recently active; each includes `author` (`id`, `username`, `avatar_url`) and `replies`. `page` starts at 1 (the default); one past the end gives the last page, and the response's `page` says which was shown. `pages` is how many there are, at least 1. 400 for a `page` below 1
+- POST `/forum/categories/{id}/threads`: start a thread (`title`, max 128 characters; `content`, the first post; optional `allow_template` and `locked`, both default `false`; optional `attachments`, up to 5 file IDs). Requires Site Access and User Posts; `locked: true` also needs Thread Management. 423 if the category is locked; 429 (with `Retry-After`) past 3 threads per 10 minutes, or past the post limit below, unless the user has Thread Management
+- GET `/forum/threads/{id}?page=` or `?post=`: `{ category, section, thread, posts, page, pages }`, 20 posts a page, with `page` and `pages` as for categories. The thread's first post comes first (so only on page 1), then replies oldest first; each post includes `author`. `post={id}` shows the page holding that post instead, or page 1 if the thread has no such post (it may have been deleted)
+- POST `/forum/threads/{id}/posts`: reply (`content`, max 20,000 characters; optional `attachments`, up to 5 file IDs). Requires Site Access and User Posts; 423 if the thread or its category is locked; 429 (with `Retry-After`) past 6 posts per minute, counting threads' first posts, unless the user has Thread Management. Bumps the thread's `last_activity`
 - PATCH `/forum/threads/{id}`: change any of `title`, `locked`, `sticky`, `allow_template` (omitted fields are left alone). Authors can change `title` and `allow_template`; `locked` and `sticky` need Thread Management
 - DELETE `/forum/threads/{id}`: delete a thread and all its posts
 - PATCH `/forum/posts/{id}`: replace a post's `content` (same rules as replying) and set `edited`. Doesn't bump `last_activity` or change attachments
@@ -100,7 +100,7 @@ Reading is public. Writing needs a login; sections and categories also need Admi
 
 The four routes above follow the same rules:
 
-- Users with Site Access and Thread Management (moderators) can manage any thread or post, even in a locked thread or category.
+- Users with Site Access and Thread Management (moderators) can manage any thread or post, even in a locked thread or category, except those written by a user holding permissions they don't (403), so a moderator can't edit or delete an admin's posts. The author's usergroups count, punishments aside, as for bans.
 - Otherwise users can only manage their own threads and posts, and only while they can still post (Site Access and User Posts, so not banned). 403 for someone else's.
 - Authors can't change anything in a locked thread or category (423).
 
@@ -120,8 +120,8 @@ The homepage of the Forum. Just include all the different sections with their ca
 
 ### /forum/{category_id}
 
-Navigating here will reveal the category page which contains threads related to it. Users who can post get a "New thread" button (unless the category is locked); logged-out users are prompted to log in.
+Navigating here will reveal the category page which contains threads related to it, 25 a page (`?page=`). Users who can post get a "New thread" button (unless the category is locked); logged-out users are prompted to log in.
 
 ### /forum/{category_id}/{thread_id}
 
-Thread page. Shows all posts in the thread, with the principal post/author being at the top, then a reply box for users who can post (unless the thread or category is locked). The new thread and reply forms have an "Attach files" button; attached images show as thumbnails under the post and other files as links. Users who can manage the thread get Rename and Delete thread buttons under the title (plus Lock and Sticky for moderators), and Edit and Delete buttons on each post they can manage. Each post shows its like and dislike counts; users who can post can click them to like or dislike other users' posts (clicking their current vote again takes it back), except in a locked thread or category. Deletes ask for confirmation inline. A thread opened under the wrong category id redirects to the right one.
+Thread page. Shows the thread's posts 20 a page (`?page=`), with the principal post/author at the top of the first, and links to the other pages above and below. `?post={id}` opens the page holding that post; replying, a reply notification, and a reply on a user's profile all link there, scrolled to the post (`#post-{id}`). Under the posts is a reply box for users who can post (unless the thread or category is locked). The new thread and reply forms have an "Attach files" button; attached images show as thumbnails under the post and other files as links. Users who can manage the thread get Rename and Delete thread buttons under the title (plus Lock and Sticky for moderators), and Edit and Delete buttons on each post they can manage. Each post shows its like and dislike counts; users who can post can click them to like or dislike other users' posts (clicking their current vote again takes it back), except in a locked thread or category. Deletes ask for confirmation inline. A thread opened under the wrong category id redirects to the right one.

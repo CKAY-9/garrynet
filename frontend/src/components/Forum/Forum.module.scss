@@ -467,3 +467,43 @@ $accent: #3b82f6;
   align-self: flex-start;
   text-decoration: none;
 }
+
+// Pages of a category or thread
+
+.pages {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.pageLinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+
+  &:last-child {
+    justify-content: flex-end;
+  }
+}
+
+.pageNumber {
+  font-size: 0.85rem;
+  opacity: 0.7;
+  text-align: center;
+}
+
+.pageLink {
+  padding: 0.4rem 0.9rem;
+  border: $border;
+  border-radius: 0.5rem;
+  color: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background 0.15s;
+
+  &:hover {
+    background: rgb(127 127 127 / 0.12);
+  }
+}

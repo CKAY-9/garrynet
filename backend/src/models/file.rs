@@ -111,6 +111,14 @@ pub struct NewFile<'a> {
     pub uploaded_by: i64,
 }
 
+/// What [`File::create_within_quota`] did.
+#[allow(clippy::large_enum_variant, reason = "returned once and matched at once")]
+pub enum Quota {
+    Created(File),
+    /// Nothing was created: the owner already holds this many bytes in unattached files.
+    Exceeded { held: i64 },
+}
+
 /// `$sql` followed by the file columns, then `$rest`.
 macro_rules! with_columns {
     ($sql:literal $(, $rest:literal)?) => {
@@ -131,21 +139,30 @@ impl File {
     }
 
     pub async fn create(db: &PgPool, new: &NewFile<'_>) -> Result<Self, sqlx::Error> {
-        sqlx::query_as(with_columns!(
-            "INSERT INTO files (owner_id, id, backend, key, name, content_type, size, uploaded_by)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-             RETURNING"
+        insert(&mut *db.acquire().await?, new).await
+    }
+
+    /// Like [`File::create`], unless that would leave the owner with more than `quota` bytes
+    /// in files that aren't attached to anything (pending uploads included). Uploads to one
+    /// folder are counted one at a time, so racing uploads can't overshoot the quota together.
+    pub async fn create_within_quota(db: &PgPool, new: &NewFile<'_>, quota: i64) -> Result<Quota, sqlx::Error> {
+        let mut tx = db.begin().await?;
+        sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended('file-quota:' || $1::TEXT, 0))")
+            .bind(new.owner_id)
+            .execute(&mut *tx)
+            .await?;
+        let held: i64 = sqlx::query_scalar(concat!(
+            "SELECT COALESCE(sum(size), 0)::BIGINT FROM files WHERE owner_id = $1 AND ", unattached!()
         ))
         .bind(new.owner_id)
-        .bind(new.id)
-        .bind(new.backend)
-        .bind(new.key)
-        .bind(new.name)
-        .bind(new.content_type)
-        .bind(new.size)
-        .bind(new.uploaded_by)
-        .fetch_one(db)
-        .await
+        .fetch_one(&mut *tx)
+        .await?;
+        if held + new.size > quota {
+            return Ok(Quota::Exceeded { held });
+        }
+        let file = insert(&mut tx, new).await?;
+        tx.commit().await?;
+        Ok(Quota::Created(file))
     }
 
     pub async fn get(db: &PgPool, owner_id: i64, id: &str) -> Result<Option<Self>, sqlx::Error> {
@@ -376,4 +393,22 @@ impl File {
         .fetch_all(db)
         .await
     }
+}
+
+async fn insert(conn: &mut PgConnection, new: &NewFile<'_>) -> Result<File, sqlx::Error> {
+    sqlx::query_as(with_columns!(
+        "INSERT INTO files (owner_id, id, backend, key, name, content_type, size, uploaded_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         RETURNING"
+    ))
+    .bind(new.owner_id)
+    .bind(new.id)
+    .bind(new.backend)
+    .bind(new.key)
+    .bind(new.name)
+    .bind(new.content_type)
+    .bind(new.size)
+    .bind(new.uploaded_by)
+    .fetch_one(conn)
+    .await
 }

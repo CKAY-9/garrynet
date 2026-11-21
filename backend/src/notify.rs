@@ -209,6 +209,27 @@ pub async fn purchase_refunded(db: &PgPool, receipt: &Receipt, by: Option<i64>) 
     .await;
 }
 
+/// Staff (`by`) reinstated a purchase whose dispute was won (`after_dispute`) or whose refund
+/// failed, so its rewards are delivered again.
+pub async fn purchase_reinstated(db: &PgPool, receipt: &Receipt, by: i64, after_dispute: bool) {
+    send(
+        db,
+        &[receipt.buyer_id],
+        Some(by),
+        NotificationType::Store,
+        "purchase_reinstated",
+        format!("Reinstated: {}", receipt.item_name),
+        format!(
+            "Your purchase of {} from {} was reinstated {}. Its rewards will be delivered in-game again.",
+            receipt.item_name,
+            receipt.store_name,
+            if after_dispute { "after its payment dispute closed" } else { "after its refund couldn't be completed" }
+        ),
+        Some(PURCHASES_URL.to_owned()),
+    )
+    .await;
+}
+
 /// The server's addon delivered a purchase's rewards in-game.
 pub async fn fulfillment_delivered(db: &PgPool, fulfillment: &Fulfillment) {
     let Some(receipt) = receipt_of(db, fulfillment).await else { return };
@@ -256,8 +277,8 @@ async fn receipt_of(db: &PgPool, fulfillment: &Fulfillment) -> Option<Receipt> {
     }
 }
 
-/// Someone replied to a thread.
-pub async fn thread_reply(db: &PgPool, thread: &ForumThread, author: &User) {
+/// Someone replied to a thread. Links to the reply, on whichever page of the thread it is.
+pub async fn thread_reply(db: &PgPool, thread: &ForumThread, reply: &ForumPost, author: &User) {
     send(
         db,
         &[thread.author_id],
@@ -266,7 +287,7 @@ pub async fn thread_reply(db: &PgPool, thread: &ForumThread, author: &User) {
         "thread_reply",
         format!("New reply: {}", thread.title),
         format!("{} replied to your thread.", author.username),
-        thread_url(thread),
+        Some(format!("/forum/threads/{}?post={}", thread.id, reply.id)),
     )
     .await;
 }

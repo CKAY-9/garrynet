@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
 import { AttachmentPicker, useAttachments } from "@/components/Upload";
 import { MAX_POST_ATTACHMENTS } from "@/lib/files";
 import { createThread, replyToThread } from "./actions";
@@ -122,8 +123,12 @@ export function NewThreadForm({
   );
 }
 
-/** Reply box at the bottom of a thread. */
-export function ReplyForm({ threadId }: { threadId: number }) {
+/**
+ * Reply box at the bottom of each page of a thread (at `threadHref`). Once posted, opens the
+ * page holding the reply (the last), scrolled to it.
+ */
+export function ReplyForm({ threadHref, threadId }: { threadHref: string; threadId: number }) {
+  const router = useRouter();
   const [content, setContent] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -137,6 +142,7 @@ export function ReplyForm({ threadId }: { threadId: number }) {
         setContent("");
         attachments.clear();
         setError(null);
+        router.push(`${threadHref}?post=${res.data.id}#post-${res.data.id}`);
       } else {
         setError(res.message);
       }

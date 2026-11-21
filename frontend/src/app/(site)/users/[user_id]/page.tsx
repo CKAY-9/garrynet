@@ -9,7 +9,7 @@ import { adminChatsHref, chatHref, MESSAGING } from "@/lib/messageEnums";
 import { pageMetadata } from "@/lib/pageMetadata";
 import { Permission, hasPermission } from "@/lib/permissions";
 import type { AuthoredFilters, AuthoredKind, AuthoredSort } from "@/lib/types";
-import { getUserPosts, getUserProfile, getUserPunishments } from "@/lib/users";
+import { getUserPosts, getUserProfile, getUserPunishments, MAX_ACTIVITY_PAGE } from "@/lib/users";
 
 type SearchParams = PageProps<"/users/[user_id]">["searchParams"];
 
@@ -52,7 +52,7 @@ async function UserProfile({ id, searchParams }: { id: string; searchParams: Sea
   return (
     <Profile
       user={user}
-      // The backend refuses punishing yourself, and anyone holding permissions the viewer doesn't.
+      // The backend refuses punishing yourself, and anyone the viewer doesn't outrank.
       actions={
         self ? (
           <Link className={profileStyles.edit} href="/settings">
@@ -103,8 +103,6 @@ async function UserActivity({ userId, self, searchParams }: { userId: number; se
 
 const kinds: AuthoredKind[] = ["thread", "post"];
 const sorts: AuthoredSort[] = ["new", "old", "reputation+", "reputation-"];
-/** Far enough for anyone; keeps the backend's offset sane. */
-const MAX_PAGE = 1000;
 
 /** The activity filters and page from the URL; unknown values are dropped. */
 async function readActivityParams(searchParams: SearchParams): Promise<{ filters: AuthoredFilters; page: number }> {
@@ -124,6 +122,6 @@ async function readActivityParams(searchParams: SearchParams): Promise<{ filters
       // An unencoded `+` arrives as a trailing space, which `first` trims.
       sort: oneOf(first("sort") === "reputation" ? "reputation+" : first("sort"), sorts),
     },
-    page: Number.isInteger(page) && page >= 1 ? Math.min(page, MAX_PAGE) : 1,
+    page: Number.isInteger(page) && page >= 1 ? Math.min(page, MAX_ACTIVITY_PAGE) : 1,
   };
 }

@@ -19,6 +19,10 @@ const OFFLINE_AFTER: TimeDelta = TimeDelta::minutes(15);
 /// How stale `last_seen` may get before an access writes it again; well under [`IDLE_AFTER`].
 const TOUCH_EVERY: TimeDelta = TimeDelta::minutes(1);
 
+/// How many times more users than asked for [`User::random_sample`] reads, so the sample is
+/// spread over several pages of the table (users on one page tend to have joined together).
+const SAMPLE_FACTOR: i64 = 20;
+
 /// How recently a searched-for user must have been seen.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LastActivity {
@@ -72,7 +76,8 @@ pub struct UserSearch {
 pub struct UserSearchRow {
     #[sqlx(flatten)]
     pub user: User,
-    pub post_count: i64,
+    /// Kept by trigger (see the `user_post_count` migration).
+    pub post_count: i32,
 }
 
 #[derive(Clone, Debug, Serialize, sqlx::FromRow)]
@@ -193,14 +198,22 @@ impl User {
         .await
     }
 
-    /// Users matching every filter in `search`, at most `search.limit` of them.
+    /// Users matching every filter in `search`, at most `search.limit` of them. Reads only
+    /// `users`: post counts are stored on it, and each sort but best match has an index.
     pub async fn search(db: &PgPool, search: &UserSearch) -> sqlx::Result<Vec<UserSearchRow>> {
-        let mut q: QueryBuilder<Postgres> = QueryBuilder::new(
-            "SELECT u.*,
-                    (SELECT count(*) FROM forum_posts p WHERE p.author_id = u.id) AS post_count
-             FROM users u
-             WHERE true",
-        );
+        let unfiltered = search.name.is_none()
+            && search.id.is_none()
+            && search.usergroup.is_none()
+            && search.last_activity.is_none();
+        if search.sort == UserSort::BestMatch && unfiltered {
+            let sample = Self::random_sample(db, search.limit).await?;
+            if sample.len() as i64 >= search.limit {
+                return Ok(sample);
+            }
+            // Too few: a small table, or a sample that came up short. Shuffle them all.
+        }
+
+        let mut q: QueryBuilder<Postgres> = QueryBuilder::new("SELECT u.* FROM users u WHERE true");
 
         let pattern = search.name.as_deref().map(escape_like);
         if let Some(pattern) = &pattern {
@@ -240,7 +253,8 @@ impl User {
                 q.push(" ORDER BY random()");
             }
             // Private users hide their reputation and posts, so they sort last rather than
-            // giving away where they'd rank.
+            // giving away where they'd rank. Each order has an index (see the
+            // `user_post_count` migration).
             (UserSort::ReputationDesc, _) => {
                 q.push(" ORDER BY u.private, u.reputation DESC, u.id");
             }
@@ -248,12 +262,33 @@ impl User {
                 q.push(" ORDER BY u.private, u.reputation ASC, u.id");
             }
             (UserSort::Posts, _) => {
-                q.push(" ORDER BY u.private, post_count DESC, u.id");
+                q.push(" ORDER BY u.private, u.post_count DESC, u.id");
             }
         }
         q.push(" LIMIT ").push_bind(search.limit);
 
         q.build_query_as().fetch_all(db).await
+    }
+
+    /// About `limit` random users, shuffled, for a search with no filters: the most common
+    /// search, as the user search page opens with it. Shuffling every user would read the
+    /// whole table, so this reads a random sample of its pages, sized from the planner's row
+    /// estimate to hold about [`SAMPLE_FACTOR`] times `limit` users (the whole table when it's
+    /// small or hasn't been analyzed). The sample can hold fewer than `limit`.
+    async fn random_sample(db: &PgPool, limit: i64) -> sqlx::Result<Vec<UserSearchRow>> {
+        sqlx::query_as(
+            "SELECT u.* FROM users u
+             TABLESAMPLE SYSTEM ((
+                 SELECT CASE WHEN reltuples > 0 THEN least(100, 100 * $2 / reltuples) ELSE 100 END::real
+                 FROM pg_class WHERE oid = 'users'::regclass
+             ))
+             ORDER BY random()
+             LIMIT $1",
+        )
+        .bind(limit)
+        .bind((limit * SAMPLE_FACTOR) as f64)
+        .fetch_all(db)
+        .await
     }
 
     /// Changes the user's own profile settings; `None` leaves a field as it is. Already

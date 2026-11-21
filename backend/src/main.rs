@@ -17,10 +17,14 @@ use std::{sync::Arc, time::Duration};
 use actix_web::{
     App, HttpServer,
     dev::{Service, ServiceResponse},
-    middleware::Logger,
+    http::header,
+    middleware::{Condition, DefaultHeaders, Logger},
     web,
 };
-use sqlx::{PgPool, postgres::PgPoolOptions};
+use sqlx::{
+    PgPool,
+    postgres::{PgConnectOptions, PgPoolOptions},
+};
 
 use crate::{
     auth::jwt::JwtKeys,
@@ -28,7 +32,7 @@ use crate::{
     error::ApiError,
     models::{
         Community, File, Usergroup, legal::LegalDocument, notification::Notification,
-        support::SupportTicket,
+        store::Receipt, support::SupportTicket,
     },
     state::AppState,
     storage::Storage,
@@ -77,6 +81,7 @@ async fn main() -> std::io::Result<()> {
     spawn_notification_sweeper(state.db.clone());
 
     let trusted_origins = Arc::new(auth::trusted_origins(&config));
+    let https = config.https();
     HttpServer::new(move || {
         let trusted_origins = trusted_origins.clone();
         App::new()
@@ -96,12 +101,21 @@ async fn main() -> std::io::Result<()> {
                 }
             })
             .wrap(Logger::new("%r %s %Dms"))
+            // Served over HTTPS: browsers that have seen it never use plain HTTP for it again,
+            // for a year (HSTS). Not for subdomains, which may be other people's services.
+            .wrap(Condition::new(
+                https,
+                DefaultHeaders::new().add((header::STRICT_TRANSPORT_SECURITY, HSTS)),
+            ))
             .configure(routes::configure)
     })
     .bind(&config.bind_addr)?
     .run()
     .await
 }
+
+/// `Strict-Transport-Security` when the backend is served over HTTPS: a year, this host only.
+const HSTS: &str = "max-age=31536000";
 
 /// The configuration from the environment; exits on a configuration error.
 fn load_config() -> Config {
@@ -113,14 +127,17 @@ fn load_config() -> Config {
 
 /// Connects to the database and sets up the clients the server (or a command) needs.
 async fn build_state(config: Config) -> std::io::Result<AppState> {
-    let db = connect_db(&config.database_url).await?;
+    let db = connect_db(config.database.clone()).await?;
 
     let http = reqwest::Client::builder()
         .timeout(Duration::from_secs(10))
         .build()
         .map_err(std::io::Error::other)?;
 
-    let stripe = config.stripe.clone().map(|stripe| Stripe::new(http.clone(), stripe));
+    let stripe = config
+        .stripe
+        .clone()
+        .map(|stripe| Stripe::new(http.clone(), stripe, config.deployment()));
     if stripe.is_none() {
         log::warn!("STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET are not set: the store can't take payments");
     }
@@ -145,11 +162,11 @@ async fn build_state(config: Config) -> std::io::Result<AppState> {
 
 /// Connects to Postgres, applies migrations and creates the default usergroups, the
 /// skeleton community and the default legal documents.
-async fn connect_db(database_url: &str) -> std::io::Result<PgPool> {
+async fn connect_db(options: PgConnectOptions) -> std::io::Result<PgPool> {
     let db = PgPoolOptions::new()
         .max_connections(10)
         .acquire_timeout(Duration::from_secs(5))
-        .connect(database_url)
+        .connect_with(options)
         .await
         .map_err(std::io::Error::other)?;
     sqlx::migrate!("./migrations")
@@ -208,8 +225,13 @@ fn spawn_notification_sweeper(db: PgPool) {
 /// webhook (or is a delayed payment still clearing).
 const STALE_PURCHASE_MINUTES: i64 = 90;
 
+/// Refunds and disputes reported for a payment that still isn't recorded after this long are
+/// forgotten: the payment isn't GravNet's. Stripe retries a failing webhook for 3 days.
+const EARLY_SETTLEMENT_DAYS: i32 = 30;
+
 /// Settles store purchases whose Checkout Session should long have been settled by a
-/// webhook (see `routes::store::sweep_stale_purchases`). Every 10 minutes.
+/// webhook (see `routes::store::sweep_stale_purchases`), and forgets refunds and disputes of
+/// payments that never turned up (see `Receipt::settle_payment`). Every 10 minutes.
 fn spawn_purchase_sweeper(state: AppState) {
     actix_web::rt::spawn(async move {
         let mut tick = tokio::time::interval(Duration::from_secs(10 * 60));
@@ -221,6 +243,11 @@ fn spawn_purchase_sweeper(state: AppState) {
                     log::info!("stale store purchases: {cancelled} cancelled, {paid} recorded as paid")
                 }
                 Err(e) => log::error!("failed to sweep stale store purchases: {e}"),
+            }
+            match Receipt::sweep_early_settlements(&state.db, EARLY_SETTLEMENT_DAYS).await {
+                Ok(0) => {}
+                Ok(n) => log::info!("forgot {n} refund(s) or dispute(s) of payments that were never recorded"),
+                Err(e) => log::error!("failed to sweep early store settlements: {e}"),
             }
         }
     });
@@ -327,19 +354,19 @@ async fn sweep_files(db: &PgPool, storage: &Storage, sweep: Sweep) {
     }
 }
 
-/// One-shot command mode. Only needs `DATABASE_URL`, except `demo` commands, which delete
+/// One-shot command mode. Only needs `DATABASE_URL` (and `DATABASE_PASSWORD_FILE`, if
+/// used), except `demo` commands, which delete
 /// files and close checkouts and so need the full configuration.
 async fn run_command(args: &[String]) -> std::io::Result<()> {
     let (db, state) = if args.first().is_some_and(|a| a == "demo") {
         let state = build_state(load_config()).await?;
         (state.db.clone(), Some(state))
     } else {
-        let Some(database_url) = std::env::var("DATABASE_URL").ok().filter(|v| !v.is_empty())
-        else {
-            eprintln!("configuration error: missing required environment variable DATABASE_URL");
+        let options = config::database_from_env().unwrap_or_else(|e| {
+            eprintln!("configuration error: {e}");
             std::process::exit(1);
-        };
-        (connect_db(&database_url).await?, None)
+        });
+        (connect_db(options).await?, None)
     };
     match shell::execute(&db, state.as_ref(), args).await {
         Ok(out) => {

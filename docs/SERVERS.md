@@ -34,7 +34,7 @@ Status, as shown in the admin dashboard: not linked, waiting for heartbeat (link
 - GET `/servers/{id}`: one server (public)
 - POST `/servers`: register a server, returns `{ server, access_key }`
 - PUT `/servers/{id}`: replace the editable details
-- DELETE `/servers/{id}`: delete the server and its player records, and its store (see [STORE.md](STORE.md)). Its store's open checkouts are closed first; 400 and nothing deleted if one has been paid or has a payment clearing
+- DELETE `/servers/{id}`: delete the server and its player records, and its store (see [STORE.md](STORE.md)). 400 and nothing deleted while paid purchases from its store haven't been delivered (they must be delivered or refunded first). Its store's open checkouts are then closed; 400 and nothing deleted if one has been paid or has a payment clearing
 - POST `/servers/{id}/access-key`: generate a new access key and unlink the server, returns `{ server, access_key }`
 
 Everything but the GETs requires Admin Access and Server Management. POST/PUT take `name` (required), `description`, `splash_url`, `icon_url`, `color` (hex, default `#3b82f6`) and `connection_address`. Blank optional URLs become null. `gamemode`, `map`, `last_heartbeat` and `linked` come from the server itself.

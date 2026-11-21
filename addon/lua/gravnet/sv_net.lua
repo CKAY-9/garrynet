@@ -10,7 +10,8 @@ function GravNet.GetStatus()
 	local linked = GravNet.Storage.IsLinked()
 	local status = {
 		configured = GravNet.HTTP.IsConfigured(),
-		insecure = GravNet.HTTP.IsInsecure(),
+		-- What's wrong with gravnet_api_url's security, if anything (see sv_http.lua).
+		insecure = GravNet.HTTP.InsecureMessage() or false,
 		linked = linked,
 		busy = GravNet.Link.IsBusy() or GravNet.Interval.IsBusy(),
 	}

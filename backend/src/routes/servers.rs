@@ -6,7 +6,8 @@ use crate::{
     error::ApiError,
     models::{
         Permissions, Server,
-        server::{AccessKey, ServerDetails},
+        server::{AccessKey, Delete, ServerDetails},
+        store::Receipt,
     },
     routes::{
         store,
@@ -89,8 +90,10 @@ async fn update_server(
     Ok(HttpResponse::Ok().json(server))
 }
 
-/// Deletes a server and its player records, and its store with its purchases. Its store's
-/// open checkouts are closed first; 400 (and nothing deleted) if one of them has been paid or
+/// Deletes a server and its player records, and its store with its purchases. 400 (and
+/// nothing deleted) while paid purchases from its store haven't been delivered: they have to
+/// be delivered or refunded first (see `routes::store_admin::refund_undelivered`). Its store's
+/// open checkouts are then closed; 400 (and nothing deleted) if one of them has been paid or
 /// has a payment clearing. Requires Admin Access and Server Management.
 #[delete("/servers/{id}")]
 async fn delete_server(
@@ -100,12 +103,29 @@ async fn delete_server(
 ) -> Result<HttpResponse, ApiError> {
     user.require(&state.db, MANAGE).await?;
     let id = id.into_inner();
+    // Checked before the store is disabled and its checkouts closed, so a refused deletion
+    // leaves the store as it was. `Server::delete` checks again under a lock.
+    let undelivered = Receipt::count_undelivered(&mut *state.db.acquire().await?, id).await?;
+    if undelivered > 0 {
+        return Err(undelivered_error(undelivered));
+    }
     store::close_checkouts_for_server(&state, id).await?;
-    if !Server::delete(&state.db, id).await? {
-        return Err(ApiError::NotFound("server"));
+    match Server::delete(&state.db, id).await? {
+        Delete::Deleted => {}
+        Delete::NotFound => return Err(ApiError::NotFound("server")),
+        // A purchase was paid between the two checks; the store stays disabled.
+        Delete::Undelivered(undelivered) => return Err(undelivered_error(undelivered)),
     }
     log::info!("user {} deleted server {id}", user.0.id);
     Ok(HttpResponse::NoContent().finish())
+}
+
+fn undelivered_error(count: i64) -> ApiError {
+    bad(format!(
+        "{count} paid {} from this server's store {} been delivered yet; the server can be deleted once they're delivered in-game, or refunded by someone with Store Finance",
+        if count == 1 { "purchase" } else { "purchases" },
+        if count == 1 { "hasn't" } else { "haven't" },
+    ))
 }
 
 /// Generates a new access key and unlinks the server, for when it and GravNet fall out of

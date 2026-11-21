@@ -18,7 +18,7 @@ use crate::{
     error::ApiError,
     models::{
         File, Permissions,
-        file::{COMMUNITY_OWNER, FileStatus, NewFile},
+        file::{COMMUNITY_OWNER, FileStatus, NewFile, Quota},
         private_message::PrivateMessage,
         support::SupportMessage,
     },
@@ -74,6 +74,9 @@ const MAX_NAME: usize = 255;
 /// for the most attachments one message can have. Over time the rate is still one upload
 /// per `STORAGE_RATE_LIMIT`.
 const UPLOAD_BURST: i64 = 10;
+/// The burst for users without Site Access (banned), who can only attach files to support
+/// tickets: enough for a few screenshots in an appeal.
+const RESTRICTED_UPLOAD_BURST: i64 = 3;
 
 /// A file as clients see it.
 #[derive(Serialize)]
@@ -127,7 +130,9 @@ struct UploadResponse {
 }
 
 /// Starts an upload: records a pending file and returns where to send its bytes. Requires a
-/// login (not Site Access, see [`UPLOAD`]); community files require Admin Access.
+/// login (not Site Access, see [`UPLOAD`]); community files require Admin Access. Rate
+/// limited per user (more tightly without Site Access), and a user's files that aren't
+/// attached to anything yet may add up to at most `STORAGE_USER_QUOTA` bytes.
 #[post("/file/upload")]
 async fn create_upload(
     state: web::Data<AppState>,
@@ -136,7 +141,8 @@ async fn create_upload(
 ) -> Result<HttpResponse, ApiError> {
     let body = body.into_inner();
     let storage = &state.storage;
-    user.require(&state.db, if body.community { UPLOAD_COMMUNITY } else { UPLOAD })
+    let permissions = user
+        .require(&state.db, if body.community { UPLOAD_COMMUNITY } else { UPLOAD })
         .await?;
 
     let content_type = content_type(&body.content_type)?;
@@ -149,11 +155,12 @@ async fn create_upload(
     }
     let name = file_name(&body.name);
 
-    // At most UPLOAD_BURST uploads in any window of UPLOAD_BURST rate-limit periods.
-    let window = storage.rate_limit().as_secs_f64() * UPLOAD_BURST as f64;
+    // At most `burst` uploads in any window of `burst` rate-limit periods.
+    let burst = if permissions.contains(Permissions::SITE_ACCESS) { UPLOAD_BURST } else { RESTRICTED_UPLOAD_BURST };
+    let window = storage.rate_limit().as_secs_f64() * burst as f64;
     if window > 0.0 {
         let (count, oldest) = File::recent_uploads_by(&state.db, user.0.id, window).await?;
-        if count >= UPLOAD_BURST {
+        if count >= burst {
             let elapsed = oldest.map_or(0.0, |t| (Utc::now() - t).num_milliseconds() as f64 / 1000.0);
             return Err(ApiError::RateLimited((window - elapsed).ceil().max(1.0) as u64));
         }
@@ -163,22 +170,33 @@ async fn create_upload(
     let id = new_file_id()?;
     let key = File::key_for(owner_id, &id);
     let backend = storage.default_backend();
-    let file = File::create(
-        &state.db,
-        &NewFile {
-            owner_id,
-            id: &id,
-            backend: backend.as_str(),
-            key: &key,
-            name: &name,
-            content_type: &content_type,
-            size: body.size as i64,
-            uploaded_by: user.0.id,
-        },
-    )
-    .await?;
+    let new = NewFile {
+        owner_id,
+        id: &id,
+        backend: backend.as_str(),
+        key: &key,
+        name: &name,
+        content_type: &content_type,
+        size: body.size as i64,
+        uploaded_by: user.0.id,
+    };
+    // Community files are uploaded by admins and kept, so only user files have a quota.
+    let file = if body.community {
+        File::create(&state.db, &new).await?
+    } else {
+        let quota = storage.user_quota();
+        match File::create_within_quota(&state.db, &new, quota as i64).await? {
+            Quota::Created(file) => file,
+            Quota::Exceeded { held } => {
+                return Err(bad(format!(
+                    "you have {held} bytes in uploads that aren't attached to anything yet, and can hold at most {quota}; \
+                     post or delete some first (unused uploads are deleted after a day)"
+                )));
+            }
+        }
+    };
     let upload = storage
-        .create_upload(backend, owner_id, &id, &key, &content_type)
+        .create_upload(backend, owner_id, &id, &key, &content_type, body.size)
         .await?;
     Ok(HttpResponse::Created().json(UploadResponse { file: FileView::new(&state, file), upload }))
 }

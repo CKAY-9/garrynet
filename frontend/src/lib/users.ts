@@ -60,6 +60,12 @@ export async function getUserPunishments(id: number): Promise<Punishment[] | nul
 /** Threads and posts per page of a profile's activity. */
 export const AUTHORED_PAGE_SIZE = 20;
 
+/** The backend's furthest `offset` into a user's posts (`MAX_POSTS_OFFSET`). */
+const MAX_AUTHORED_OFFSET = 10_000;
+
+/** The last page of a profile's activity that can be shown. */
+export const MAX_ACTIVITY_PAGE = Math.floor(MAX_AUTHORED_OFFSET / AUTHORED_PAGE_SIZE) + 1;
+
 /**
  * Page `page` (from 1) of the threads and posts user `id` wrote that match `filters`, or
  * `null` if the viewer may not see them (a private profile). Request-time.

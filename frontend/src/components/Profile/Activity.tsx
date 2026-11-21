@@ -3,6 +3,7 @@ import Form from "next/form";
 import Link from "next/link";
 import { plainText } from "@/lib/text";
 import { fullFormat, timeAgo } from "@/lib/time";
+import { MAX_ACTIVITY_PAGE } from "@/lib/users";
 import type { Authored, AuthoredFilters, AuthoredKind, AuthoredPage, AuthoredSort } from "@/lib/types";
 import styles from "./Activity.module.scss";
 
@@ -36,6 +37,8 @@ type Props = {
  */
 export function Activity({ userId, self, filters, page, data }: Props) {
   const filtered = Object.values(filters).some((v) => v.trim());
+  // The backend won't skip further in, so the last reachable page has no "Next".
+  const hasNext = data.has_more && page < MAX_ACTIVITY_PAGE;
 
   return (
     <ActivityFrame>
@@ -108,7 +111,7 @@ export function Activity({ userId, self, filters, page, data }: Props) {
         </ol>
       )}
 
-      {(page > 1 || data.has_more) && (
+      {(page > 1 || hasNext) && (
         <nav className={styles.pages} aria-label="Pages">
           {page > 1 ? (
             <Link className={styles.pageLink} href={activityHref(userId, filters, page - 1)} rel="prev">
@@ -118,7 +121,7 @@ export function Activity({ userId, self, filters, page, data }: Props) {
             <span />
           )}
           <span className={styles.pageNumber}>Page {page}</span>
-          {data.has_more ? (
+          {hasNext ? (
             <Link className={styles.pageLink} href={activityHref(userId, filters, page + 1)} rel="next">
               Next
             </Link>
@@ -161,7 +164,7 @@ function AuthoredPreview({ item }: { item: Authored }) {
     <li className={styles.item}>
       <div className={styles.itemHeader}>
         <span className={item.is_thread ? styles.threadKind : styles.postKind}>{item.is_thread ? "Thread" : "Post"}</span>
-        <Link className={styles.title} href={item.is_thread ? threadHref : `${threadHref}#post-${item.post_id}`}>
+        <Link className={styles.title} href={item.is_thread ? threadHref : `${threadHref}?post=${item.post_id}#post-${item.post_id}`}>
           {item.is_thread ? item.thread_title : `Re: ${item.thread_title}`}
         </Link>
       </div>

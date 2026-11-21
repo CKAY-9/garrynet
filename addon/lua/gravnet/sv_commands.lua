@@ -42,7 +42,7 @@ end
 Command("gravnet_status", "Show whether this server is linked to GravNet.", function(reply)
 	local status = GravNet.GetStatus()
 	if not status.configured then reply("gravnet_api_url is not set.") end
-	if status.insecure then reply("Warning: " .. GravNet.HTTP.InsecureWarning) end
+	if status.insecure then reply("Warning: " .. status.insecure) end
 
 	if not status.linked then
 		reply("Not linked.")
@@ -85,8 +85,9 @@ end
 
 Command("gravnet_link", "Link this server to GravNet: gravnet_link <access key>", function(reply, args)
 	-- Link() warns in the server console; a superadmin running this from their own console
-	-- needs to see it too.
-	if GravNet.HTTP.IsInsecure() then reply("Warning: " .. GravNet.HTTP.InsecureWarning) end
+	-- needs to see it too. (When it's blocked, Link() fails with the same message.)
+	local insecure = GravNet.HTTP.InsecureMessage()
+	if insecure and not GravNet.HTTP.IsBlocked() then reply("Warning: " .. insecure) end
 	GravNet.Link.Link(args, function(success, message)
 		Done(reply)(success, message)
 		if success then GravNet.NotifyAdmins("This server was linked from the console: " .. message, true) end

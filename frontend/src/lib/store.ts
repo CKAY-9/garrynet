@@ -6,7 +6,16 @@ import { authHeaders, getCurrentUser } from "./auth";
 import { backend } from "./backend";
 import { hasPermission, Permission } from "./permissions";
 import { receiptStatuses } from "./storeEnums";
-import type { AdminStorePage, ItemPage, ReceiptFilters, ReceiptView, StorePage, StoreWithServer } from "./types";
+import type {
+  AdminStorePage,
+  ItemPage,
+  ReceiptFilters,
+  ReceiptPage,
+  ReceiptView,
+  StorePage,
+  StoreWithServer,
+  UndeliveredPurchases,
+} from "./types";
 
 /*
  * Store reads (docs/STORE.md). All request-time, so render anything that uses these inside
@@ -115,14 +124,36 @@ export async function getAdminStore(id: string): Promise<AdminStorePage | null> 
   return getOr404(async () => backend.get<AdminStorePage>(`/admin/store/${id}`, { headers: await authHeaders() }));
 }
 
-/** Receipts matching the filters, newest first. Requires Admin Access and Store Finance. */
-export async function getReceipts(filters: ReceiptFilters): Promise<ReceiptView[]> {
+/**
+ * How many paid purchases from server `serverId`'s store haven't been delivered, which keeps
+ * the server from being deleted. Requires Admin Access and Server Management or Store Finance.
+ */
+export async function getUndelivered(serverId: number): Promise<UndeliveredPurchases> {
   await connection();
+  const { data } = await backend.get<UndeliveredPurchases>(`/admin/store/servers/${serverId}/undelivered`, {
+    headers: await authHeaders(),
+  });
+  return data;
+}
+
+/**
+ * A page of the receipts matching the filters, newest first; `cursor` is the previous page's
+ * `next_cursor`. Requires Admin Access and Store Finance.
+ */
+export async function getReceipts(filters: ReceiptFilters, cursor = ""): Promise<ReceiptPage> {
+  await connection();
+  const params = receiptParams(filters, cursor);
+  const { data } = await backend.get<ReceiptPage>(`/admin/store/receipts?${params}`, { headers: await authHeaders() });
+  return data;
+}
+
+/** The query string of a page of receipts: the filters that are set, and the cursor if any. */
+export function receiptParams(filters: ReceiptFilters, cursor = ""): URLSearchParams {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(filters)) {
     const trimmed = value?.trim();
     if (trimmed) params.set(key, trimmed);
   }
-  const { data } = await backend.get<ReceiptView[]>(`/admin/store/receipts?${params}`, { headers: await authHeaders() });
-  return data;
+  if (cursor) params.set("cursor", cursor);
+  return params;
 }

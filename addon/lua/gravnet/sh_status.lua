@@ -3,7 +3,7 @@
 --
 -- status = {
 --     configured = bool,         -- gravnet_api_url is set
---     insecure = bool,           -- gravnet_api_url is plain HTTP to another machine
+--     insecure = string|false,   -- why gravnet_api_url (plain HTTP to another machine) is a problem
 --     linked = bool,
 --     server_id = number|nil,    -- when linked
 --     server_name = string,      -- when linked; "" if unknown
@@ -26,7 +26,7 @@ GravNet.Status = GravNet.Status or {}
 
 function GravNet.Status.Write(status)
 	net.WriteBool(status.configured)
-	net.WriteBool(status.insecure == true)
+	net.WriteString(isstring(status.insecure) and status.insecure or "")
 	net.WriteBool(status.linked)
 	net.WriteBool(status.busy)
 
@@ -54,7 +54,8 @@ end
 function GravNet.Status.Read()
 	local status = {}
 	status.configured = net.ReadBool()
-	status.insecure = net.ReadBool()
+	local insecure = net.ReadString()
+	status.insecure = insecure ~= "" and insecure or false
 	status.linked = net.ReadBool()
 	status.busy = net.ReadBool()
 

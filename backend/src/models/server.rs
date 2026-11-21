@@ -3,6 +3,8 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 use sqlx::{PgConnection, PgPool};
 
+use super::store::Receipt;
+
 /// A Garry's Mod server, minus its `access_key`, so it's safe to send to anyone.
 #[derive(Clone, Debug, Serialize, sqlx::FromRow)]
 pub struct Server {
@@ -248,14 +250,42 @@ impl Server {
         .await
     }
 
-    /// Deletes the server and its player records. Returns whether it existed.
-    pub async fn delete(db: &PgPool, id: i64) -> sqlx::Result<bool> {
-        let result = sqlx::query("DELETE FROM servers WHERE id = $1")
+    /// Deletes the server with its player records, store, purchases and fulfillments, unless
+    /// paid purchases from its store haven't been delivered yet (see
+    /// [`Receipt::count_undelivered`]): deleting would drop them unseen. The server's row is
+    /// locked for the check, and recording a payment writes rows referencing it, so a payment
+    /// recorded meanwhile is either counted or fails for want of its server (the webhook then
+    /// logs it for staff to refund).
+    pub async fn delete(db: &PgPool, id: i64) -> sqlx::Result<Delete> {
+        let mut tx = db.begin().await?;
+        let exists: Option<i64> = sqlx::query_scalar("SELECT id FROM servers WHERE id = $1 FOR UPDATE")
             .bind(id)
-            .execute(db)
+            .fetch_optional(&mut *tx)
             .await?;
-        Ok(result.rows_affected() > 0)
+        if exists.is_none() {
+            return Ok(Delete::NotFound);
+        }
+        let undelivered = Receipt::count_undelivered(&mut tx, id).await?;
+        if undelivered > 0 {
+            return Ok(Delete::Undelivered(undelivered));
+        }
+        sqlx::query("DELETE FROM servers WHERE id = $1")
+            .bind(id)
+            .execute(&mut *tx)
+            .await?;
+        tx.commit().await?;
+        Ok(Delete::Deleted)
     }
+}
+
+/// What [`Server::delete`] did.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Delete {
+    Deleted,
+    NotFound,
+    /// This many paid purchases from the server's store haven't been delivered; nothing was
+    /// deleted.
+    Undelivered(i64),
 }
 
 #[cfg(test)]

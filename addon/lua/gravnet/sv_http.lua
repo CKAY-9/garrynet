@@ -17,10 +17,6 @@ function GravNet.HTTP.IsConfigured()
 	return GravNet.HTTP.GetBaseUrl() ~= ""
 end
 
-GravNet.HTTP.InsecureWarning = "gravnet_api_url doesn't use https://, so this server's access key and token "
-	.. "are sent unencrypted and can be stolen in transit. Use an https:// URL unless GravNet is on a "
-	.. "private network you fully trust."
-
 -- True when the backend is reached over plain HTTP on another machine, where the access key and
 -- server token could be read or altered in transit. Loopback hosts are fine: nothing leaves the box.
 function GravNet.HTTP.IsInsecure()
@@ -31,17 +27,43 @@ function GravNet.HTTP.IsInsecure()
 	rest = string.match(rest, "^[^@/]*@(.*)$") or rest -- drop any user:password@
 	local host = string.match(rest, "^(%[[^%]]*%])") or string.match(rest, "^([^/:?#]+)") or ""
 	local loopback_v4 = string.match(host, "^127%.%d+%.%d+%.%d+$") ~= nil
-	return not (host == "localhost" or host == "[::1]" or loopback_v4)
+	local localhost = host == "localhost" or string.sub(host, -10) == ".localhost"
+	return not (localhost or host == "[::1]" or loopback_v4)
+end
+
+-- Whether plain HTTP to another machine was allowed for development (gravnet_allow_http 1).
+local function HttpAllowed()
+	local cvar = GetConVar("gravnet_allow_http")
+	return cvar ~= nil and cvar:GetBool()
+end
+
+-- True when nothing may be sent to the backend: plain HTTP to another machine, not allowed for
+-- development.
+function GravNet.HTTP.IsBlocked()
+	return GravNet.HTTP.IsInsecure() and not HttpAllowed()
+end
+
+-- What's wrong with gravnet_api_url's security, or nil if nothing is.
+function GravNet.HTTP.InsecureMessage()
+	if not GravNet.HTTP.IsInsecure() then return nil end
+	if HttpAllowed() then
+		return "gravnet_api_url doesn't use https://, so this server's access key and token are sent unencrypted. "
+			.. "That's only allowed because gravnet_allow_http is 1, which is for development."
+	end
+	return "gravnet_api_url must be an https:// URL unless GravNet runs on this machine: this server's access "
+		.. "key and token would be sent unencrypted. Nothing is sent to GravNet until it is."
 end
 
 -- Warn in the server console once the URL is known (server.cfg runs after autorun), and again
--- whenever it's changed to an insecure one.
+-- whenever either setting changes.
 local function WarnIfInsecure()
-	if GravNet.HTTP.IsInsecure() then GravNet.Util.Warn(GravNet.HTTP.InsecureWarning) end
+	local message = GravNet.HTTP.InsecureMessage()
+	if message then GravNet.Util.Warn(message) end
 end
 
 hook.Add("InitPostEntity", "GravNet.HTTP.InsecureWarning", WarnIfInsecure)
 cvars.AddChangeCallback("gravnet_api_url", WarnIfInsecure, "GravNet.HTTP.InsecureWarning")
+cvars.AddChangeCallback("gravnet_allow_http", WarnIfInsecure, "GravNet.HTTP.InsecureWarning")
 
 -- A human-readable reason a request failed, for logs and the menu.
 local function Describe(status, body, reason)
@@ -68,6 +90,10 @@ function GravNet.HTTP.Request(method, path, opts, callback)
 	local base = GravNet.HTTP.GetBaseUrl()
 	if base == "" then
 		callback(false, 0, nil, "gravnet_api_url is not set (see server.cfg)")
+		return
+	end
+	if GravNet.HTTP.IsBlocked() then
+		callback(false, 0, nil, "gravnet_api_url must be an https:// URL unless GravNet runs on this machine")
 		return
 	end
 

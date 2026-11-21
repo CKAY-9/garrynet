@@ -1,6 +1,8 @@
 //! Request validation shared by the routes. Each helper trims its input and returns a 400
 //! naming the field when it's invalid.
 
+use chrono::{DateTime, Utc};
+
 use crate::error::ApiError;
 
 pub const MAX_URL: usize = 2048;
@@ -68,6 +70,17 @@ pub fn present(value: Option<String>) -> Option<String> {
         .filter(|v| !v.is_empty())
 }
 
+/// 429 once a user has done something `limit` times in the last `window_secs`: `count` is
+/// how many times they have, `oldest` when the first of those was. The `Retry-After` is when
+/// that one leaves the window.
+pub fn rate_limit(count: i64, oldest: Option<DateTime<Utc>>, limit: i64, window_secs: f64) -> Result<(), ApiError> {
+    if count < limit {
+        return Ok(());
+    }
+    let elapsed = oldest.map_or(0.0, |t| (Utc::now() - t).num_milliseconds() as f64 / 1000.0);
+    Err(ApiError::RateLimited((window_secs - elapsed).ceil().max(1.0) as u64))
+}
+
 /// Parses an enum from its SCREAMING_SNAKE_CASE name (case-insensitively), as serde would.
 pub fn parse_enum<T: serde::de::DeserializeOwned>(field: &str, value: &str) -> Result<T, ApiError> {
     serde_json::from_value(serde_json::Value::String(value.to_ascii_uppercase()))
@@ -76,6 +89,8 @@ pub fn parse_enum<T: serde::de::DeserializeOwned>(field: &str, value: &str) -> R
 
 #[cfg(test)]
 mod tests {
+    use chrono::TimeDelta;
+
     use super::*;
 
     #[test]
@@ -86,6 +101,17 @@ mod tests {
         assert!(hex_color("c", "3b82f6").is_err());
         assert!(hex_color("c", "#3b82f").is_err());
         assert!(hex_color("c", "#ggg").is_err());
+    }
+
+    #[test]
+    fn rate_limits() {
+        let ago = |secs| Some(Utc::now() - TimeDelta::seconds(secs));
+        assert!(rate_limit(4, ago(10), 5, 60.0).is_ok());
+        match rate_limit(5, ago(10), 5, 60.0) {
+            Err(ApiError::RateLimited(secs)) => assert!((49..=50).contains(&secs), "{secs}"),
+            _ => panic!("expected 429"),
+        }
+        assert!(matches!(rate_limit(5, ago(120), 5, 60.0), Err(ApiError::RateLimited(1))));
     }
 
     #[test]
