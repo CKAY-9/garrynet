@@ -45,6 +45,52 @@ function When({ iso }: { iso: string }) {
 
 const accent = (color: string) => ({ "--accent": color }) as CSSProperties;
 
+/**
+ * Links to the other pages of a category or thread, at `href(page)`. Nothing when there's
+ * only one page.
+ */
+function Pager({ page, pages, href }: { page: number; pages: number; href: (page: number) => string }) {
+  if (pages <= 1) return null;
+  return (
+    <nav className={styles.pages} aria-label="Pages">
+      <span className={styles.pageLinks}>
+        {page > 1 && (
+          <>
+            {page > 2 && (
+              <Link className={styles.pageLink} href={href(1)}>
+                First
+              </Link>
+            )}
+            <Link className={styles.pageLink} href={href(page - 1)} rel="prev">
+              Previous
+            </Link>
+          </>
+        )}
+      </span>
+      <span className={styles.pageNumber} aria-current="page">
+        Page {page} of {pages}
+      </span>
+      <span className={styles.pageLinks}>
+        {page < pages && (
+          <>
+            <Link className={styles.pageLink} href={href(page + 1)} rel="next">
+              Next
+            </Link>
+            {page < pages - 1 && (
+              <Link className={styles.pageLink} href={href(pages)}>
+                Last
+              </Link>
+            )}
+          </>
+        )}
+      </span>
+    </nav>
+  );
+}
+
+/** `path`, with `?page=` past the first page. */
+const pageHref = (path: string) => (page: number) => (page > 1 ? `${path}?page=${page}` : path);
+
 /** /forum: every section with its categories, plus forum statistics. */
 export function ForumHome({ sections, stats }: HomeData) {
   return (
@@ -110,13 +156,15 @@ export function ForumHome({ sections, stats }: HomeData) {
 }
 
 /**
- * /forum/{category_id}: the category's threads, stickies first. With a `template`, the new
- * thread form starts open and filled in from it.
+ * /forum/{category_id}?page=: a page of the category's threads, stickies first. With a
+ * `template`, the new thread form starts open and filled in from it.
  */
 export function ForumCategoryPage({
   category,
   section,
   threads,
+  page,
+  pages,
   viewer,
   template,
 }: CategoryData & { viewer: ForumViewer; template?: ThreadTemplate }) {
@@ -179,6 +227,7 @@ export function ForumCategoryPage({
           {threads.length === 0 && <li className={styles.empty}>No threads yet.</li>}
         </ul>
       </section>
+      <Pager page={page} pages={pages} href={pageHref(`/forum/${category.id}`)} />
     </div>
   );
 }
@@ -217,8 +266,20 @@ function whyCantVote(viewer: ForumViewer, authorId: number, thread: ForumThread,
   return null;
 }
 
-/** /forum/{category_id}/{thread_id}: every post, the thread's first post at the top. */
-export function ForumThreadPage({ category, section, thread, posts, viewer }: ThreadData & { viewer: ForumViewer }) {
+/**
+ * /forum/{category_id}/{thread_id}?page=: a page of the thread's posts, the first post at the
+ * top of page 1, and the reply box under every page.
+ */
+export function ForumThreadPage({
+  category,
+  section,
+  thread,
+  posts,
+  page,
+  pages,
+  viewer,
+}: ThreadData & { viewer: ForumViewer }) {
+  const pager = <Pager page={page} pages={pages} href={pageHref(`/forum/${category.id}/${thread.id}`)} />;
   return (
     <div className={styles.page}>
       <Breadcrumbs
@@ -246,6 +307,7 @@ export function ForumThreadPage({ category, section, thread, posts, viewer }: Th
           Use as template
         </Link>
       )}
+      {pager}
       {posts.map((post) => (
         <article
           key={post.id}
@@ -285,6 +347,7 @@ export function ForumThreadPage({ category, section, thread, posts, viewer }: Th
           </div>
         </article>
       ))}
+      {pager}
       <ReplyArea category={category} thread={thread} access={viewer.access} />
     </div>
   );
@@ -294,7 +357,7 @@ function ReplyArea({ category, thread, access }: { category: ForumCategory; thre
   if (thread.locked) return <p className={styles.notice}>This thread is locked. No further replies can be made.</p>;
   if (category.locked) return <p className={styles.notice}>This category is locked. No further replies can be made.</p>;
   if (access !== "allowed") return <PostingNotice access={access}>to reply</PostingNotice>;
-  return <ReplyForm threadId={thread.id} />;
+  return <ReplyForm threadHref={`/forum/${category.id}/${thread.id}`} threadId={thread.id} />;
 }
 
 /** Why the user can't post, if they can't. `children` completes "Log in with Steam ...". */

@@ -31,7 +31,10 @@ export async function createThread(categoryId: number, thread: NewThread): Promi
   redirect(`/forum/${result.data.category_id}/${result.data.id}`);
 }
 
-/** Replies to a thread, attaching the uploaded files `attachments`, and refreshes the page to show the new post. */
+/**
+ * Replies to a thread, attaching the uploaded files `attachments`. Doesn't refresh: the reply
+ * may be on another page of the thread, so the form opens that page (`ReplyForm`).
+ */
 export async function replyToThread(
   threadId: number,
   content: string,
@@ -43,7 +46,6 @@ export async function replyToThread(
       { content, attachments },
       { headers: await authHeaders() },
     );
-    refresh();
     return data;
   });
 }

@@ -371,16 +371,28 @@ impl ForumCategory {
         Ok(result.rows_affected() > 0)
     }
 
-    /// The category's threads: stickies first, then by most recent activity.
-    pub async fn threads(db: &PgPool, id: i64) -> sqlx::Result<Vec<ThreadSummary>> {
+    /// How many threads the category has.
+    pub async fn thread_count(db: &PgPool, id: i64) -> sqlx::Result<i64> {
+        sqlx::query_scalar("SELECT count(*) FROM forum_threads WHERE category_id = $1")
+            .bind(id)
+            .fetch_one(db)
+            .await
+    }
+
+    /// `limit` of the category's threads after skipping `offset`: stickies first, then by
+    /// most recent activity.
+    pub async fn threads(db: &PgPool, id: i64, limit: i64, offset: i64) -> sqlx::Result<Vec<ThreadSummary>> {
         sqlx::query_as(concat!(
             "SELECT ", thread_columns!(t), ", ", author_json!(), " AS author,
                  (SELECT count(*) FROM forum_posts p WHERE p.thread_id = t.id) - 1 AS replies
              FROM forum_threads t JOIN users u ON u.id = t.author_id
              WHERE t.category_id = $1
-             ORDER BY t.sticky DESC, t.last_activity DESC, t.id DESC"
+             ORDER BY t.sticky DESC, t.last_activity DESC, t.id DESC
+             LIMIT $2 OFFSET $3"
         ))
         .bind(id)
+        .bind(limit)
+        .bind(offset)
         .fetch_all(db)
         .await
     }
@@ -455,16 +467,43 @@ impl ForumThread {
         Ok(thread)
     }
 
-    /// Every post: the thread's first post, then replies oldest first.
-    pub async fn posts(&self, db: &PgPool) -> sqlx::Result<Vec<PostWithAuthor>> {
+    /// How many posts the thread has, its first post included.
+    pub async fn post_count(&self, db: &PgPool) -> sqlx::Result<i64> {
+        sqlx::query_scalar("SELECT count(*) FROM forum_posts WHERE thread_id = $1")
+            .bind(self.id)
+            .fetch_one(db)
+            .await
+    }
+
+    /// How many of the thread's posts come before post `post_id` (see [`ForumThread::posts`]),
+    /// or `None` if the thread has no such post.
+    pub async fn posts_before(&self, db: &PgPool, post_id: i64) -> sqlx::Result<Option<i64>> {
+        sqlx::query_scalar(
+            "SELECT (SELECT count(*) FROM forum_posts p
+                     WHERE p.thread_id = x.thread_id AND (p.created_at, p.id) < (x.created_at, x.id))
+             FROM forum_posts x
+             WHERE x.id = $2 AND x.thread_id = $1",
+        )
+        .bind(self.id)
+        .bind(post_id)
+        .fetch_optional(db)
+        .await
+    }
+
+    /// `limit` of the thread's posts, oldest first, after skipping `offset`. The first post is
+    /// always the oldest: it's stamped with the thread's `created_at`, and a reply can only
+    /// start once the thread exists.
+    pub async fn posts(&self, db: &PgPool, limit: i64, offset: i64) -> sqlx::Result<Vec<PostWithAuthor>> {
         sqlx::query_as(concat!(
             "SELECT ", post_columns!(p), ", ", author_json!(), " AS author
              FROM forum_posts p JOIN users u ON u.id = p.author_id
              WHERE p.thread_id = $1
-             ORDER BY (p.id = $2) DESC, p.created_at, p.id"
+             ORDER BY p.created_at, p.id
+             LIMIT $2 OFFSET $3"
         ))
         .bind(self.id)
-        .bind(self.thread_post_id)
+        .bind(limit)
+        .bind(offset)
         .fetch_all(db)
         .await
     }

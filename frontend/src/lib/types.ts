@@ -371,21 +371,33 @@ export type ForumHome = {
 /** A thread as listed in its category. */
 export type ForumThreadSummary = ForumThread & { author: ForumAuthor; replies: number };
 
-/** A category page, from `GET /forum/categories/{id}`. Stickies first, then most recently active. */
+/**
+ * A page of a category, from `GET /forum/categories/{id}?page=`: 25 threads, stickies first,
+ * then most recently active. `page` (from 1) is the page shown, the last if the one asked for
+ * is past the end; `pages` is how many there are (at least 1).
+ */
 export type ForumCategoryPage = {
   category: ForumCategory;
   section: ForumSection;
   threads: ForumThreadSummary[];
+  page: number;
+  pages: number;
 };
 
 export type ForumPostWithAuthor = ForumPost & { author: ForumAuthor };
 
-/** A thread page, from `GET /forum/threads/{id}`. The first post, then replies oldest first. */
+/**
+ * A page of a thread, from `GET /forum/threads/{id}?page=` (or `?post=`, for the page holding
+ * that post): 20 posts, the first post then replies oldest first, so only page 1 has the first
+ * post. `page` and `pages` as for `ForumCategoryPage`.
+ */
 export type ForumThreadPage = {
   category: ForumCategory;
   section: ForumSection;
   thread: ForumThread;
   posts: ForumPostWithAuthor[];
+  page: number;
+  pages: number;
 };
 
 /** Sent to `POST /forum/sections`. */

@@ -16,7 +16,7 @@ Environment variables (see `backend/.env.example`):
 - `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`: enable the S3 provider
 - `S3_REGION`: default `us-east-1`; use `auto` for R2
 - `S3_ENDPOINT`: for non-AWS stores, e.g. `https://<account>.r2.cloudflarestorage.com`
-- `S3_PUBLIC_URL`: optional public base URL of the bucket (custom domain or CDN); reads redirect there instead of to presigned URLs (except for support and private message attachments, which are private; see [GET /file](#get-fileowner_idfile_id))
+- `S3_PUBLIC_URL`: optional public base URL of the bucket (custom domain or CDN); reads redirect there instead of to presigned URLs (except for support and private message attachments; see [GET /file](#get-fileowner_idfile_id)). **This makes the bucket public, so those attachments aren't fully private:** anyone who has opened one (or seen its link) can keep reading it at the public URL, even after losing access. The backend logs a warning at startup when it's set. Leave it unset if support and private message attachments must stay private
 
 Each file records the provider it was uploaded to, so switching `STORAGE_PROVIDER` only affects new uploads. Old files keep resolving as long as their provider stays configured. The local provider stays available while its directory exists.
 
@@ -151,7 +151,7 @@ Fetch the requested file. Public, since file IDs are unguessable, except for sup
 Both kinds are served differently from public files, so access is checked on every view:
 
 - Local: `Cache-Control: private, no-cache`, so only the viewer's browser caches it and revalidates it (a 304) each time.
-- S3: always a presigned URL, even with `S3_PUBLIC_URL`, and the redirect is `Cache-Control: private, no-store`. With `S3_PUBLIC_URL` the bucket itself is public, though: anyone who learns an object's key (it's in the presigned URL) can read it there directly. If support or private message attachments must stay private, don't make the bucket public.
+- S3: always a presigned URL, even with `S3_PUBLIC_URL`, and the redirect is `Cache-Control: private, no-store`. With `S3_PUBLIC_URL` the bucket itself is public, though: anyone who learns an object's key (it's in the presigned URL) can read it there directly, for as long as the file exists. Someone who loses access later (staff removed from Support Team, say) keeps it. If support or private message attachments must stay private, don't make the bucket public.
 
 ## DELETE /file/{owner_id}/{id}
 

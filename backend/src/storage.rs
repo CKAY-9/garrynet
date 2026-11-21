@@ -165,6 +165,16 @@ impl Storage {
                     .with_allow_http(endpoint.starts_with("http://"));
             }
             let store = builder.build().map_err(|e| format!("invalid S3 configuration: {e}"))?;
+            if let Some(public_url) = &s3.public_url {
+                log::warn!(
+                    "S3_PUBLIC_URL is set, so bucket {} is public: support and private message \
+                     attachments are served through presigned URLs, but anyone who has seen one \
+                     can read the file at {public_url}/<key> for as long as it exists. Unset \
+                     S3_PUBLIC_URL (and make the bucket private) if those must stay private; see \
+                     docs/STORAGE.md",
+                    s3.bucket
+                );
+            }
             providers.insert(
                 Backend::S3,
                 Provider::S3 {
@@ -392,8 +402,12 @@ impl Storage {
         self.delete_staging(backend, key).await
     }
 
-    /// How to serve `key` to a client. A `private` file is never sent to the bucket's public
-    /// URL, which anyone could reuse, but to a short-lived presigned one.
+    /// How to serve `key` to a client. A `private` file is sent to a short-lived presigned URL
+    /// rather than the bucket's public URL, so a link handed out by this route stops working.
+    /// That doesn't make it private with `S3_PUBLIC_URL` set: the presigned URL contains the
+    /// key, and the object stays readable at `{S3_PUBLIC_URL}/{key}` to anyone who has seen
+    /// it, even after they lose access. Only a bucket that isn't public keeps private files
+    /// private (see docs/STORAGE.md and the warning in [`Storage::new`]).
     pub async fn read_target(&self, backend: Backend, key: &str, private: bool) -> Result<ReadTarget, ApiError> {
         match self.provider(backend)? {
             Provider::Local(_) => Ok(ReadTarget::Stream),

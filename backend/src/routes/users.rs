@@ -197,7 +197,7 @@ struct SearchResult {
     status: UserStatus,
     joined: DateTime<Utc>,
     last_seen: DateTime<Utc>,
-    post_count: Option<i64>,
+    post_count: Option<i32>,
     usergroups: Vec<UsergroupBadge>,
 }
 
@@ -303,6 +303,9 @@ fn parse_search(query: SearchQuery) -> Result<UserSearch, ApiError> {
 /// Results per page when the request doesn't ask for a specific number.
 const DEFAULT_POSTS_LIMIT: i64 = 20;
 const MAX_POSTS_LIMIT: i64 = 50;
+/// Furthest into a user's posts a page may start, so a request can't make the database
+/// skip arbitrarily many rows. The frontend stops paging here (`MAX_ACTIVITY_PAGE`).
+const MAX_POSTS_OFFSET: i64 = 10_000;
 const MAX_POSTS_SEARCH: usize = 100;
 
 /// Query string of `GET /users/{id}/posts`. Like search, empty values are ignored.
@@ -329,7 +332,7 @@ struct PostsPage {
 /// - `q`: case-insensitive part of the thread title or post content
 /// - `sort`: `new` (default), `old`, `reputation+` (most likes minus dislikes) or
 ///   `reputation-`
-/// - `limit`: 1 to 50, default 20; `offset`: how many to skip
+/// - `limit`: 1 to 50, default 20; `offset`: how many to skip, 0 to 10,000
 #[get("/users/{id}/posts")]
 async fn posts(
     state: web::Data<AppState>,
@@ -388,8 +391,8 @@ fn parse_posts(query: PostsQuery) -> Result<AuthoredFilter, ApiError> {
         return Err(bad(format!("limit must be between 1 and {MAX_POSTS_LIMIT}")));
     }
     let offset = number("offset", query.offset)?.unwrap_or(0);
-    if offset < 0 {
-        return Err(bad("offset must be 0 or greater".to_owned()));
+    if !(0..=MAX_POSTS_OFFSET).contains(&offset) {
+        return Err(bad(format!("offset must be between 0 and {MAX_POSTS_OFFSET}")));
     }
 
     Ok(AuthoredFilter { kind, search: q, sort, limit, offset })
@@ -433,6 +436,8 @@ mod tests {
         assert!(parse_posts(PostsQuery { sort: Some("likes".into()), ..query() }).is_err());
         assert!(parse_posts(PostsQuery { limit: Some("51".into()), ..query() }).is_err());
         assert!(parse_posts(PostsQuery { offset: Some("-1".into()), ..query() }).is_err());
+        assert!(parse_posts(PostsQuery { offset: Some("10000".into()), ..query() }).is_ok());
+        assert!(parse_posts(PostsQuery { offset: Some("10001".into()), ..query() }).is_err());
         assert!(parse_posts(PostsQuery { q: Some("x".repeat(101)), ..query() }).is_err());
     }
 }

@@ -44,7 +44,7 @@ A profile lists small previews of the user's threads and posts (their replies), 
     - kind: `thread` (threads they started) or `post` (their replies); both by default
     - q: case-insensitive part of the thread title or the post content (up to 100 characters)
     - sort: `new` (default), `old`, `reputation+` (most first; send the `+` as `%2B`) or `reputation-`
-    - limit: 1 to 50, default 20; offset: how many to skip
+    - limit: 1 to 50, default 20; offset: how many to skip, 0 to 10,000 (the profile stops paging there)
 
     ```json
     {
@@ -165,9 +165,9 @@ Implemented on the frontend at `/users/search` (see [Site Design](SITE_DESIGN.md
     - last_activity: how recently the user was seen: `online`, `hour`, `day`, `week`, or `month`
     - id: GravNet user id (matches at most one user)
     - usergroup: id of a usergroup the users belong to
-    - sort_by: `reputation+` (most first; send the `+` as `%2B`), `reputation-` (least first), or `posts` (most forum posts first). When omitted, exact and prefix name matches come first, or the order is random if no name is given.
+    - sort_by: `reputation+` (most first; send the `+` as `%2B`), `reputation-` (least first), or `posts` (most forum posts first). When omitted, exact and prefix name matches come first, or the order is random if no name is given. With no filters at all, the random users are drawn from a sample of the table's pages rather than the whole table, so the most common search stays cheap however many users there are.
     - limit: 1 to 100, default 24
 
-    Each result has the user's public profile fields (no email or bio), `post_count`, and `usergroups`. Private users' `reputation` and `post_count` are null, and they sort last by reputation or posts.
+    Each result has the user's public profile fields (no email or bio), `post_count`, and `usergroups`. Private users' `reputation` and `post_count` are null, and they sort last by reputation or posts. Like reputation, `users.post_count` is kept up to date by a database trigger on `forum_posts`, so searches never count posts.
 
 - GET `/usergroups`: every usergroup's display details (`id`, `name`, `effect`, `color`, `icon_url`), used for the usergroup filter. No login required.

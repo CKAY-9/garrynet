@@ -277,8 +277,8 @@ async fn receipt_of(db: &PgPool, fulfillment: &Fulfillment) -> Option<Receipt> {
     }
 }
 
-/// Someone replied to a thread.
-pub async fn thread_reply(db: &PgPool, thread: &ForumThread, author: &User) {
+/// Someone replied to a thread. Links to the reply, on whichever page of the thread it is.
+pub async fn thread_reply(db: &PgPool, thread: &ForumThread, reply: &ForumPost, author: &User) {
     send(
         db,
         &[thread.author_id],
@@ -287,7 +287,7 @@ pub async fn thread_reply(db: &PgPool, thread: &ForumThread, author: &User) {
         "thread_reply",
         format!("New reply: {}", thread.title),
         format!("{} replied to your thread.", author.username),
-        thread_url(thread),
+        Some(format!("/forum/threads/{}?post={}", thread.id, reply.id)),
     )
     .await;
 }

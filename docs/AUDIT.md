@@ -2,7 +2,7 @@
 
 A read-only review of the backend, done on 2026-11-18 at commit `00942b6`. Line references in the findings point at that commit. Unlike the other documents here, the findings are a snapshot; only the **Status** of each is updated as they're dealt with.
 
-**Status as of commit `4d597c0`:** 14 fixed (#1, #2, #3, #4, #5, #6, #7, #9, #10, #13, #14, #16, #17, #19), 1 accepted as not an issue (#8), 4 open.
+**Status:** 15 fixed (#1, #2, #3, #4, #5, #6, #7, #9, #10, #13, #14, #15, #16, #17, #19), 3 accepted as not an issue (#8, #11, #12), 1 documented (#18).
 
 **Scope:** the backend (`backend/`): auth, permissions, the Stripe store flow, uploads and storage, Markdown handling, the addon API (`/gnet/server/*`) and the deployment config (Caddy, Compose). The addon's reward delivery was checked as part of the store flow. The frontend was out of scope.
 
@@ -22,14 +22,14 @@ A read-only review of the backend, done on 2026-11-18 at commit `00942b6`. Line 
 | 8 | Store | Reinstated purchases skip stock and per-user limits | Low | Accepted |
 | 9 | Store | Stripe IDs aren't namespaced per deployment | Low | Fixed (`e00cb4e`) |
 | 10 | Security | No upload quota; S3 staging uploads are unbounded | Medium | Fixed (`4d597c0`) |
-| 11 | Security | `COOKIE_DOMAIN` advice sends the login token to every subdomain | Medium | Open |
-| 12 | Privacy | Loading screen exposes private users' player records | Medium | Open |
+| 11 | Security | `COOKIE_DOMAIN` advice sends the login token to every subdomain | Medium | Accepted |
+| 12 | Privacy | Loading screen exposes private users' player records | Medium | Accepted |
 | 13 | Security | No HSTS header | Low–Medium | Fixed (`4d597c0`) |
 | 14 | Abuse | No app-level rate limit on forum and support posting | Low–Medium | Fixed (`e00cb4e`) |
-| 15 | Abuse | Unbounded or expensive public reads | Low | Open |
+| 15 | Abuse | Unbounded or expensive public reads | Low | Fixed |
 | 16 | Permissions | Users of equal rank can ban each other | Low | Fixed (`4d597c0`) |
 | 17 | Permissions | Usergroup editors can restyle groups that outrank them | Low | Fixed (`4d597c0`) |
-| 18 | Privacy | S3 private attachments readable at the public URL | Low | Open |
+| 18 | Privacy | S3 private attachments readable at the public URL | Low | Documented |
 | 19 | Deployment | Postgres password defaults to `gravnet` | Low | Fixed (`4d597c0`) |
 
 ## Store Flow
@@ -136,6 +136,8 @@ Any logged-in user can upload, banned users included (for support appeals). The 
 
 ### 11. `COOKIE_DOMAIN` advice sends the login token to every subdomain (Medium)
 
+**Status:** Accepted; not considered an issue.
+
 **Where:** `auth_cookie` in [auth/mod.rs:36-38](../backend/src/auth/mod.rs#L36-L38); the README's Docker setup, step 2.
 
 The README suggests `COOKIE_DOMAIN=example.com` for `example.com` + `api.example.com`. The cookie then goes to every `*.example.com`: a wiki, a game panel, or a CDN or bucket on a custom subdomain. `gravnet_token` is a 24-hour bearer credential, so any of those hosts (or whoever runs or compromises them) can take over accounts. `HttpOnly` doesn't help against another server. The Origin check stops sibling subdomains from making writes, but not from reading the cookie.
@@ -143,6 +145,8 @@ The README suggests `COOKIE_DOMAIN=example.com` for `example.com` + `api.example
 **Suggested fix:** recommend a dedicated parent domain (`gnet.example.com` + `api.gnet.example.com`) in the README and `backend/.env.example`, and warn against putting other services under it.
 
 ### 12. Loading screen exposes private users' player records (Medium)
+
+**Status:** Accepted; not considered an issue.
 
 **Where:** `for_server` and `find_player` in [routes/loading_screen.rs:82-144](../backend/src/routes/loading_screen.rs#L82-L144); `LOOKUPS_PER_MINUTE` in [steam_profiles.rs:23](../backend/src/steam_profiles.rs#L23).
 
@@ -171,6 +175,8 @@ Private messages, uploads and checkouts are rate limited per user, but forum thr
 **Suggested fix:** the same per-user window used for private messages (`PrivateMessage::recent_sent_by`).
 
 ### 15. Unbounded or expensive public reads (Low)
+
+**Status:** Fixed. Categories list 25 threads a page and threads 20 posts a page (`?page=`, from 1; past the end gives the last page, so a request can't skip more rows than exist), and the responses carry `page` and `pages`. `GET /forum/threads/{id}?post=` gives the page holding a post, which reply notifications, profile activity and the reply form link to. `users.post_count` is kept by a trigger on `forum_posts`, as reputation is, and each user search sort has an index, so a search no longer counts posts per user. The unfiltered search (the user search page's default) shuffles a `TABLESAMPLE SYSTEM` sample of about 20 times the requested users instead of every user, falling back to a full shuffle when the sample is short. `GET /users/{id}/posts` caps `offset` at 10,000. Name searches still scan `users` (`ILIKE '%…%'`), as do the usergroup and last-activity filters; that's bounded by the member count, and a trigram index would cover names if needed. The forum homepage still counts every category's threads and posts on each load.
 
 **Where:** `get_thread` in [routes/forum.rs:265-276](../backend/src/routes/forum.rs#L265-L276); `User::search` in [models/user.rs:197](../backend/src/models/user.rs#L197); `offset` in [routes/users.rs:390](../backend/src/routes/users.rs#L390).
 
@@ -207,6 +213,8 @@ A ban is refused only if the target holds a permission the issuer lacks, so two 
 ## Privacy and Deployment
 
 ### 18. S3 private attachments readable at the public URL (Low)
+
+**Status:** Documented, not fixed. It only applies to S3 with `S3_PUBLIC_URL` set, and needs someone who has already seen the attachment. The `read_target` comment now says the presigned URL doesn't keep the file private on a public bucket; the backend logs a warning at startup when `S3_PUBLIC_URL` is set; and `backend/.env.example` and STORAGE.md say to leave it unset if support and private message attachments must stay private. A real fix would need a second, private bucket for those attachments (R2 and Garage can't make only part of a bucket public), chosen at upload.
 
 **Where:** `read_target` in [storage.rs:377-391](../backend/src/storage.rs#L377-L391).
 

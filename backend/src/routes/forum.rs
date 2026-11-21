@@ -20,7 +20,7 @@ use crate::{
     routes::{
         files,
         markdown::markdown,
-        validate::{bad, hex_color, optional_url, rate_limit, required_text, text},
+        validate::{bad, hex_color, optional_url, present, rate_limit, required_text, text},
     },
     state::AppState,
 };
@@ -69,6 +69,28 @@ const THREAD_WINDOW_SECS: f64 = 10.0 * 60.0;
 /// [`POST_WINDOW_SECS`]. Moderators aren't limited.
 const POST_LIMIT: i64 = 6;
 const POST_WINDOW_SECS: f64 = 60.0;
+
+/// Threads per page of a category, and posts per page of a thread.
+const THREADS_PER_PAGE: i64 = 25;
+const POSTS_PER_PAGE: i64 = 20;
+
+/// Which page of a list to show: the requested `page` (from 1), moved back to the last page
+/// if the list is shorter. Returns the page and how many pages `total` items fill (at least
+/// 1, so an empty list has one empty page). Requests past the end can't make the database
+/// skip more rows than the list has.
+fn clamp_page(page: i64, total: i64, per_page: i64) -> (i64, i64) {
+    let pages = ((total + per_page - 1) / per_page).max(1);
+    (page.clamp(1, pages), pages)
+}
+
+/// The `page` query parameter: from 1, default 1.
+fn parse_page(value: Option<String>) -> Result<i64, ApiError> {
+    let Some(value) = present(value) else { return Ok(1) };
+    match value.parse::<i64>() {
+        Ok(page) if page >= 1 => Ok(page),
+        _ => Err(bad("page must be a whole number, 1 or greater".to_owned())),
+    }
+}
 
 #[derive(Serialize)]
 struct Home {
@@ -192,23 +214,37 @@ async fn delete_category(
     Ok(HttpResponse::NoContent().finish())
 }
 
+#[derive(Deserialize)]
+struct PageQuery {
+    page: Option<String>,
+}
+
 #[derive(Serialize)]
 struct CategoryPage {
     category: ForumCategory,
     section: ForumSection,
     threads: Vec<ThreadSummary>,
+    /// The page shown, from 1, and how many there are.
+    page: i64,
+    pages: i64,
 }
 
-/// A category with its section and threads (stickies first, then most recently active).
-/// Public.
+/// A category with its section and one page of its threads ([`THREADS_PER_PAGE`]; stickies
+/// first, then most recently active). `?page=` picks the page, default 1; past the end shows
+/// the last. Public.
 #[get("/forum/categories/{id}")]
 async fn get_category(
     state: web::Data<AppState>,
     id: web::Path<i64>,
+    query: web::Query<PageQuery>,
 ) -> Result<HttpResponse, ApiError> {
+    let requested = parse_page(query.into_inner().page)?;
     let (category, section) = category_and_section(&state, id.into_inner()).await?;
-    let threads = ForumCategory::threads(&state.db, category.id).await?;
-    Ok(HttpResponse::Ok().json(CategoryPage { category, section, threads }))
+    let total = ForumCategory::thread_count(&state.db, category.id).await?;
+    let (page, pages) = clamp_page(requested, total, THREADS_PER_PAGE);
+    let threads =
+        ForumCategory::threads(&state.db, category.id, THREADS_PER_PAGE, (page - 1) * THREADS_PER_PAGE).await?;
+    Ok(HttpResponse::Ok().json(CategoryPage { category, section, threads, page, pages }))
 }
 
 #[derive(Deserialize)]
@@ -265,27 +301,51 @@ async fn create_thread(
     Ok(HttpResponse::Created().json(thread))
 }
 
+#[derive(Deserialize)]
+struct ThreadQuery {
+    page: Option<String>,
+    post: Option<String>,
+}
+
 #[derive(Serialize)]
 struct ThreadPage {
     category: ForumCategory,
     section: ForumSection,
     thread: ForumThread,
     posts: Vec<PostWithAuthor>,
+    /// The page shown, from 1, and how many there are.
+    page: i64,
+    pages: i64,
 }
 
-/// A thread with its category, section and posts (the first post, then replies oldest
-/// first). Public.
+/// A thread with its category, section and one page of its posts ([`POSTS_PER_PAGE`]; the
+/// first post, then replies oldest first). `?page=` picks the page, default 1; past the end
+/// shows the last. `?post={id}` instead shows the page holding that post, or the first page
+/// if the thread has no such post (it may have been deleted). Public.
 #[get("/forum/threads/{id}")]
 async fn get_thread(
     state: web::Data<AppState>,
     id: web::Path<i64>,
+    query: web::Query<ThreadQuery>,
 ) -> Result<HttpResponse, ApiError> {
+    let query = query.into_inner();
+    let page = parse_page(query.page)?;
+    let post = present(query.post)
+        .map(|v| v.parse::<i64>().map_err(|_| bad("post must be a post id".to_owned())))
+        .transpose()?;
+
     let thread = ForumThread::find_by_id(&state.db, id.into_inner())
         .await?
         .ok_or(ApiError::NotFound("thread"))?;
     let (category, section) = category_and_section(&state, thread.category_id).await?;
-    let posts = thread.posts(&state.db).await?;
-    Ok(HttpResponse::Ok().json(ThreadPage { category, section, thread, posts }))
+    let requested = match post {
+        Some(post) => thread.posts_before(&state.db, post).await?.map_or(1, |before| before / POSTS_PER_PAGE + 1),
+        None => page,
+    };
+    let total = thread.post_count(&state.db).await?;
+    let (page, pages) = clamp_page(requested, total, POSTS_PER_PAGE);
+    let posts = thread.posts(&state.db, POSTS_PER_PAGE, (page - 1) * POSTS_PER_PAGE).await?;
+    Ok(HttpResponse::Ok().json(ThreadPage { category, section, thread, posts, page, pages }))
 }
 
 #[derive(Deserialize)]
@@ -330,7 +390,7 @@ async fn create_post(
     }
     let attachments = files::attachable(&state, user.0.id, &body.attachments, MAX_ATTACHMENTS).await?;
     let post = thread.reply(&state.db, user.0.id, &content, &attachments).await?;
-    notify::thread_reply(&state.db, &thread, &user.0).await;
+    notify::thread_reply(&state.db, &thread, &post, &user.0).await;
     Ok(HttpResponse::Created().json(post))
 }
 
@@ -634,5 +694,21 @@ mod tests {
         assert!(normalize_section(SectionBody { accent: Some("red".into()), ..body() }).is_err());
         assert!(normalize_section(SectionBody { description: "x".repeat(257), ..body() }).is_err());
         assert!(normalize_section(SectionBody { name: " ".into(), ..body() }).is_err());
+    }
+
+    #[test]
+    fn pages() {
+        assert_eq!(clamp_page(1, 0, 20), (1, 1));
+        assert_eq!(clamp_page(3, 0, 20), (1, 1));
+        assert_eq!(clamp_page(1, 20, 20), (1, 1));
+        assert_eq!(clamp_page(2, 21, 20), (2, 2));
+        assert_eq!(clamp_page(i64::MAX, 41, 20), (3, 3));
+
+        assert_eq!(parse_page(None).ok(), Some(1));
+        assert_eq!(parse_page(Some(" ".into())).ok(), Some(1));
+        assert_eq!(parse_page(Some("4".into())).ok(), Some(4));
+        assert!(parse_page(Some("0".into())).is_err());
+        assert!(parse_page(Some("-1".into())).is_err());
+        assert!(parse_page(Some("two".into())).is_err());
     }
 }
